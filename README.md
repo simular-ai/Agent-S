@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://www.simular.ai/agent-s">🌐 [Website]</a>
-  <a href="">📄 [Paper]</a>
+  <a href="https://arxiv.org/abs/2410.08164">📄 [Paper]</a>
 </p>
 
 <p align="center">
@@ -116,13 +116,14 @@ This will show a user query prompt where you can enter your query and interact w
 
 ## 💬 Citation
 ```
-@misc{AgentS,
-  title={Agent S: An Open Agentic Framework that Uses Computers Like a Human},
-  author={Saaket Agashe*, Jiuzhou Han*, Shuyu Gan, Jiachen Yang, Ang Li, Xin Eric Wang},
-  year={2024},
-  eprint={},
-  archivePrefix={arXiv},
-  primaryClass={cs.AI}
+@misc{agashe2024agentsopenagentic,
+      title={Agent S: An Open Agentic Framework that Uses Computers Like a Human}, 
+      author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
+      year={2024},
+      eprint={2410.08164},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2410.08164}, 
 }
 ```
 
