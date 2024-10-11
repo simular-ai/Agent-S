@@ -1,9 +1,10 @@
 from agent_s.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.agent_s.osworld.GroundingAgent import GroundingAgent
+from agent_s.osworld.GroundingAgent import GroundingAgent
 from agent_s.MultimodalEngine import OpenAIEmbeddingEngine
 import json
 import numpy as np
 import pickle
+import platform
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Dict, List, Tuple
@@ -51,6 +52,7 @@ class Executor:
         search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
+        experiment_type: str = "osworld",
     ):
         self.grounding_agent = grounding_agent
 
@@ -58,6 +60,7 @@ class Executor:
         self.engine_params = engine_params
         self.search_engine = search_engine
         self.use_subtask_experience = use_subtask_experience
+        self.experiment_type = experiment_type
         self.reset()
 
     def flush_messages(self, n):
@@ -73,13 +76,27 @@ class Executor:
         self.reflection_agent = LMMAgent(self.engine_params)
         self.rag_agent = LMMAgent(self.engine_params)
         self.embedding_engine = OpenAIEmbeddingEngine()
+
+        if self.experiment_type == "osworld":
+            current_os = 'Ubuntu'
+        elif self.experiment_type == "windowsagentarena":
+            current_os = 'Windows 11'
+        elif self.experiment_type == "openaci":
+            if platform.system() == "Linux":
+                current_os = 'Ubuntu'
+            elif platform.system() == "Windows":
+                current_os = 'Windows 11'
+            elif platform.system() == "Darwin":
+                current_os = 'MacOS'
+        
         self.generator_system_prompt = PROCEDURAL_MEMORY.construct_procedural_memory(
             GroundingAgent
-        )
+        ).replace("CURRENT_OS", current_os)
         self.reflection_module_system_prompt = (
             PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY
         )
-        self.rag_module_system_prompt = PROCEDURAL_MEMORY.RAG_AGENT
+        self.rag_module_system_prompt = PROCEDURAL_MEMORY.RAG_AGENT.replace("CURRENT_OS", current_os)   
+        
         self.turn_count = 0
         self.planner_history = []
         self.reflections = []
@@ -93,7 +110,7 @@ class Executor:
             knowledge_base_dict = json.load(
                 open(
                     os.path.join(
-                        working_dir, "kb", "subtask_experience_knowledge_base.json"
+                        working_dir, "kb", self.experiment_type, "subtask_experience_knowledge_base.json"
                     )
                 )
             )
@@ -122,7 +139,7 @@ class Executor:
                 candidate_embeddings.append(candidate_embedding)
             candidate_embeddings = np.vstack(candidate_embeddings)
 
-            with open(os.path.join(working_dir, "kb", "embeddings.pkl"), "wb") as f:
+            with open(os.path.join(working_dir, "kb", self.experiment_type, "embeddings.pkl"), "wb") as f:
                 pickle.dump(embeddings, f)
 
             similarities = cosine_similarity(
@@ -151,7 +168,7 @@ class Executor:
     def retrieve_subtask_knowledge(self, instruction, current_state, engine):
         # Formulate query for searching
         try:
-            query_path = os.path.join(working_dir, "kb", "formulate_query.json")
+            query_path = os.path.join(working_dir, "kb", self.experiment_type, "formulate_query.json")
             formulate_query = json.load(open(query_path))
         except:
             formulate_query = {}
@@ -182,7 +199,7 @@ class Executor:
         # Search from different engines
         if engine == "llm":
             logger.info("Search Engine: LLM")
-            file = os.path.join(working_dir, "kb", "llm_rag_knowledge.json")
+            file = os.path.join(working_dir, "kb", self.experiment_type, "llm_rag_knowledge.json")
 
             try:
                 exist_search_results = json.load(open(file))
@@ -204,7 +221,7 @@ class Executor:
 
         elif engine == "perplexica":
             logger.info("Search Engine: Perplexica Search")
-            file = os.path.join(working_dir, "kb", "perplexica_rag_knowledge.json")
+            file = os.path.join(working_dir, "kb", self.experiment_type, "perplexica_rag_knowledge.json")
 
             try:
                 exist_search_results = json.load(open(file))

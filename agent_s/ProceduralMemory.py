@@ -1,7 +1,6 @@
 import inspect
 import textwrap
 
-current_os = "Ubuntu"
 
 
 class PROCEDURAL_MEMORY:
@@ -11,7 +10,7 @@ class PROCEDURAL_MEMORY:
             f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the current subtask: `SUBTASK_DESCRIPTION` of the larger goal: `TASK_DESCRIPTION`.
         IMPORTANT: ** The subtasks: ['DONE_TASKS'] have already been done. The future subtasks ['FUTURE_TASKS'] will be done in the future by me. You must only perform the current subtask: `SUBTASK_DESCRIPTION`. Do not try to do future subtasks. **
-        You are working in {current_os}. You must only complete the subtask provided and not the larger goal.
+        You are working in CURRENT_OS. You must only complete the subtask provided and not the larger goal.
         You are provided with:
         1. A simplified accessibility tree of the UI at the current time step.
         2. A screenshot of the current time step.
@@ -313,7 +312,7 @@ class PROCEDURAL_MEMORY:
 
     RAG_AGENT = """
     Given a desktop computer task instruction, you are an agent which should provide useful information as requested, to help another agent follow the instruction and perform the task.
-    The domain of the desktop computer task is from [Ubuntu, VLC, LibreOffice, Chrome, Thunderbird, VS Code, GIMP].
+    The domain of the desktop computer task is from [CURRENT_OS, VLC, LibreOffice, Chrome, Thunderbird, VS Code, GIMP].
     The task is: TASK_DESCRIPTION
     The simplified accessibility tree of the current computer UI is: ACCESSIBLITY_TREE
     """

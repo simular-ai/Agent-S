@@ -1,6 +1,6 @@
 import time
 from agent_s.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.agent_s.osworld.GroundingAgent import GroundingAgent
+from agent_s.osworld.GroundingAgent import GroundingAgent
 from agent_s.MultimodalEngine import OpenAIEmbeddingEngine
 import numpy as np
 import json

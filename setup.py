@@ -16,7 +16,7 @@ setup(
         'openai',
         'transformers',
         'fastapi',
-        'openaci @ git+https://github.com/simular-ai/OpenACI.git@main#egg=openaci',
+        'openaci @ git+https://github.com/simular-ai/OpenACI',
     ],
     classifiers=[
         'Programming Language :: Python :: 3',

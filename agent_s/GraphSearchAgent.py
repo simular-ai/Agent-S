@@ -6,16 +6,17 @@ import time
 
 import pyautogui
 import io 
+import json 
 
 try:
     if platform.system() == 'Darwin':
         platform_name = 'macos'
         from openaci.macos.Grounding import GroundingAgent as OpenACIGroundingAgent
-        from openaci.macos.Grounding import OpenACIUIElement
+        from openaci.macos.Grounding import UIElement as OpenACIUIElement
     elif platform.system() == 'Linux':
         platform_name = 'ubuntu'
         from openaci.ubuntu.Grounding import GroundingAgent as OpenACIGroundingAgent
-        from openaci.ubuntu.UIElement import OpenACIUIElement
+        from openaci.ubuntu.Grounding import UIElement as OpenACIUIElement
 except ImportError:
     print(
         "The OpenACI package is not installed. To use the OpenACI grounding agent for Agent S, please install the OpenACI package."
@@ -54,7 +55,7 @@ class GraphSearchAgent:
                  a11y_tree_max_tokens=10000,
                  enable_reflection=True,
                  engine="perplexica",
-                 vm_version="old"):
+                 vm_version="new"):
 
         # resets the agent by initializing submodules
         self.experiment_type = experiment_type
@@ -80,8 +81,8 @@ class GraphSearchAgent:
         else:
             raise ValueError(f"Invalid experiment type: {self.experiment_type}")
 
-        self.planner = Planner(self.engine_params, self.grounding_agent)
-        self.executor = Executor(self.engine_params, self.grounding_agent)
+        self.planner = Planner(self.engine_params, self.grounding_agent, experiment_type=self.experiment_type)
+        self.executor = Executor(self.engine_params, self.grounding_agent, experiment_type=self.experiment_type)
         self.replan = True
         self.get_next_subtask = True
         self.step_count = 0
@@ -187,12 +188,67 @@ class GraphSearchAgent:
         'subtask_info': self.current_subtask.info,
         'subtask_status': self.subtask_status})
 
-        if self.self_eval:
-            curr_atree = self.grounding_agent.linearize_and_annotate_tree(obs)
-            curr_img = obs['screenshot']
-            return info, (curr_atree, curr_img), actions
-        else:
-            return info, actions
+
+        return info, actions
+    
+    def update_narrative_memory(self, traj):
+        """
+        Update the narrative memory with the current observation.
+        """
+        try:
+            if self.pdate_reflection:
+                print(self.search_query)
+                try:
+                    reflection_path = os.path.join(working_dir, "kb", self.experiment_type, "lifelong_learning_knowledge_base.json")
+                    lifelong_learning_reflections = json.load(open(reflection_path))
+                except:
+                    lifelong_learning_reflections = {}
+                if self.planner.search_query not in lifelong_learning_reflections.keys():
+                    lifelong_learning_reflection = self.planner.generate_lifelong_learning_reflection(traj)
+                    lifelong_learning_reflections[self.search_query] = lifelong_learning_reflection
+                else:
+                    pass
+                with open(reflection_path, "w") as fout:
+                    json.dump(lifelong_learning_reflections, fout, indent=2)
+        except Exception as e:
+            print(e)
+
+    def update_episodic_memory(self, meta_data, subtask_traj):
+        """
+        Update the episodic memory with the current observation.
+        """
+        subtask = meta_data['subtask']
+        subtask_info = meta_data['subtask_info']
+        subtask_status = meta_data['subtask_status']
+        # Handle subtask trajectory
+        if subtask_status == 'Start' or subtask_status == 'Done':
+            # If it's a new subtask start, finalize the previous subtask trajectory if it exists
+            if subtask_traj:
+                subtask_traj += '\nSubtask Completed.\n'
+                subtask_key = subtask_traj.split("\n----------------------\n\nPlan:\n")[0]
+                try:
+                    subtask_path = os.path.join(working_dir, "kb", self.experiment_type, "subtask_experience_knowledge_base.json")
+                    kb = json.load(open(subtask_path))
+                except:
+                    kb = {}
+                if subtask_key not in kb.keys():
+                    subtask_summarization = self.planner.generate_subtask_summarization(subtask_traj)
+                    kb[subtask_key] = subtask_summarization
+                else:
+                    subtask_summarization = kb[subtask_key]
+                logger.info("subtask_key: %s", subtask_key)
+                logger.info("subtask_summarization: %s", subtask_summarization)
+                with open(subtask_path, "w") as fout:
+                    json.dump(kb, fout, indent=2)
+                # Reset for the next subtask
+                subtask_traj = ''
+            # Start a new subtask trajectory
+            subtask_traj = 'Task:\n' + self.search_query + '\n\nSubtask: ' + subtask + '\nSubtask Instruction: ' + subtask_info + '\n----------------------\n\nPlan:\n' + meta_data['executor_plan'] + '\n'
+        elif subtask_status == 'In':
+            # Continue appending to the current subtask trajectory if it's still ongoing
+            subtask_traj += '\n----------------------\n\nPlan:\n' + meta_data['executor_plan'] + '\n'
+
+        return subtask_traj
     
     def run(self, instruction: str):
         obs = {}
@@ -245,3 +301,4 @@ class GraphSearchAgent:
                 # Update task and subtask trajectories and optionally the episodic memory
                 traj += '\n\nReflection:\n' + str(info['reflection']) + '\n\n----------------------\n\nPlan:\n' + info['executor_plan']
                 subtask_traj = self.update_episodic_memory(info, subtask_traj)
+                

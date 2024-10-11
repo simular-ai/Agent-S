@@ -109,7 +109,7 @@ To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment
 
 We support running Agent S directly on your own system through [OpenACI](https://github.com/simular-ai/OpenACI). To run Agent S on your own system run: 
 ```
-python openaci/cli_app.py --agent agent_s --model <MODEL>
+python examples/cli_app.py --model <MODEL>
 ```
 
 This will show a user query prompt where you can enter your query and interact with Agent S. 

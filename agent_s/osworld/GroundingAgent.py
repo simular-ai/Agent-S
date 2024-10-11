@@ -17,7 +17,7 @@ def agent_action(func):
 
 
 class GroundingAgent:
-    def __init__(self, top_app=None, vm_version="old", top_app_only=True, ocr=True):
+    def __init__(self, top_app=None, vm_version="new", top_app_only=True, ocr=True):
         self.active_apps = set()
         self.top_app = top_app
         self.top_app_only = (

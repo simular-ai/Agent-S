@@ -1,9 +1,10 @@
 from agent_s.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.agent_s.osworld.GroundingAgent import GroundingAgent
+# from agent_s.osworld.GroundingAgent import GroundingAgent
 from agent_s.MultimodalEngine import OpenAIEmbeddingEngine
 import numpy as np
 import json
 import pickle
+import platform
 import os
 from sklearn.metrics.pairwise import cosine_similarity
 from typing import Dict, List, Tuple
@@ -19,9 +20,6 @@ logger = logging.getLogger("desktopenv.agent")
 # Get the directory of the current script
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
-# Construct the full path to the JSON file
-file_path = os.path.join(working_dir, "kb", "formulate_query.json")
-
 NUM_IMAGE_TOKEN = 1105  # Value set of screen of size 1920x1080 for openai vision
 
 
@@ -29,10 +27,11 @@ class Planner:
     def __init__(
         self,
         engine_params: Dict,
-        grounding_agent: GroundingAgent,
+        grounding_agent,
         search_engine: str = "perplexica",
         use_plan_cache: bool = False,
         multi_round: bool = False,
+        experiment_type: str = "osworld",
     ):
         # TODO: move the prompt to Procedural Memory
         self.generator_agent = LMMAgent(
@@ -59,11 +58,12 @@ class Planner:
         self.search_engine = search_engine
         self.use_plan_cache = use_plan_cache
         self.multi_round = multi_round
+        self.experiment_type = experiment_type
 
-        self.plan_cache_path = os.path.join(working_dir, "kb", "graph_agent_plans.json")
-        self.dag_cache_path = os.path.join(working_dir, "kb", "graph_agent_dags.json")
+        self.plan_cache_path = os.path.join(working_dir, "kb", self.experiment_type, "graph_agent_plans.json")
+        self.dag_cache_path = os.path.join(working_dir, "kb", self.experiment_type, "graph_agent_dags.json")
         self.search_query_cache_path = os.path.join(
-            working_dir, "kb", "formulate_query.json"
+            working_dir, "kb", self.experiment_type, "formulate_query.json"
         )
 
         # open cache files
@@ -90,10 +90,12 @@ class Planner:
         search_results = ""
         # Formulate query for searching
         try:
-            query_path = os.path.join(working_dir, "kb", "formulate_query.json")
+            query_path = os.path.join(working_dir, "kb", self.experiment_type, "formulate_query.json")
             formulate_query = json.load(open(query_path))
         except:
             formulate_query = {}
+        
+        print('query', formulate_query)
 
         if instruction in formulate_query.keys() and formulate_query[instruction]:
             search_query = formulate_query[instruction]
@@ -109,9 +111,20 @@ class Planner:
                     "TASK_DESCRIPTION", instruction
                 ).replace("ACCESSIBLITY_TREE", current_state),
             )
-
+            if self.experiment_type == "osworld":
+                current_os = 'Ubuntu'
+            elif self.experiment_type == "windowsagentarena":
+                current_os = 'Windows 11'
+            elif self.experiment_type == "openaci":
+                if platform.system() == "Linux":
+                    current_os = 'Ubuntu'
+                elif platform.system() == "Windows":
+                    current_os = 'Windows 11'
+                elif platform.system() == "Darwin":
+                    current_os = 'MacOS'
+            print(current_os)
             self.rag_agent.add_message(
-                "To use google search to get some useful information, first carefully analyze the accessibility tree of the current desktop UI state, then given the task instruction, formulate a question that can be used to search on the Internet for information in helping with the task execution.\nThe question should not be too general or too specific, but it should be based on the current desktop UI state (e.g., already open website or application). You should expect the google search will return you something useful based on the question. Since it is a desktop computer task, make sure to mention the corresponding task domain in the question and also mention the Ubuntu OS if you think the OS matters. Please ONLY provide the question.\nQuestion:"
+                f"To use google search to get some useful information, first carefully analyze the accessibility tree of the current desktop UI state, then given the task instruction, formulate a question that can be used to search on the Internet for information in helping with the task execution.\nThe question should not be too general or too specific, but it should be based on the current desktop UI state (e.g., already open website or application). You should expect the google search will return you something useful based on the question. Since it is a desktop computer task, make sure to mention the corresponding task domain in the question and also mention the {current_os} OS if you think the OS matters. Please ONLY provide the question.\nQuestion:"
             )
             search_query = call_llm_safe(self.rag_agent)
             assert type(search_query) == str
@@ -130,7 +143,7 @@ class Planner:
         # Search from different engines
         if engine == "llm":
             logger.info("Search Engine: LLM")
-            file = os.path.join(working_dir, "kb", "llm_rag_knowledge.json")
+            file = os.path.join(working_dir, "kb", self.experiment_type, "llm_rag_knowledge.json")
 
             try:
                 exist_search_results = json.load(open(file))
@@ -154,7 +167,7 @@ class Planner:
 
         elif engine == "perplexica":
             logger.info("Search Engine: Perplexica Search")
-            file = os.path.join(working_dir, "kb", "perplexica_rag_knowledge.json")
+            file = os.path.join(working_dir, "kb", self.experiment_type, "perplexica_rag_knowledge.json")
 
             try:
                 exist_search_results = json.load(open(file))
@@ -210,7 +223,7 @@ class Planner:
             lifelong_learning_reflection_dicts = json.load(
                 open(
                     os.path.join(
-                        working_dir, "kb", "lifelong_learning_knowledge_base.json"
+                        working_dir, "kb", self.experiment_type, "lifelong_learning_knowledge_base.json"
                     )
                 )
             )
@@ -228,13 +241,13 @@ class Planner:
             knowledge_base_dict = json.load(
                 open(
                     os.path.join(
-                        working_dir, "kb", "lifelong_learning_knowledge_base.json"
+                        working_dir, "kb", self.experiment_type, "lifelong_learning_knowledge_base.json"
                     )
                 )
             )
 
             try:
-                with open(os.path.join(working_dir, "kb", "embeddings.pkl"), "rb") as f:
+                with open(os.path.join(working_dir, "kb",  "embeddings.pkl"), "rb") as f:
                     embeddings = pickle.load(f)
             except:
                 embeddings = {}
@@ -257,7 +270,7 @@ class Planner:
                 candidate_embeddings.append(candidate_embedding)
             candidate_embeddings = np.vstack(candidate_embeddings)
 
-            with open(os.path.join(working_dir, "kb", "embeddings.pkl"), "wb") as f:
+            with open(os.path.join(working_dir, "kb", self.experiment_type, "embeddings.pkl"), "wb") as f:
                 pickle.dump(embeddings, f)
 
             # instruction_embedding = self.embedding_engine.get_embeddings(instruction)

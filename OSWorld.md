@@ -32,7 +32,10 @@ agent = GraphSearchAgent(
     action_space=args.action_space,
     observation_type=args.observation_type,
     max_trajectory_length=args.max_trajectory_length,
-    vm_version=args.vm_version,
+    vm_version='latest'
 )
 ```
 The permissible values for the model argument are `gpt-4o`, `gpt-4o-mini` for OpenAI models, and `claude-3-5-sonnet-20240620` for Anthropic models. 
+
+We have set the latest Agent S to use the latest Ubuntu VM image from OSWorld. However, our experiments are based on the older version of the VM. To reproduce the results, set the vm_version argument to 'old' while instantiating the agent.
+
