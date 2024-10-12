@@ -35,7 +35,7 @@ Agent S is a new agentic framework designed to enable computers to be used as in
 
 Clone the Agent S Repository
 ```
-git clone https://github.com/simular-ai/GUI-agent.git
+git clone https://github.com/simular-ai/Agent-S.git
 ```
 
 We recommend using Anaconda or Miniconda to create a virtual environment and install the required dependencies. We used Python 3.9 for development and experiments.
