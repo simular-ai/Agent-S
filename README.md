@@ -3,13 +3,12 @@
 </h1>
 
 <p align="center">
-  <a href="https://www.simular.ai/agent-s">🌐 [Website]</a>
-  <a href="https://arxiv.org/abs/2410.08164">📄 [Paper]</a>
+<a href=https://saa1605.github.io> Saaket Agashe</a>, <a href=https://jiuzhouh.github.io/ >Jiuzhou Han</a>, <a href=https://scholar.google.com/citations?user=nfRYJJsAAAAJ&hl=zh-CN>Shuyu Gan</a>, <a href=https://sites.google.com/view/jiachen-yang/>Jiachen Yang</a>, <a href=https://angli.ai/>Ang Li</a>, <a href=https://eric-xw.github.io/>Xin Eric Wang</a>
 </p>
 
 <p align="center">
-<a href=https://saa1605.github.io> Saaket Agashe</a>, <a href=https://jiuzhouh.github.io/ >Jiuzhou Han </a>, <a href=https://scholar.google.com/citations?user=nfRYJJsAAAAJ&hl=zh-CN>Shuyu Gan</a>, <a href=https://sites.google.com/view/jiachen-yang/>Jiachen Yang</a>, <a href=https://angli.ai/>Ang Li</a>, <a href=https://eric-xw.github.io/>Xin Eric Wang</a>
-
+  <a href="https://www.simular.ai/agent-s">🌐 [Website]</a>
+  <a href="https://arxiv.org/abs/2410.08164">📄 [Paper]</a>
 </p>
 
 ## 💡 Introduction
