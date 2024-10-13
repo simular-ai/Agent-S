@@ -24,7 +24,7 @@ Agent S is a new agentic framework designed to enable computers to be used as in
 ## 🎯 Results
 
 <p align="center">
-    <img src="./images/results.png" width="800">
+    <img src="./images/results.png" width="600">
     <br>
     Results of Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image + Accessibility Tree input.
 </p>
