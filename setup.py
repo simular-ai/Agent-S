@@ -14,9 +14,19 @@ setup(
         'numpy',
         'pandas',
         'openai',
+        'torch',
+        'torchvision',
         'transformers',
+        'anthropic',
         'fastapi',
+        'uvicorn'
+        'paddleocr',
+        'paddlepaddle',
         'openaci @ git+https://github.com/simular-ai/OpenACI',
+        'together',
+        'scikit-learn',
+        'websockets',
+        'tiktoken'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
