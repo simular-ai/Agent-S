@@ -10,7 +10,6 @@ from agent_s.MultimodalEngine import (
     LMMEnginevLLM,
     LMMEngineAnthropic,
     LMMEngineQwen,
-    LMMEngineTogether
 )
 import base64
 import re
@@ -39,8 +38,6 @@ class LMMAgent:
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "anthropic":
                     self.engine = LMMEngineAnthropic(**engine_params)
-                elif engine_type == "together":
-                    self.engine = LMMEngineTogether(**engine_params)
                 elif engine_type == "azure":
                     self.engine = LMMEngineAzureOpenAI(**engine_params)
                 elif engine_type == "vllm":
