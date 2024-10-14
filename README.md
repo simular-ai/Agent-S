@@ -1,14 +1,12 @@
-<h1>
-  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S: An Open Agentic Framework that Uses Computers Like a Human
+<h1 align="center">
+  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:<br>
+  An Open Agentic Framework that Uses Computers Like a Human
 </h1>
 
 <p align="center">
-<a href=https://saa1605.github.io> Saaket Agashe</a>, <a href=https://jiuzhouh.github.io/ >Jiuzhou Han</a>, <a href=https://scholar.google.com/citations?user=nfRYJJsAAAAJ&hl=zh-CN>Shuyu Gan</a>, <a href=https://sites.google.com/view/jiachen-yang/>Jiachen Yang</a>, <a href=https://angli.ai/>Ang Li</a>, <a href=https://eric-xw.github.io/>Xin Eric Wang</a>
-</p>
-
-<p align="center">
-  <a href="https://www.simular.ai/agent-s">🌐 [Website]</a>
-  <a href="https://arxiv.org/abs/2410.08164">📄 [Paper]</a>
+  🌐<a href="https://www.simular.ai/agent-s">[Website]</a>
+  📄<a href="https://arxiv.org/abs/2410.08164">[Paper]</a>
+  🎥<a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[Video]</a>
 </p>
 
 ## 💡 Introduction
@@ -18,10 +16,12 @@
 </p>
 
 <p>
-Agent S is a new agentic framework designed to enable computers to be used as intuitively as a human would. We introduce an Experience-Augmented Hierarchical Planning method. This method utilizes Online Web Knowledge for up-to-date information on frequently changing software and websites, along with Narrative Memory to leverage high-level experiences from past interactions. By breaking complex tasks into manageable subtasks and using Episodic Memory for step-by-step guidance, Agent S continuously refines its actions and learns from experience, achieving adaptable and effective task planning.
+Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through a Graphical User Interface (GUI). Our mission is to build intelligent agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
+
+Whether you're interested in AI, automation, or contributing to cutting-edge agent-based systems, we're excited to have you here!
 </p>
 
-## 🎯 Results
+## 🎯 Current Results
 
 <p align="center">
     <img src="./images/results.png" width="600">
@@ -32,7 +32,7 @@ Agent S is a new agentic framework designed to enable computers to be used as in
 
 ## 🛠️ Installation
 
-Clone the Agent S Repository
+Clone the epository
 ```
 git clone https://github.com/simular-ai/Agent-S.git
 ```
@@ -113,6 +113,11 @@ python examples/cli_app.py --model <MODEL>
 This will show a user query prompt where you can enter your query and interact with Agent S. 
 
 NOTE: We currently support running Agent-S on local system only for MacOS and Ubuntu through OpenACI. 
+
+## 🙌 Contributors
+
+We’re grateful to all the amazing people who have contributed to this project. Thank you! 🙏  
+[Contributors List](https://github.com/simular-ai/Agent-S/graphs/contributors)
 
 ## 💬 Citation
 ```
