@@ -19,7 +19,7 @@ setup(
         'transformers',
         'anthropic',
         'fastapi',
-        'uvicorn'
+        'uvicorn',
         'paddleocr',
         'paddlepaddle',
         'openaci @ git+https://github.com/simular-ai/OpenACI',
