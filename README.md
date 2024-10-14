@@ -110,8 +110,9 @@ We support running Agent S directly on your own system through [OpenACI](https:/
 ```
 python examples/cli_app.py --model <MODEL>
 ```
-
 This will show a user query prompt where you can enter your query and interact with Agent S. 
+
+NOTE: We currently support running Agent-S on local system only for MacOS and Ubuntu through OpenACI. 
 
 ## 💬 Citation
 ```

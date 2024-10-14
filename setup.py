@@ -26,7 +26,10 @@ setup(
         'together',
         'scikit-learn',
         'websockets',
-        'tiktoken'
+        'tiktoken',
+        'pyobjc; platform_system == "Darwin"',
+        'together',
+        'pyautogui'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
