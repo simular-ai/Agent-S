@@ -32,7 +32,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 ## 🛠️ Installation
 
-Clone the epository
+Clone the repository
 ```
 git clone https://github.com/simular-ai/Agent-S.git
 ```
