@@ -1,6 +1,6 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:<br>
-  An Open Agentic Framework that Uses Computers Like a Human
+  <small>An Open Agentic Framework that Uses Computers Like a Human</small>
 </h1>
 
 <p align="center">
@@ -15,11 +15,9 @@
     <img src="./images/teaser.png" width="800">
 </p>
 
-<p>
-Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through a Graphical User Interface (GUI). Our mission is to build intelligent agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
+Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through Agent-Computer Interface. Our mission is to build intelligent GUI agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
 
 Whether you're interested in AI, automation, or contributing to cutting-edge agent-based systems, we're excited to have you here!
-</p>
 
 ## 🎯 Current Results
 
