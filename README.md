@@ -48,6 +48,26 @@ Install the agent_s package and dependencies
 pip install -e .
 ```
 
+Set your LLM API Keys and other environment variables. You can do this by adding the following lines to your .bashrc (Linux), or .zshrc (MacOS) file. We support OpenAI, Azure OpenAI, Anthropic, and vLLM models.
+
+1. OpenAI
+```
+export OPENAI_API_KEY=<YOUR_API_KEY>
+```
+2. Anthropic
+```
+export ANTHROPIC_API_KEY=<YOUR_API_KEY>
+```
+3. OpenAI on Azure
+```
+export AZURE_OPENAI_API_BASE=<DEPLOYMENT_NAME>
+export AZURE_OPENAI_API_KEY=<YOUR_API_KEY>
+```
+4. vLLM for Local Models
+```
+export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
+```
+
 ### Setup Retrieval from Web using Perplexica
 
 1. Ensure Docker is installed and running on your system.
