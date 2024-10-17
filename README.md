@@ -7,6 +7,7 @@
   🌐<a href="https://www.simular.ai/agent-s">[Website]</a>
   📄<a href="https://arxiv.org/abs/2410.08164">[Paper]</a>
   🎥<a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[Video]</a>
+  🗨️<a href="https://discord.gg/XRzQUPjH">[Discord]</a>
 </p>
 
 ## 💡 Introduction
