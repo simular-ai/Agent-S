@@ -76,6 +76,8 @@ pip install -e .
    ```
 For a more detailed setup and usage guide, refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git)
 
+6.  Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. To tailor the API to your specific requirements, you may modify the URL and request parameters in the `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
+
 ### Setup Paddle-OCR Server
 
 Run the ocr_server.py file code to use OCR-based bounding boxes.
