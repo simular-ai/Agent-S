@@ -5,23 +5,11 @@
 from agent_s.MultimodalEngine import (
     LMMEngineOpenAI,
     LMMEngineAzureOpenAI,
-    LMMEngineLlava,
-    LMMEngineCogVLM,
     LMMEnginevLLM,
     LMMEngineAnthropic,
-    LMMEngineQwen,
 )
 import base64
 import re
-
-# TODO: Import only if module exists, else ignore
-# from llava.constants import (
-#     IMAGE_TOKEN_INDEX,
-#     DEFAULT_IMAGE_TOKEN,
-#     DEFAULT_IM_START_TOKEN,
-#     DEFAULT_IM_END_TOKEN,
-#     IMAGE_PLACEHOLDER,
-# )
 
 data_type_map = {
     "openai": {"image_url": "image_url"},
@@ -42,12 +30,6 @@ class LMMAgent:
                     self.engine = LMMEngineAzureOpenAI(**engine_params)
                 elif engine_type == "vllm":
                     self.engine = LMMEnginevLLM(**engine_params)
-                elif engine_type == "qwen":
-                    self.engine = LMMEngineQwen(**engine_params)
-                elif engine_type == "llava":
-                    self.engine = LMMEngineLlava(**engine_params)
-                elif engine_type == "cogvlm":
-                    self.engine = LMMEngineCogVLM(**engine_params)
                 else:
                     raise ValueError("engine_type must be either 'openai' or 'azure'")
             else:
@@ -73,15 +55,13 @@ class LMMAgent:
     def reset(
         self,
     ):
-        if isinstance(self.engine, (LMMEngineCogVLM, LMMEngineLlava)):
-            self.messages = []
-        else:
-            self.messages = [
-                {
-                    "role": "system",
-                    "content": [{"type": "text", "text": self.system_prompt}],
-                }
-            ]
+
+        self.messages = [
+            {
+                "role": "system",
+                "content": [{"type": "text", "text": self.system_prompt}],
+            }
+        ]
 
     def add_system_prompt(self, system_prompt):
         self.system_prompt = system_prompt
@@ -97,12 +77,6 @@ class LMMAgent:
                     "content": [{"type": "text", "text": self.system_prompt}],
                 }
             )
-
-        # Don't add the system prompt if we are using llava or other hf models
-        if isinstance(self.engine, LMMEngineLlava) or isinstance(
-            self.engine, LMMEngineCogVLM
-        ):
-            self.messages = []
 
     def remove_message_at(self, index):
         """Remove a message at a given index"""
@@ -135,80 +109,8 @@ class LMMAgent:
     ):
         """Add a new message to the list of messages"""
 
-        # For inference from locally hosted llava based on https://github.com/haotian-liu/LLaVA/
-        if isinstance(self.engine, LMMEngineLlava):
-
-            # No system prompt so first message will be from user
-            if len(self.messages) == 0:
-                role = "user"
-            else:
-                # infer role from previous message
-                if self.messages[-1]["role"] == "user":
-                    role = "assistant"
-                elif self.messages[-1]["role"] == "assistant":
-                    role = "user"
-
-            image_token_se = (
-                DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN
-            )
-
-            qs = text_content
-            if role == "user":
-                if len(self.messages) == 0:
-                    # If this is the very first user message, add the system prompt to it to dictate behavior
-                    qs = self.system_prompt + "\n" + qs
-                    # TODO: Add comment explaining what this next part does
-                    if IMAGE_PLACEHOLDER in qs:
-                        if self.engine.model.config.mm_use_im_start_end:
-                            qs = re.sub(IMAGE_PLACEHOLDER, image_token_se, qs)
-                        else:
-                            qs = re.sub(IMAGE_PLACEHOLDER, DEFAULT_IMAGE_TOKEN, qs)
-                    else:
-                        if self.engine.model.config.mm_use_im_start_end:
-                            qs = image_token_se + "\n" + qs
-                        else:
-                            qs = DEFAULT_IMAGE_TOKEN + "\n" + qs
-
-                message = {"role": role, "content": qs}
-            else:
-                message = {"role": role, "content": text_content}
-
-            # Capable of handling only one image right now. TODO: make capable of handling more images
-            if image_content:
-                if self.engine.args.image_file == None:
-                    self.engine.args.image_file = image_content
-
-            self.messages.append(message)
-
-        elif isinstance(self.engine, LMMEngineCogVLM):
-            # No system prompt so first message will be from user
-            if len(self.messages) == 0:
-                role = "user"
-            else:
-                # infer role from previous message
-                if self.messages[-1]["role"] == "user":
-                    role = "assistant"
-                elif self.messages[-1]["role"] == "assistant":
-                    role = "user"
-
-            # Add message content as a new message, if this is the first message prepend with system prompt
-            if len(self.messages) == 0:
-                self.messages.append(
-                    {
-                        "role": role,
-                        "content": {
-                            "type": "text",
-                            "text": self.system_prompt + "\n\n" + text_content,
-                        },
-                    }
-                )
-            else:
-                self.messages.append(
-                    {"role": role, "content": {"type": "text", "text": text_content}}
-                )
-
-        # For API-style inference from OpenAI and AzureOpenAI
-        elif isinstance(self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI)):
+        # API-style inference from OpenAI and AzureOpenAI
+        if isinstance(self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI)):
             # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
@@ -299,8 +201,8 @@ class LMMAgent:
                         )
             self.messages.append(message)
 
-        # Custom Qwen Model inference
-        elif isinstance(self.engine, LMMEngineQwen):
+        # Locally hosted vLLM model inference 
+        elif isinstance(self.engine, LMMEnginevLLM):
            # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
@@ -336,50 +238,6 @@ class LMMAgent:
                             "image":  f"data:image;base64,{base64_image}"
                         }
                     )
-            self.messages.append(message)
-
-        # Custom Llama3.2 Model inference
-        elif isinstance(self.engine, LMMEngineTogether):
-            # infer role from previous message
-            if role != "user":
-                if self.messages[-1]["role"] == "system":
-                    role = "user"
-                elif self.messages[-1]["role"] == "user":
-                    role = "assistant"
-                elif self.messages[-1]["role"] == "assistant":
-                    role = "user"
-
-            message = {
-                "role": role,
-                "content": [{"type": "text", "text": text_content}],
-            }
-
-            if image_content:
-                # Check if image_content is a list or a single image
-                if isinstance(image_content, list):
-                    # If image_content is a list of images, loop through each image
-                    for image in image_content:
-                        base64_image = self.encode_image(image)
-                        message["content"].append(
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/png;base64,{base64_image}",
-                                },
-                            }
-                        )
-                else:
-                    # If image_content is a single image, handle it directly
-                    base64_image = self.encode_image(image_content)
-                    message["content"].append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}",
-                            },
-                        }
-                    )
-
             self.messages.append(message)
 
     def get_response(
