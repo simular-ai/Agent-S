@@ -4,7 +4,7 @@ setup(
     name='agent_s',
     version='0.1.0',
     description='A library for creating general purpose GUI agents using multimodal LLMs.',
-    long_description=open('README.md').read(),
+    long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
     author='Saaket Agashe',
     author_email='saagashe@ucsc.edu',
