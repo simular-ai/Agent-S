@@ -29,7 +29,8 @@ setup(
         'tiktoken',
         'pyobjc; platform_system == "Darwin"',
         'together',
-        'pyautogui'
+        'pyautogui',
+        'toml'
     ],
     classifiers=[
         'Programming Language :: Python :: 3',
