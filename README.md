@@ -70,6 +70,7 @@ export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
 ### Setup Retrieval from Web using Perplexica
 
 1. Ensure Docker is installed and running on your system.
+
 2. Clone the Perplexica repository:
 
    ```bash
@@ -94,6 +95,9 @@ export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
    ```bash
    docker compose up -d
    ```
+
+6.  Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. To tailor the API to your settings and specific requirements, you may modify the URL and request parameters in the `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
+
 For a more detailed setup and usage guide, refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git)
 
 ### Setup Paddle-OCR Server
