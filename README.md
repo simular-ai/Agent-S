@@ -51,13 +51,18 @@ pip install -e .
 
 1. Ensure Docker is installed and running on your system.
 
-2. Clone the Perplexica repository:
+2. Initialize the Perplexica submodule:
 
    ```bash
-   git clone https://github.com/ItzCrazyKns/Perplexica.git
+   cd Agent-S
+   git submodule update --init
    ```
 
-3. After cloning, navigate to the directory containing the project files.
+3. After initializing, navigate to the directory containing the project files.
+
+   ```bash
+   cd Perplexica
+   ```
 
 4. Rename the `sample.config.toml` file to `config.toml`. For Docker setups, you need only fill in the following fields:
 
@@ -76,9 +81,9 @@ pip install -e .
    docker compose up -d
    ```
 
-6.  Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. To tailor the API to your settings and specific requirements, you may modify the URL and request parameters in the `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
+6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. To tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
 
-For a more detailed setup and usage guide, refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git)
+For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git)
 
 ### Setup Paddle-OCR Server
 
