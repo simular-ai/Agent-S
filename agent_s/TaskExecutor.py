@@ -116,7 +116,7 @@ class Executor:
             )
 
             try:
-                with open(os.path.join(working_dir, "kb", "embeddings.pkl"), "rb") as f:
+                with open(os.path.join(working_dir, "kb", self.experiment_type, "embeddings.pkl"), "rb") as f:
                     embeddings = pickle.load(f)
             except:
                 embeddings = {}

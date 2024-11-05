@@ -6,6 +6,7 @@ import torchvision
 import base64
 import requests
 import logging
+import time 
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -170,7 +171,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                 raise Exception("OCR SERVER ADDRESS NOT SET")
             encoded_screenshot = base64.b64encode(screenshot).decode("utf-8")
             data = {"img_bytes": encoded_screenshot}
+            print("Getting OCR response")
+            ocr_start = time.time()
             response = requests.post(url, json=data)
+            print("Got OCR response in", time.time() - ocr_start)
 
             if response.status_code == 200:
                 return response.json()
