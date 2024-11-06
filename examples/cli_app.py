@@ -10,7 +10,7 @@ import time
 import argparse
 
 if platform.system() == 'Darwin':
-    from openaci.macos.UIElement import UIElement
+    from agent_s.aci.UIElementMacOS import UIElement
     from Foundation import *
     from AppKit import *
     from ApplicationServices import (
@@ -25,9 +25,10 @@ if platform.system() == 'Darwin':
         AXUIElementCopyAttributeValue,
     )
 elif platform.system() == 'Linux':
-    from openaci.ubuntu.UIElement import UIElement
-
-from agent_s.GraphSearchAgent import GraphSearchAgent
+    from agent_s.aci.UIElementLinux import UIElement
+    
+from agent_s.aci.ACI import ACI
+from agent_s.core.AgentS import UIAgent, GraphSearchAgent
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -71,10 +72,63 @@ logger.addHandler(sdebug_handler)
 
 platform_os = platform.system() 
 
+def run_agent(agent: UIAgent,instruction: str):
+    obs = {}
+    traj = 'Task:\n' + instruction
+    subtask_traj = ""
+    for _ in range(15):
+        obs['accessibility_tree'] = UIElement.systemWideElement()
+            
+        # Get screen shot using pyautogui.
+        # Take a screenshot
+        screenshot = pyautogui.screenshot()
+
+        # Save the screenshot to a BytesIO object
+        buffered = io.BytesIO()
+        screenshot.save(buffered, format="PNG")
+
+        # Get the byte value of the screenshot
+        screenshot_bytes = buffered.getvalue()
+        # Convert to base64 string.
+        obs['screenshot'] = screenshot_bytes 
+
+        # Get next action code from the agent 
+        info, code = agent.predict(instruction=instruction, obs=obs)
+
+        if 'done' in code[0].lower() or 'fail' in code[0].lower():
+            if platform.system() == 'Darwin':
+                os.system(f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\'')
+            elif platform.system() == 'Linux':
+                os.system(f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100')
+            
+            agent.update_narrative_memory(traj)
+            break 
+    
+        
+        if 'next' in code[0].lower():
+            continue
+
+        if 'wait' in code[0].lower():
+            time.sleep(5)
+            continue
+
+        else:
+            time.sleep(1.)
+            print("EXECUTING CODE:", code[0])
+            exec(code[0])
+            
+            time.sleep(1.)
+            
+            # Update task and subtask trajectories and optionally the episodic memory
+            traj += '\n\nReflection:\n' + str(info['reflection']) + '\n\n----------------------\n\nPlan:\n' + info['executor_plan']
+            subtask_traj = agent.update_episodic_memory(info, subtask_traj)
+
 def main():
     parser = argparse.ArgumentParser(description="Run GraphSearchAgent with specified model.")
     parser.add_argument("--model", type=str, default="gpt-4o", help="Specify the model to use (e.g., gpt-4o)")
     args = parser.parse_args()
+    
+    grounding_agent = ACI()
 
     while True:
         query = input("Query: ")
@@ -86,21 +140,26 @@ def main():
             "engine_type": engine_type,
             "model": args.model,
         }
+        
+        if platform.system == 'Darwin':
+            current_platform = 'macos'
+        elif platform.system == 'Linux':
+            current_platform = 'ubuntu'
+        else:
+            raise("Unsupported platform")
+        
         agent = GraphSearchAgent(
             engine_params,
-            experiment_type='openaci',
-            platform=platform_os,
-            max_tokens=1500,
-            top_p=0.9,
-            temperature=0.5,
+            grounding_agent,
+            platform=current_platform,
             action_space="pyautogui",
-            observation_type="atree",
-            max_trajectory_length=3,
-            a11y_tree_max_tokens=10000,
-            enable_reflection=True,
+            observation_type="mixed",
+            engine="perplexica"
         )
         agent.reset()
-        agent.run(instruction=query)
+        
+        # Run the agent on your own device 
+        run_agent(agent, query)
         
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":

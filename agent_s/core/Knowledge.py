@@ -1,0 +1,264 @@
+import json
+import numpy as np
+import os
+import pickle
+from typing import Dict, Tuple
+from sklearn.metrics.pairwise import cosine_similarity
+from agent_s.core.ProceduralMemory import PROCEDURAL_MEMORY
+from agent_s.core.BaseModule import BaseModule
+from agent_s.mllm.MultimodalEngine import OpenAIEmbeddingEngine
+from agent_s.utils.query_perplexica import query_to_perplexica
+
+working_dir = os.path.dirname(os.path.abspath(__file__))
+
+
+class KnowledgeBase(BaseModule):
+    def __init__(
+        self, platform: str, engine_params: Dict, use_image_for_search: bool = False
+    ):
+        super().__init__(engine_params, platform)
+
+        # initialize embedding engine
+        # TODO: Support other embedding engines
+        self.embedding_engine = OpenAIEmbeddingEngine()
+
+        self.rag_module_system_prompt = PROCEDURAL_MEMORY.RAG_AGENT.replace(
+            "CURRENT_OS", self.platform
+        )
+
+        # All three agent share a generic RAG prompt that ask agent to provide information for UI automation in CURRENT_OS
+        self.query_formulator = self._create_agent(self.rag_module_system_prompt)
+        self.llm_search_agent = self._create_agent(self.rag_module_system_prompt)
+        self.knowledge_fusion_agent = self._create_agent(self.rag_module_system_prompt)
+
+        self.use_image_for_search = use_image_for_search
+
+    def retrieve_knowledge(
+        self, instruction: str, observation: Dict, search_engine: str = "llm"
+    ) -> Tuple[str, str]:
+        """Retrieve knowledge using search engine
+        Args:
+            instruction (str): task instruction
+            observation (Dict): current observation
+            search_engine (str): search engine to use"""
+
+        # Use current observation to formulate the search query
+        search_query = self._formulate_query(instruction, observation)
+
+        # Use search engine to retrieve knowledge based on the formulated query
+        search_results = self._search(instruction, search_query, search_engine)
+
+        return search_query, search_results
+
+    def _formulate_query(self, instruction: str, observation: Dict) -> str:
+        """Formulate search query based on instruction and current state"""
+        query_path = os.path.join(
+            working_dir, "kb", self.platform, "formulate_query.json"
+        )
+        try:
+            with open(query_path, "r") as f:
+                formulate_query = json.load(f)
+        except:
+            formulate_query = {}
+
+        if instruction in formulate_query:
+            return formulate_query[instruction]
+
+        self.query_formulator.add_message(
+            f"The task is: {instruction}\n"
+            f"Accessibility tree of the current desktop UI state: {observation['linearized_accessibility_tree']}\n"
+            "To use google search to get some useful information, first carefully analyze "
+            "the accessibility tree of the current desktop UI state, then given the task "
+            "instruction, formulate a question that can be used to search on the Internet "
+            "for information in helping with the task execution.\n"
+            "The question should not be too general or too specific. Please ONLY provide "
+            "the question.\nQuestion:",
+            image_content=(
+                observation["screenshot"]
+                if self.use_image_for_search and "screenshot" in observation
+                else None
+            ),
+        )
+
+        search_query = self.query_formulator.get_response().strip().replace('"', "")
+
+        formulate_query[instruction] = search_query
+        with open(query_path, "w") as f:
+            json.dump(formulate_query, f, indent=2)
+
+        return search_query
+
+    def _search(self, instruction: str, search_query: str, search_engine: str) -> str:
+        """Execute search using specified engine"""
+
+        # Default to perplexica rag knowledge to see if the query exists
+        file = os.path.join(
+            working_dir, "kb", self.platform, f"perplexica_rag_knowledge.json"
+        )
+
+        try:
+            with open(file, "r") as f:
+                exist_search_results = json.load(f)
+        except:
+            exist_search_results = {}
+
+        if instruction in exist_search_results:
+            return exist_search_results[instruction]
+        if search_engine == "llm":
+            # Use LLM's internal knowledge like a search engine
+            self.llm_search_agent.add_message(search_query)
+            search_results = self.llm_search_agent.get_response()
+        elif search_engine == "perplexica":
+            # Use perplexica to search for the query
+            search_results = query_to_perplexica(search_query)
+        else:
+            raise ValueError(f"Unsupported search engine: {search_engine}")
+
+        exist_search_results[instruction] = search_results.strip()
+        with open(
+            os.path.join(
+                working_dir, "kb", self.platform, f"{search_engine}_rag_knowledge.json"
+            ),
+            "w",
+        ) as f:
+            json.dump(exist_search_results, f, indent=2)
+
+        return search_results
+
+    def retrieve_narrative_experience(self, instruction: str) -> Tuple[str, str]:
+        """Retrieve narrative experience using embeddings"""
+        try:
+            kb_path = os.path.join(
+                working_dir, "kb", self.platform, "narrative_memory.json"
+            )
+            embeddings_path = os.path.join(
+                working_dir, "kb", self.platform, "embeddings.pkl"
+            )
+
+            with open(kb_path, "r") as f:
+                knowledge_base = json.load(f)
+
+            try:
+                with open(embeddings_path, "rb") as f:
+                    embeddings = pickle.load(f)
+            except:
+                embeddings = {}
+
+            instruction_embedding = embeddings.get(
+                instruction
+            ) or self.embedding_engine.get_embeddings(instruction)
+            embeddings[instruction] = instruction_embedding
+
+            candidate_embeddings = []
+            for key in knowledge_base:
+                embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(
+                    key
+                )
+                embeddings[key] = embedding
+                candidate_embeddings.append(embedding)
+
+            with open(embeddings_path, "wb") as f:
+                pickle.dump(embeddings, f)
+
+            similarities = cosine_similarity(
+                instruction_embedding, np.vstack(candidate_embeddings)
+            )[0]
+            sorted_indices = np.argsort(similarities)[::-1]
+
+            keys = list(knowledge_base.keys())
+            idx = 1 if keys[sorted_indices[0]] == instruction else 0
+            return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
+
+        except Exception as e:
+            return "None", "None"
+
+    def retrieve_episodic_experience(self, instruction: str) -> Tuple[str, str]:
+        """Retrieve similar task experience using embeddings"""
+        try:
+            kb_path = os.path.join(
+                working_dir, "kb", self.platform, "episodic_memory.json"
+            )
+            embeddings_path = os.path.join(
+                working_dir, "kb", self.platform, "embeddings.pkl"
+            )
+
+            with open(kb_path, "r") as f:
+                knowledge_base = json.load(f)
+
+            try:
+                with open(embeddings_path, "rb") as f:
+                    embeddings = pickle.load(f)
+            except:
+                embeddings = {}
+
+            instruction_embedding = embeddings.get(
+                instruction
+            ) or self.embedding_engine.get_embeddings(instruction)
+            embeddings[instruction] = instruction_embedding
+
+            candidate_embeddings = []
+            for key in knowledge_base:
+                embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(
+                    key
+                )
+                embeddings[key] = embedding
+                candidate_embeddings.append(embedding)
+
+            with open(embeddings_path, "wb") as f:
+                pickle.dump(embeddings, f)
+
+            similarities = cosine_similarity(
+                instruction_embedding, np.vstack(candidate_embeddings)
+            )[0]
+            sorted_indices = np.argsort(similarities)[::-1]
+
+            keys = list(knowledge_base.keys())
+            idx = 1 if keys[sorted_indices[0]] == instruction else 0
+            return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
+
+        except Exception as e:
+            return "None", "None"
+
+    # def retrieve_lifelong_learning_reflection(self, instruction):
+
+    #     try:
+    #         lifelong_learning_reflection_dicts = json.load(
+    #             open(
+    #                 os.path.join(
+    #                     working_dir, "kb", self.platform, "lifelong_learning_knowledge_base.json"
+    #                 )
+    #             )
+    #         )
+    #         lifelong_learning_reflection = lifelong_learning_reflection_dicts[
+    #             instruction
+    #         ]
+    #     except:
+    #         lifelong_learning_reflection = "None"
+
+    #     return instruction, lifelong_learning_reflection
+
+    def knowledge_fusion(
+        self,
+        observation: Dict,
+        instruction: str,
+        web_knowledge: str,
+        similar_task: str,
+        experience: str,
+    ) -> str:
+        """Combine web knowledge with similar task experience"""
+        self.knowledge_fusion_agent.add_message(
+            f"Task: {instruction}\n"
+            f"Accessibility tree of the current desktop UI state: {observation['linearized_accessibility_tree']}\n"
+            f"**Web search result**:\n{web_knowledge}\n\n"
+            f"**Retrieved similar task experience**:\n"
+            f"Similar task:{similar_task}\n{experience}\n\n"
+            f"Based on the web search result and the retrieved similar task experience, "
+            f"if you think the similar task experience is indeed useful to the main task, "
+            f"integrate it with the web search result. Provide the final knowledge in a numbered list.",
+            image_content=(
+                observation["screenshot"]
+                if self.use_image_for_search and "screenshot" in observation
+                else None
+            ),
+        )
+        return self.knowledge_fusion_agent.get_response()
