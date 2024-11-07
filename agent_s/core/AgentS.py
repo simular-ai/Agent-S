@@ -233,15 +233,15 @@ class GraphSearchAgent(UIAgent):
             trajectory: String containing task execution trajectory
         """
         try:
-            reflection_path = os.path.join(working_dir, "kb", self.platform, 
-                                         "lifelong_learning_knowledge_base.json")
+            reflection_path = os.path.join(working_dir, "../kb", self.platform, 
+                                         "narrative_memory.json")
             try:
                 reflections = json.load(open(reflection_path))
             except:
                 reflections = {}
                 
             if self.search_query not in reflections:
-                reflection = self.planner.generate_lifelong_learning_reflection(trajectory)
+                reflection = self.planner.summarize_narrative(trajectory)
                 reflections[self.search_query] = reflection
                 
             with open(reflection_path, "w") as f:
@@ -270,12 +270,12 @@ class GraphSearchAgent(UIAgent):
                 subtask_trajectory += '\nSubtask Completed.\n'
                 subtask_key = subtask_trajectory.split("\n----------------------\n\nPlan:\n")[0]
                 try:
-                    subtask_path = os.path.join(working_dir, "kb", self.platform, "subtask_experience_knowledge_base.json")
+                    subtask_path = os.path.join(working_dir, "../kb", self.platform, "episodic_memory.json")
                     kb = json.load(open(subtask_path))
                 except:
                     kb = {}
                 if subtask_key not in kb.keys():
-                    subtask_summarization = self.planner.generate_subtask_summarization(subtask_trajectory)
+                    subtask_summarization = self.planner.summarize_episode(subtask_trajectory)
                     kb[subtask_key] = subtask_summarization
                 else:
                     subtask_summarization = kb[subtask_key]

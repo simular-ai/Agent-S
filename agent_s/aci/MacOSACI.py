@@ -32,10 +32,23 @@ import logging
 
 logger = logging.getLogger("openaci.agent")
 
+def list_apps_in_directories(directories):
+    apps = []
+    for directory in directories:
+        if os.path.exists(directory):
+            directory_apps = [app for app in os.listdir(directory) if app.endswith(".app")]
+            apps.extend(directory_apps)
+    return apps
 
 class MacOSACI(ACI):
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
         super().__init__(top_app_only=top_app_only, ocr=ocr)
+        # Directories to search for applications in MacOS
+        directories_to_search = [
+            "/System/Applications",
+            "/Applications"
+        ]
+        self.all_apps = list_apps_in_directories(directories_to_search)
 
     def get_active_apps(self, obs: Dict) -> List[str]:
         return UIElement.get_current_applications(obs)
@@ -190,12 +203,13 @@ class MacOSACI(ACI):
             )
 
         if self.ocr:
-            tree_elements, preserved_nodes = OCRHelper.add_ocr_elements(
+            tree_elements, preserved_nodes = self.add_ocr_elements(
                 screenshot, tree_elements, preserved_nodes, "AXButton"
             )
 
         self.nodes = preserved_nodes
         return "\n".join(tree_elements)
+    
 
     def find_element(self, element_id: int) -> Dict:
         try:
@@ -212,7 +226,6 @@ class MacOSACI(ACI):
                 app_name:str, the name of the application to open from the list of available applications in the system: AVAILABLE_APPS
         '''
         # fuzzy match the app name
-        closest_matches = difflib.get_close_matches(app_name + ".app", self.all_apps, n=1, cutoff=0.6) 
         if app_name in self.all_apps:
             print(f"{app_name} has been opened successfully.")
             return f"""import subprocess; subprocess.run(["open", "-a", "{app_name}"], check=True)"""

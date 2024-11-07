@@ -176,7 +176,7 @@ class Manager(BaseModule):
         """
         # Create Reflection on whole trajectories for next round trial
         self.narrative_summarization_agent.add_message(trajectory)
-        lifelong_learning_reflection = call_llm_safe(self.lifelong_learning_agent)
+        lifelong_learning_reflection = call_llm_safe(self.narrative_summarization_agent)
 
         return lifelong_learning_reflection
 

@@ -59,6 +59,7 @@ class Worker(BaseModule):
         self.generator_agent = self._create_agent(PROCEDURAL_MEMORY.construct_worker_procedural_memory(
             type(self.grounding_agent)
         ).replace("CURRENT_OS", self.platform))
+        print(self.generator_agent.system_prompt)
         self.reflection_agent = self._create_agent(PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY)
         
         self.knowledge_base = KnowledgeBase(platform=self.platform, engine_params=self.engine_params)
