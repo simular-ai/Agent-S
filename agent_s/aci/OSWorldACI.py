@@ -320,6 +320,22 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         return selected_element
 
     @agent_action
+    def run_terminal_commands(
+        self,
+        terminal_commands: List = [], 
+    ):
+        """Opens a terminal, runs a list of  terminal commands, and closes the terminal
+        Args:
+            terminal_commands:str, The list of bash commands
+        """
+        command = "import pyautogui; "
+        command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
+        for cmd in terminal_commands:
+            command += f"pyautogui.write({repr(cmd)}); time.sleep(0.2); "
+        command += 'pyautogui.hotkey("alt", "f4")'
+        return command
+
+    @agent_action
     def click(
         self,
         element_id: int,
