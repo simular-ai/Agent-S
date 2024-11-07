@@ -30,21 +30,16 @@ Alternatively you can directly pass the API keys into the engine_params argument
 ```python
 from agent_s.GraphSearchAgent import GraphSearchAgent
 engine_params = {
-            "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
-            "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
-        }
+    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
+    "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
+}
 agent = GraphSearchAgent(
     engine_params,
-    experiment_type='openaci',
-    platform=platform_os,
-    max_tokens=1500,
-    top_p=0.9,
-    temperature=0.5,
+    grounding_agent,
+    platform=current_platform,
     action_space="pyautogui",
-    observation_type="atree",
-    max_trajectory_length=3,
-    a11y_tree_max_tokens=10000,
-    enable_reflection=True,
+    observation_type="mixed",
+    search_engine="LLM"
 )
 ```
 

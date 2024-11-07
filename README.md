@@ -36,13 +36,7 @@ Clone the repository
 git clone https://github.com/simular-ai/Agent-S.git
 ```
 
-We recommend using Anaconda or Miniconda to create a virtual environment and install the required dependencies. We used Python 3.9 for development and experiments.
-```
-conda create -n agent_s python=3.9
-conda activate agent_s
-```
-
-Install the agent_s package and dependencies
+Install the agent_s package
 ```
 pip install -e .
 ```
@@ -54,7 +48,28 @@ export OPENAI_API_KEY=<YOUR_API_KEY>
 ```
 We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [models.md](models.md).
 
+> ⚠️ **Warning**: The agent will directly run python code to control your computer. Please use with care.
+
+## 🚀 Usage
+
+### Run Locally on your Own Computer
+
+Run agent_s on your computer using:  
+```
+agent_s --model gpt-4o
+```
+This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](models.md).
+
+### OSWorld
+
+To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
+
+### WindowsAgentArena
+
+To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
+
 ### Setup Retrieval from Web using Perplexica
+AgentS works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
 
 1. Ensure Docker is installed and running on your system.
 
@@ -108,26 +123,6 @@ export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
 ```
 
 You can change the server address by editing the address in [agent_s/ocr_server.py](agent_s/ocr_server.py) file
-
-## 🚀 Usage
-
-### OSWorld
-
-To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
-
-### WindowsAgentArena
-
-To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
-
-### Run Locally on your Own Computer
-
-We support running Agent S directly on your own system through [OpenACI](https://github.com/simular-ai/OpenACI). To run Agent S on your own system run: 
-```
-python examples/cli_app.py --model <MODEL>
-```
-This will show a user query prompt where you can enter your query and interact with Agent S. 
-
-NOTE: We currently support running Agent-S on local system only for MacOS and Ubuntu through OpenACI. 
 
 ## 🙌 Contributors
 
