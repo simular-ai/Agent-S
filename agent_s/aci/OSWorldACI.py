@@ -63,7 +63,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             component_ns = "https://accessibility.ubuntu.example.org/ns/component"
             value_ns = "https://accessibility.ubuntu.example.org/ns/value"
 
-    def get_current_applications(self, obs):
+    def get_active_apps(self, obs: Dict) -> List[str]:
         tree = ET.ElementTree(ET.fromstring(obs["accessibility_tree"]))
         apps = []
         exclude_list = ["gjs", "gnome-shell"]

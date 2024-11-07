@@ -138,18 +138,21 @@ class KnowledgeBase(BaseModule):
         embeddings = load_embeddings(embeddings_path)
         
         # Get or create instruction embedding
-        instruction_embedding = embeddings.get(instruction) or self.embedding_engine.get_embeddings(instruction)
-        embeddings[instruction] = instruction_embedding
+        instruction_embedding = embeddings.get(instruction) 
+        
+        if instruction_embedding is None:
+            instruction_embedding = self.embedding_engine.get_embeddings(instruction)
+            embeddings[instruction] = instruction_embedding
 
         # Get or create embeddings for knowledge base entries
         candidate_embeddings = []
         for key in knowledge_base:
-            embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(key)
-            embeddings[key] = embedding
-            candidate_embeddings.append(embedding)
+            candidate_embedding = embeddings.get(key) 
+            if candidate_embedding is None:
+                candidate_embedding = self.embedding_engine.get_embeddings(key)
+                embeddings[key] = candidate_embedding
 
-        if not candidate_embeddings:
-            return "None", "None"
+            candidate_embeddings.append(candidate_embedding)
 
         save_embeddings(embeddings_path, embeddings)
 
@@ -172,18 +175,21 @@ class KnowledgeBase(BaseModule):
         embeddings = load_embeddings(embeddings_path)
         
         # Get or create instruction embedding
-        instruction_embedding = embeddings.get(instruction) or self.embedding_engine.get_embeddings(instruction)
-        embeddings[instruction] = instruction_embedding
+        instruction_embedding = embeddings.get(instruction) 
+        
+        if instruction_embedding is None:
+            instruction_embedding = self.embedding_engine.get_embeddings(instruction)
+            embeddings[instruction] = instruction_embedding
 
         # Get or create embeddings for knowledge base entries
         candidate_embeddings = []
         for key in knowledge_base:
-            embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(key)
-            embeddings[key] = embedding
-            candidate_embeddings.append(embedding)
+            candidate_embedding = embeddings.get(key) 
+            if candidate_embedding is None:
+                candidate_embedding = self.embedding_engine.get_embeddings(key)
+                embeddings[key] = candidate_embedding
 
-        if not candidate_embeddings:
-            return "None", "None"
+            candidate_embeddings.append(candidate_embedding)
 
         save_embeddings(embeddings_path, embeddings)
 

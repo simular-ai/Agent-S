@@ -1,7 +1,6 @@
 from typing import Dict, List, Tuple, Any
 import logging
 import os
-from .OCRHelper import OCRHelper
 
 logger = logging.getLogger("desktopenv.agent")
 

@@ -27,7 +27,6 @@ from ApplicationServices import (
 from AppKit import NSWorkspace, NSRunningApplication
 
 from .ACI import ACI, agent_action
-from .OCRHelper import OCRHelper
 
 import logging
 
