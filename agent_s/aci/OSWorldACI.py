@@ -8,6 +8,8 @@ import requests
 import logging
 import time 
 
+from .ACI import ACI 
+
 logger = logging.getLogger("desktopenv.agent")
 
 
@@ -17,7 +19,7 @@ def agent_action(func):
     return func
 
 
-class ACI:
+class OSWorldACI(ACI):
     def __init__(self, top_app=None, vm_version="new", top_app_only=True, ocr=True):
         self.active_apps = set()
         self.top_app = top_app

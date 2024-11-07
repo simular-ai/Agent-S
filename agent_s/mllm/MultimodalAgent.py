@@ -2,7 +2,7 @@
 # Date: 2021-09-15
 # License: MIT
 
-from agent_s.MultimodalEngine import (
+from agent_s.mllm.MultimodalEngine import (
     LMMEngineOpenAI,
     LMMEngineAzureOpenAI,
     LMMEnginevLLM,

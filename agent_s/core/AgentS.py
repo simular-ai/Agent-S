@@ -157,9 +157,8 @@ class GraphSearchAgent(UIAgent):
                 # failure feedback is the reason for the failure of the previous plan
                 planner_info, self.subtasks = self.planner.get_action_queue(
                     instruction=instruction,
-                    initial_observation=observation,
-                    failure_feedback=self.failure_feedback,
-                    replan=False if self.turn_count == 0 else self.requires_replan)
+                    observation=observation,
+                    failure_feedback=self.failure_feedback)
 
                 self.requires_replan = False
                 if 'search_query' in planner_info:

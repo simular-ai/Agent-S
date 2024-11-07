@@ -12,12 +12,16 @@ import tiktoken
 
 import io
 import xml.etree.ElementTree as ET
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict
 
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ValidationError
 import torch 
 import numpy as np 
+
+import pickle
+
+
 
 def find_leaf_nodes(xlm_file_str):
     if not xlm_file_str:
@@ -696,3 +700,26 @@ def extract_first_agent_function(code_string):
 
     # Return the first match if found, otherwise return None
     return matches[0] if matches else None
+
+def load_knowledge_base(kb_path: str) -> Dict:
+    try:
+        with open(kb_path, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading knowledge base: {e}")
+        return {}
+
+def load_embeddings(embeddings_path: str) -> Dict:
+    try:
+        with open(embeddings_path, "rb") as f:
+            return pickle.load(f)
+    except Exception as e:
+        print(f"Error loading embeddings: {e}")
+        return {}
+
+def save_embeddings(embeddings_path: str, embeddings: Dict):
+    try:
+        with open(embeddings_path, "wb") as f:
+            pickle.dump(embeddings, f)
+    except Exception as e:
+        print(f"Error saving embeddings: {e}")

@@ -26,7 +26,8 @@ class OCRHelper:
     def add_ocr_elements(
         screenshot: bytes,
         tree_elements: List[str],
-        preserved_nodes: List[Dict]
+        preserved_nodes: List[Dict],
+        dummy_node_name: str
     ) -> Tuple[List[str], List[Dict]]:
         tree_bboxes = [
             [
@@ -64,14 +65,14 @@ class OCRHelper:
 
             if max(iou) < 0.1:
                 tree_elements.append(
-                    f"{preserved_nodes_index}\tAXButton\t\t{content}\t\t"
+                    f"{preserved_nodes_index}\t{dummy_node_name}\t\t{content}\t\t"
                 )
                 preserved_nodes.append({
                     "position": (box_coords[0], box_coords[1]),
                     "size": (box_coords[2] - box_coords[0], box_coords[3] - box_coords[1]),
                     "title": "",
                     "text": content,
-                    "role": "AXButton",
+                    "role": dummy_node_name,
                 })
                 preserved_nodes_index += 1
 

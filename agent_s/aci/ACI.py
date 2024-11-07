@@ -1,74 +1,30 @@
-import platform
 from typing import Dict, List, Tuple, Any
 import logging
 import os
 from .OCRHelper import OCRHelper
 
-system = platform.system()
-# Check if we're operating in OSWorld mode
-IS_OSWORLD = os.environ.get('IS_OSWORLD', 'false').lower() == 'true'
-
-if IS_OSWORLD:
-    from .UIElementOSWorld import UIElement
-elif system == "Darwin":
-    from .UIElementMacOS import UIElement
-elif system == "Linux":
-    from .UIElementLinux import UIElement
-else:
-    raise NotImplementedError(f"Unsupported platform: {system}")
-
-logger = logging.getLogger("openaci.agent")
+logger = logging.getLogger("desktopenv.agent")
 
 def agent_action(func):
     func.is_agent_action = True
     return func
 
-def _normalize_key(key: str) -> str:
-    """Convert 'cmd' to 'command' for pyautogui compatibility"""
-    return 'command' if key == 'cmd' else key
+
 
 class ACI:
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
-        self.active_apps = set()
         self.top_app_only = top_app_only
         self.ocr = ocr
         self.index_out_of_range_flag = False
-        self.top_active_app = None
         self.notes: List[str] = []
         self.clipboard = ""
-        self.all_apps = UIElement.list_apps_in_directories()
-        self.nodes: List[Dict] = []
-        self.platform = system
-        self.is_osworld = IS_OSWORLD
+        self.nodes: List[Any] = []
 
-    def get_active_apps(self, initial_obs: Any) -> List[str]:
-        return UIElement.get_current_applications(obs: Dict)
+    def get_active_apps(self, obs: Dict) -> List[str]:
+        pass 
 
-    def preserve_nodes(self, tree: UIElement, exclude_roles: set = None) -> List[Dict]:
-        if exclude_roles is None:
-            exclude_roles = {
-                "AXGroup", "AXLayoutArea", "AXLayoutItem", "AXUnknown",
-                "panel", "window", "filler", "frame", "separator", "scroll-bar"
-            }
-
-        preserved_nodes = []
-
-        def traverse_and_preserve(element: UIElement) -> None:
-            if element.role() not in exclude_roles and element.isValid():
-                position = element.position()
-                size = element.size()
-                if position and size:
-                    x, y = position
-                    w, h = size
-                    if x >= 0 and y >= 0 and w > 0 and h > 0:
-                        preserved_nodes.append(element.parse())
-
-            for child_ref in element.children() or []:
-                child_element = UIElement(child_ref)
-                traverse_and_preserve(child_element)
-
-        traverse_and_preserve(tree)
-        return preserved_nodes
+    def preserve_nodes(self, tree: Any, exclude_roles: set = None) -> List[Dict]:
+        pass
 
     def linearize_and_annotate_tree(self, obs: Dict, show_all_elements: bool = False) -> str:
         screenshot = obs["screenshot"]
@@ -76,7 +32,7 @@ class ACI:
         # Handle different tree formats based on environment
         if self.is_osworld:
             # OSWorld XML string
-            tree = UIElement.nodeFromTree(obs["accessibility_tree"])
+            tree = self.UIElement.nodeFromTree(obs["accessibility_tree"])
         else:
             # Direct accessibility object
             tree = obs["accessibility_tree"]
@@ -86,7 +42,7 @@ class ACI:
             return "id\trole\ttitle\ttext"
 
         # TODO: write this function for each UIElement type 
-        self.top_app = UIElement.get_top_app(tree)
+        self.top_app = self.UIElement.get_top_app(obs)
         # self.top_app = UIElement.get_current_applications(obs: Dict)[0] if UIElement.get_current_applications(obs: Dict) else None
         
         preserved_nodes = self.preserve_nodes(tree)
@@ -119,9 +75,9 @@ class ACI:
         Args:
             app_or_file_name:str, the name of the application or file to open
         """
-        if platform.system == "Darwin":
+        if self.platform == 'macos':
             return f"import pyautogui; pyautogui.hotkey('command', 'space', interval=1); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter')"
-        elif platform.system == "Linux":
+        elif self.platform == "ubuntu":
             return f"import pyautogui; pyautogui.hotkey('win', interval=1); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter')"
 
     @agent_action
@@ -197,7 +153,7 @@ class ACI:
 
             if overwrite:
                 # Use 'command' instead of 'cmd'
-                if platform.system() == "Darwin":
+                if self.platform == "macos":
                     command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
                 else:
                     command += f"pyautogui.hotkey('ctrl', 'a', interval=1); pyautogui.press('backspace'); "
@@ -212,7 +168,7 @@ class ACI:
 
             if overwrite:
                 # Use 'command' instead of 'cmd'
-                if platform.system() == "Darwin":
+                if self.platform == "macos":
                     command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
                 else:
                     command += f"pyautogui.hotkey('ctrl', 'a', interval=1); pyautogui.press('backspace'); "

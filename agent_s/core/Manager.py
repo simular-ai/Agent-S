@@ -276,7 +276,7 @@ class Manager(BaseModule):
         self.active_apps = agent.get_active_apps(observation)
 
         tree_input = agent.linearize_and_annotate_tree(
-            observation, show_all=False
+            observation
         )
         observation["linearized_accessibility_tree"] = tree_input
         
@@ -287,7 +287,7 @@ class Manager(BaseModule):
             search_query, retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
                 instruction=instruction,
                 observation=observation,
-                engine=self.search_engine,
+                search_engine=self.search_engine,
             )
             logger.info("RETRIEVED KNOWLEDGE: %s", retrieved_knowledge)
 

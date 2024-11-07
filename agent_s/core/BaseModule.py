@@ -1,6 +1,5 @@
 from typing import Dict
 from agent_s.mllm.MultimodalAgent import LMMAgent
-from agent_s.core.Knowledge import KnowledgeBase
 
 class BaseModule:
     def __init__(self, engine_params: Dict, platform: str):

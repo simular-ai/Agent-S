@@ -8,6 +8,7 @@ from agent_s.core.ProceduralMemory import PROCEDURAL_MEMORY
 from agent_s.core.BaseModule import BaseModule
 from agent_s.mllm.MultimodalEngine import OpenAIEmbeddingEngine
 from agent_s.utils.query_perplexica import query_to_perplexica
+from agent_s.utils.common_utils import load_knowledge_base, load_embeddings, save_embeddings
 
 working_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -53,7 +54,7 @@ class KnowledgeBase(BaseModule):
     def _formulate_query(self, instruction: str, observation: Dict) -> str:
         """Formulate search query based on instruction and current state"""
         query_path = os.path.join(
-            working_dir, "kb", self.platform, "formulate_query.json"
+            working_dir,  "../kb", self.platform, "formulate_query.json"
         )
         try:
             with open(query_path, "r") as f:
@@ -93,7 +94,7 @@ class KnowledgeBase(BaseModule):
 
         # Default to perplexica rag knowledge to see if the query exists
         file = os.path.join(
-            working_dir, "kb", self.platform, f"perplexica_rag_knowledge.json"
+            working_dir, "../kb", self.platform, f"{search_engine}_rag_knowledge.json"
         )
 
         try:
@@ -104,11 +105,11 @@ class KnowledgeBase(BaseModule):
 
         if instruction in exist_search_results:
             return exist_search_results[instruction]
-        if search_engine == "llm":
+        if search_engine.lower() == "llm":
             # Use LLM's internal knowledge like a search engine
             self.llm_search_agent.add_message(search_query)
             search_results = self.llm_search_agent.get_response()
-        elif search_engine == "perplexica":
+        elif search_engine.lower() == "perplexica":
             # Use perplexica to search for the query
             search_results = query_to_perplexica(search_query)
         else:
@@ -117,7 +118,7 @@ class KnowledgeBase(BaseModule):
         exist_search_results[instruction] = search_results.strip()
         with open(
             os.path.join(
-                working_dir, "kb", self.platform, f"{search_engine}_rag_knowledge.json"
+                working_dir, "../kb", self.platform, f"{search_engine}_rag_knowledge.json"
             ),
             "w",
         ) as f:
@@ -127,97 +128,71 @@ class KnowledgeBase(BaseModule):
 
     def retrieve_narrative_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve narrative experience using embeddings"""
-        try:
-            kb_path = os.path.join(
-                working_dir, "kb", self.platform, "narrative_memory.json"
-            )
-            embeddings_path = os.path.join(
-                working_dir, "kb", self.platform, "embeddings.pkl"
-            )
+        kb_path = os.path.join(working_dir, "../kb", self.platform, "narrative_memory.json")
+        embeddings_path = os.path.join(working_dir, "../kb", self.platform, "embeddings.pkl")
 
-            with open(kb_path, "r") as f:
-                knowledge_base = json.load(f)
-
-            try:
-                with open(embeddings_path, "rb") as f:
-                    embeddings = pickle.load(f)
-            except:
-                embeddings = {}
-
-            instruction_embedding = embeddings.get(
-                instruction
-            ) or self.embedding_engine.get_embeddings(instruction)
-            embeddings[instruction] = instruction_embedding
-
-            candidate_embeddings = []
-            for key in knowledge_base:
-                embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(
-                    key
-                )
-                embeddings[key] = embedding
-                candidate_embeddings.append(embedding)
-
-            with open(embeddings_path, "wb") as f:
-                pickle.dump(embeddings, f)
-
-            similarities = cosine_similarity(
-                instruction_embedding, np.vstack(candidate_embeddings)
-            )[0]
-            sorted_indices = np.argsort(similarities)[::-1]
-
-            keys = list(knowledge_base.keys())
-            idx = 1 if keys[sorted_indices[0]] == instruction else 0
-            return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
-
-        except Exception as e:
+        knowledge_base = load_knowledge_base(kb_path)
+        if not knowledge_base:
             return "None", "None"
+
+        embeddings = load_embeddings(embeddings_path)
+        
+        # Get or create instruction embedding
+        instruction_embedding = embeddings.get(instruction) or self.embedding_engine.get_embeddings(instruction)
+        embeddings[instruction] = instruction_embedding
+
+        # Get or create embeddings for knowledge base entries
+        candidate_embeddings = []
+        for key in knowledge_base:
+            embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(key)
+            embeddings[key] = embedding
+            candidate_embeddings.append(embedding)
+
+        if not candidate_embeddings:
+            return "None", "None"
+
+        save_embeddings(embeddings_path, embeddings)
+
+        similarities = cosine_similarity(instruction_embedding, np.vstack(candidate_embeddings))[0]
+        sorted_indices = np.argsort(similarities)[::-1]
+
+        keys = list(knowledge_base.keys())
+        idx = 1 if keys[sorted_indices[0]] == instruction else 0
+        return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
 
     def retrieve_episodic_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve similar task experience using embeddings"""
-        try:
-            kb_path = os.path.join(
-                working_dir, "kb", self.platform, "episodic_memory.json"
-            )
-            embeddings_path = os.path.join(
-                working_dir, "kb", self.platform, "embeddings.pkl"
-            )
+        kb_path = os.path.join(working_dir, "../kb", self.platform, "episodic_memory.json")
+        embeddings_path = os.path.join(working_dir, "../kb", self.platform, "embeddings.pkl")
 
-            with open(kb_path, "r") as f:
-                knowledge_base = json.load(f)
-
-            try:
-                with open(embeddings_path, "rb") as f:
-                    embeddings = pickle.load(f)
-            except:
-                embeddings = {}
-
-            instruction_embedding = embeddings.get(
-                instruction
-            ) or self.embedding_engine.get_embeddings(instruction)
-            embeddings[instruction] = instruction_embedding
-
-            candidate_embeddings = []
-            for key in knowledge_base:
-                embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(
-                    key
-                )
-                embeddings[key] = embedding
-                candidate_embeddings.append(embedding)
-
-            with open(embeddings_path, "wb") as f:
-                pickle.dump(embeddings, f)
-
-            similarities = cosine_similarity(
-                instruction_embedding, np.vstack(candidate_embeddings)
-            )[0]
-            sorted_indices = np.argsort(similarities)[::-1]
-
-            keys = list(knowledge_base.keys())
-            idx = 1 if keys[sorted_indices[0]] == instruction else 0
-            return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
-
-        except Exception as e:
+        knowledge_base = load_knowledge_base(kb_path)
+        if not knowledge_base:
             return "None", "None"
+
+        embeddings = load_embeddings(embeddings_path)
+        
+        # Get or create instruction embedding
+        instruction_embedding = embeddings.get(instruction) or self.embedding_engine.get_embeddings(instruction)
+        embeddings[instruction] = instruction_embedding
+
+        # Get or create embeddings for knowledge base entries
+        candidate_embeddings = []
+        for key in knowledge_base:
+            embedding = embeddings.get(key) or self.embedding_engine.get_embeddings(key)
+            embeddings[key] = embedding
+            candidate_embeddings.append(embedding)
+
+        if not candidate_embeddings:
+            return "None", "None"
+
+        save_embeddings(embeddings_path, embeddings)
+
+        similarities = cosine_similarity(instruction_embedding, np.vstack(candidate_embeddings))[0]
+        sorted_indices = np.argsort(similarities)[::-1]
+
+        keys = list(knowledge_base.keys())
+        idx = 1 if keys[sorted_indices[0]] == instruction else 0
+        return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
 
     # def retrieve_lifelong_learning_reflection(self, instruction):
 

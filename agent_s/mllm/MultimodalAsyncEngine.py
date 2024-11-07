@@ -1,7 +1,3 @@
-# Author: Saaket Agashe
-# Date: 2021-09-15
-# License: Apache 2.0
-
 import os
 import backoff
 import openai

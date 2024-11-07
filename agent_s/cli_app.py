@@ -10,24 +10,12 @@ import time
 import argparse
 
 if platform.system() == 'Darwin':
-    from agent_s.aci.UIElementMacOS import UIElement
-    from Foundation import *
-    from AppKit import *
-    from ApplicationServices import (
-        AXIsProcessTrusted,
-        AXUIElementCreateApplication,
-        AXUIElementCreateSystemWide,
-        CFEqual,
-    )
-
-    from ApplicationServices import (
-        AXUIElementCopyAttributeNames,
-        AXUIElementCopyAttributeValue,
-    )
-elif platform.system() == 'Linux':
-    from agent_s.aci.UIElementLinux import UIElement
+            current_platform = 'macos'
+            from agent_s.aci.MacOSACI import MacOSACI
+            from agent_s.aci.MacOSACI import UIElement
+else:
+    raise ValueError("Unsupported platform")
     
-from agent_s.aci.ACI import ACI
 from agent_s.core.AgentS import UIAgent, GraphSearchAgent
 
 logger = logging.getLogger()
@@ -72,6 +60,17 @@ logger.addHandler(sdebug_handler)
 
 platform_os = platform.system() 
 
+def show_permission_dialog(code: str, action_description: str):
+    """Show a platform-specific permission dialog and return True if approved."""
+    if platform.system() == 'Darwin':
+        result = os.system(f'osascript -e \'display dialog "Do you want to execute this action?\n\n{code} which will try to {action_description}" with title "Action Permission" buttons {{"Cancel", "OK"}} default button "OK" cancel button "Cancel"\'')
+        return result == 0
+    elif platform.system() == 'Linux':
+        result = os.system(f'zenity --question --title="Action Permission" --text="Do you want to execute this action?\n\n{code}" --width=400 --height=200')
+        return result == 0
+    return False
+
+
 def run_agent(agent: UIAgent,instruction: str):
     obs = {}
     traj = 'Task:\n' + instruction
@@ -93,7 +92,7 @@ def run_agent(agent: UIAgent,instruction: str):
         obs['screenshot'] = screenshot_bytes 
 
         # Get next action code from the agent 
-        info, code = agent.predict(instruction=instruction, obs=obs)
+        info, code = agent.predict(instruction=instruction, observation=obs)
 
         if 'done' in code[0].lower() or 'fail' in code[0].lower():
             if platform.system() == 'Darwin':
@@ -115,8 +114,9 @@ def run_agent(agent: UIAgent,instruction: str):
         else:
             time.sleep(1.)
             print("EXECUTING CODE:", code[0])
-            exec(code[0])
             
+            # Ask for permission before executing
+            exec(code[0])
             time.sleep(1.)
             
             # Update task and subtask trajectories and optionally the episodic memory
@@ -125,10 +125,13 @@ def run_agent(agent: UIAgent,instruction: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Run GraphSearchAgent with specified model.")
-    parser.add_argument("--model", type=str, default="gpt-4o", help="Specify the model to use (e.g., gpt-4o)")
+    parser.add_argument("--model", type=str, default="gpt-4o-mini", help="Specify the model to use (e.g., gpt-4o)")
     args = parser.parse_args()
     
-    grounding_agent = ACI()
+    if platform.system() == 'Darwin':
+        grounding_agent = MacOSACI()
+    else:
+        raise ValueError("Unsupported platform")
 
     while True:
         query = input("Query: ")
@@ -141,21 +144,15 @@ def main():
             "model": args.model,
         }
         
-        if platform.system == 'Darwin':
-            current_platform = 'macos'
-        elif platform.system == 'Linux':
-            current_platform = 'ubuntu'
-        else:
-            raise("Unsupported platform")
-        
         agent = GraphSearchAgent(
             engine_params,
             grounding_agent,
             platform=current_platform,
             action_space="pyautogui",
             observation_type="mixed",
-            engine="perplexica"
+            search_engine="LLM"
         )
+        
         agent.reset()
         
         # Run the agent on your own device 

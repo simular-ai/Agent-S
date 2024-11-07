@@ -12,7 +12,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'numpy',
-        'pandas',
+        'pandas', 
         'openai',
         'torch',
         'torchvision',
@@ -22,20 +22,30 @@ setup(
         'uvicorn',
         'paddleocr',
         'paddlepaddle',
-        'openaci @ git+https://github.com/simular-ai/OpenACI',
         'together',
         'scikit-learn',
         'websockets',
         'tiktoken',
         'pyobjc; platform_system == "Darwin"',
-        'together',
-        'pyautogui',
-        'toml'
+        'pyautogui'
     ],
-    classifiers=[
+    entry_points={
+        'console_scripts': [
+            'agent_s=agent_s.cli_app:main',
+        ],
+    },
+     classifiers=[
         'Programming Language :: Python :: 3',
-        'License :: OSI Approved :: MIT License',
-        'Operating System :: OS Independent',
+        'Programming Language :: Python :: 3.9',
+        'License :: OSI Approved :: Apache License',
+        'Operating System :: MacOS',
+        'Operating System :: Ubuntu',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
     ],
+    keywords='ai, llm, gui, agent, multimodal',
+    project_urls={
+        'Source': 'https://github.com/saaketagashe/Agent-S',
+        'Bug Reports': 'https://github.com/saaketagashe/Agent-S/issues',
+    },
     python_requires='>=3.9',
 )

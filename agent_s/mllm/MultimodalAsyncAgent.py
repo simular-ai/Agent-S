@@ -1,5 +1,5 @@
-from agent_s.MultimodalAsyncEngine import LMMEngineAsyncOpenAI, LMMEngineAsyncAzureOpenAI
-from agent_s.MultimodalEngine import LMMEngineCogVLM, LMMEngineLlava
+from agent_s.mllm.MultimodalAsyncEngine import LMMEngineAsyncOpenAI, LMMEngineAsyncAzureOpenAI
+from agent_s.mllm.MultimodalEngine import LMMEngineCogVLM, LMMEngineLlava
 import base64
 import re 
 
