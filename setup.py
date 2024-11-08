@@ -12,6 +12,7 @@ setup(
     include_package_data=True,
     install_requires=[
         'numpy',
+        'backoff',
         'pandas', 
         'openai',
         'torch',
@@ -27,7 +28,8 @@ setup(
         'websockets',
         'tiktoken',
         'pyobjc; platform_system == "Darwin"',
-        'pyautogui'
+        'pyautogui',
+        'toml'
     ],
     entry_points={
         'console_scripts': [

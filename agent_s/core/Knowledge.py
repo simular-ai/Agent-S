@@ -82,7 +82,7 @@ class KnowledgeBase(BaseModule):
         )
 
         search_query = self.query_formulator.get_response().strip().replace('"', "")
-
+        print("search query: ", search_query)
         formulate_query[instruction] = search_query
         with open(query_path, "w") as f:
             json.dump(formulate_query, f, indent=2)

@@ -308,14 +308,6 @@ class Manager(BaseModule):
                 similar_task=most_similar_task,
                 experience=retrieved_experience,
             )
-
-            integrated_knowledge = self.knowldge_base.knowledge_fusion(
-                observation=observation,
-                instruction=instruction,
-                web_knowledge=retrieved_knowledge,
-                similar_task=most_similar_task,
-                experience=retrieved_experience,
-            )
             logger.info("INTEGRATED KNOWLEDGE: %s", integrated_knowledge)
             
             # Add the integrated knowledge to the task instruction in the system prompt 
