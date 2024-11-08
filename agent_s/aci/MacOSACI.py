@@ -71,6 +71,9 @@ class MacOSACI(ACI):
 
     def get_active_apps(self, obs: Dict) -> List[str]:
         return UIElement.get_current_applications(obs)
+    
+    def get_top_app(self, obs: Dict) -> str:
+        return UIElement.get_top_app(obs)
 
     def preserve_nodes(self, tree, exclude_roles=None):
         if exclude_roles is None:
@@ -240,28 +243,13 @@ class MacOSACI(ACI):
             self.index_out_of_range_flag = True
             return self.nodes[0]
 
-    # @agent_action
-    # def open_app(self, app_name):
-    #     '''Open an application
-    #         Args:
-    #             app_name:str, the name of the application to open from the list of available applications in the system: AVAILABLE_APPS
-    #     '''
-    #     # fuzzy match the app name
-    #     if app_name in self.all_apps:
-    #         print(f"{app_name} has been opened successfully.")
-    #         return f"""import subprocess; subprocess.run(["open", "-a", "{app_name}"], check=True)"""
-    #     else:
-    #         self.execution_feedback = "There is no application " + app_name + " installed on the system. Please replan and avoid this action."
-    #         print(self.execution_feedback)
-    #         return """WAIT"""
-
     @agent_action
     def open(self, app_or_file_name: str):
         '''Open an application or file
             Args:
                 app_or_file_name:str, the name of the application or file to open
         '''
-        return f"import pyautogui; pyautogui.hotkey('command', 'space', interval=1); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter')" 
+        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)" 
 
     @agent_action
     def switch_applications(self, app_or_file_name):
@@ -269,7 +257,7 @@ class MacOSACI(ACI):
             Args:
                 app_or_file_name:str, the name of the application or file to switch to
         '''
-        return f"import pyautogui; pyautogui.hotkey('command', 'space', interval=1); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter')"
+        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
 
     @agent_action
     def click(

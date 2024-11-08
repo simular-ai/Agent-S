@@ -8,8 +8,6 @@ def agent_action(func):
     func.is_agent_action = True
     return func
 
-
-
 class ACI:
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
         self.top_app_only = top_app_only
