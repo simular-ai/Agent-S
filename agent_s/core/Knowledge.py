@@ -33,25 +33,23 @@ class KnowledgeBase(BaseModule):
         self.knowledge_fusion_agent = self._create_agent(self.rag_module_system_prompt)
 
         self.use_image_for_search = use_image_for_search
+    
 
     def retrieve_knowledge(
-        self, instruction: str, observation: Dict, search_engine: str = "llm"
+        self, instruction: str, search_query: str, search_engine: str = "llm"
     ) -> Tuple[str, str]:
         """Retrieve knowledge using search engine
         Args:
             instruction (str): task instruction
             observation (Dict): current observation
             search_engine (str): search engine to use"""
-
-        # Use current observation to formulate the search query
-        search_query = self._formulate_query(instruction, observation)
-
+        
         # Use search engine to retrieve knowledge based on the formulated query
         search_results = self._search(instruction, search_query, search_engine)
 
         return search_query, search_results
 
-    def _formulate_query(self, instruction: str, observation: Dict) -> str:
+    def formulate_query(self, instruction: str, observation: Dict) -> str:
         """Formulate search query based on instruction and current state"""
         query_path = os.path.join(
             working_dir,  "../kb", self.platform, "formulate_query.json"
@@ -82,7 +80,7 @@ class KnowledgeBase(BaseModule):
         )
 
         search_query = self.query_formulator.get_response().strip().replace('"', "")
-
+        print("search query: ", search_query)
         formulate_query[instruction] = search_query
         with open(query_path, "w") as f:
             json.dump(formulate_query, f, indent=2)

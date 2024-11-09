@@ -180,9 +180,10 @@ class Worker(BaseModule):
             )
             + f"Accessibility Tree: {tree_input}\n"
             f"Text Buffer = [{','.join(agent.notes)}]. "
-            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.top_app}. "
+            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}. "
         )
 
+        print("ACTIVE APP IS: ", agent.get_top_app(obs))
         # Only provide subinfo in the very first message to avoid over influence and redundancy
         if self.turn_count == 0:
             generator_message += f"Remeber only complete the subtask: {subtask}\n"

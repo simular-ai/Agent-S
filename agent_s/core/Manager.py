@@ -3,7 +3,7 @@ from agent_s.aci.ACI import ACI
 from agent_s.core.BaseModule import BaseModule
 from agent_s.core.Knowledge import KnowledgeBase
 import os
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 import logging
 from collections import defaultdict
 from agent_s.utils.common_utils import (
@@ -27,7 +27,7 @@ class Manager(BaseModule):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        search_engine: str = "LLM",
+        search_engine: Optional[str] = None,
         multi_round: bool = False,
         platform: str = "macos",
     ):
@@ -59,103 +59,6 @@ class Manager(BaseModule):
         self.multi_round = multi_round
         self.platform = platform
 
-    # def retrieve_knowledge(self, instruction, current_state, engine):
-    #     query_path = ""
-    #     search_results = ""
-    #     # Formulate query for searching
-    #     try:
-    #         query_path = os.path.join(working_dir, "kb", self.platform, "formulate_query.json")
-    #         formulate_query = json.load(open(query_path))
-    #     except:
-    #         formulate_query = {}
-
-    #     print('query', formulate_query)
-
-    #     if instruction in formulate_query.keys() and formulate_query[instruction]:
-    #         search_query = formulate_query[instruction]
-    #     else:
-    #         self.rag_agent.add_system_prompt(
-    #             self.rag_module_system_prompt.replace(
-    #                 "TASK_DESCRIPTION", instruction
-    #             ).replace("ACCESSIBLITY_TREE", current_state)
-    #         )
-    #         logger.info(
-    #             "RAG System Message: %s",
-    #             self.rag_module_system_prompt.replace(
-    #                 "TASK_DESCRIPTION", instruction
-    #             ).replace("ACCESSIBLITY_TREE", current_state),
-    #         )
-    #         self.rag_agent.add_message(
-    #             f"To use google search to get some useful information, first carefully analyze the accessibility tree of the current desktop UI state, then given the task instruction, formulate a question that can be used to search on the Internet for information in helping with the task execution.\nThe question should not be too general or too specific, but it should be based on the current desktop UI state (e.g., already open website or application). You should expect the google search will return you something useful based on the question. Since it is a desktop computer task, make sure to mention the corresponding task domain in the question and also mention the {self.platform} OS if you think the OS matters. Please ONLY provide the question.\nQuestion:"
-    #         )
-    #         search_query = call_llm_safe(self.rag_agent)
-    #         assert type(search_query) == str
-    #         self.rag_agent.add_message(search_query)
-    #         search_query = search_query.strip().replace('"', "")
-
-    #         formulate_query[instruction] = search_query
-    #         with open(query_path, "w") as fout:
-    #             json.dump(formulate_query, fout, indent=2)
-
-    #     if not search_query:
-    #         search_query = instruction
-
-    #     logger.info("SEARCH QUERY: %s", search_query)
-
-    #     # Search from different engines
-    #     if engine == "llm":
-    #         logger.info("Search Engine: LLM")
-    #         file = os.path.join(working_dir, "kb", self.platform, "llm_rag_knowledge.json")
-
-    #         try:
-    #             exist_search_results = json.load(open(file))
-    #         except:
-    #             exist_search_results = {}
-
-    #         if instruction in exist_search_results.keys():
-    #             logger.info(
-    #                 "Retrieved LLM Search Result: %s", exist_search_results[instruction]
-    #             )
-    #             return search_query, exist_search_results[instruction]
-
-    #         self.rag_agent.add_message(search_query)
-    #         search_results = call_llm_safe(self.rag_agent)
-    #         assert type(search_results) == str
-    #         self.rag_agent.add_message(search_results)
-
-    #         exist_search_results[instruction] = search_results.strip()
-    #         with open(file, "w") as fout:
-    #             json.dump(exist_search_results, fout, indent=2)
-
-    #     elif engine == "perplexica":
-    #         logger.info("Search Engine: Perplexica Search")
-    #         file = os.path.join(working_dir, "kb", self.platform, "perplexica_rag_knowledge.json")
-
-    #         try:
-    #             exist_search_results = json.load(open(file))
-    #         except:
-    #             exist_search_results = {}
-
-    #         if instruction in exist_search_results.keys():
-    #             logger.info(
-    #                 "Retrieved Perplexica Search Result: %s",
-    #                 exist_search_results[instruction],
-    #             )
-    #             return search_query, exist_search_results[instruction]
-
-    #         search_results = query_to_perplexica(search_query)
-
-    #         exist_search_results[instruction] = search_results.strip()
-    #         with open(file, "w") as fout:
-    #             json.dump(exist_search_results, fout, indent=2)
-
-    #     else:
-    #         print("Search Engine Not Implemented!!!")
-
-    #     logger.info("SEARCH RESULT: %s", search_results.strip())
-
-    #     return search_query, search_results
-
     def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection
         Args:
@@ -180,94 +83,6 @@ class Manager(BaseModule):
 
         return lifelong_learning_reflection
 
-    # def retrieve_lifelong_learning_reflection(self, instruction):
-
-    #     try:
-    #         lifelong_learning_reflection_dicts = json.load(
-    #             open(
-    #                 os.path.join(
-    #                     working_dir, "kb", self.platform, "lifelong_learning_knowledge_base.json"
-    #                 )
-    #             )
-    #         )
-    #         lifelong_learning_reflection = lifelong_learning_reflection_dicts[
-    #             instruction
-    #         ]
-    #     except:
-    #         lifelong_learning_reflection = "None"
-
-    #     return instruction, lifelong_learning_reflection
-
-    # def retrieve_most_similar_knowledge(self, instruction):
-
-    #     try:
-    #         knowledge_base_dict = json.load(
-    #             open(
-    #                 os.path.join(
-    #                     working_dir, "kb", self.platform, "lifelong_learning_knowledge_base.json"
-    #                 )
-    #             )
-    #         )
-
-    #         try:
-    #             with open(os.path.join(working_dir, "kb",  "embeddings.pkl"), "rb") as f:
-    #                 embeddings = pickle.load(f)
-    #         except:
-    #             embeddings = {}
-
-    #         if instruction in embeddings.keys():
-    #             instruction_embedding = embeddings[instruction]
-    #         else:
-    #             instruction_embedding = self.embedding_engine.get_embeddings(
-    #                 instruction
-    #             )
-    #             embeddings[instruction] = instruction_embedding
-
-    #         candidate_embeddings = []
-    #         for key in list(knowledge_base_dict.keys()):
-    #             if key in embeddings.keys():
-    #                 candidate_embedding = embeddings[key]
-    #             else:
-    #                 candidate_embedding = self.embedding_engine.get_embeddings(key)
-    #                 embeddings[key] = candidate_embedding
-    #             candidate_embeddings.append(candidate_embedding)
-    #         candidate_embeddings = np.vstack(candidate_embeddings)
-
-    #         with open(os.path.join(working_dir, "kb", self.platform, "embeddings.pkl"), "wb") as f:
-    #             pickle.dump(embeddings, f)
-
-    #         # instruction_embedding = self.embedding_engine.get_embeddings(instruction)
-    #         # candidate_embeddings = self.embedding_engine.get_embeddings(list(knowledge_base_dict.keys()))
-    #         similarities = cosine_similarity(
-    #             instruction_embedding, candidate_embeddings
-    #         )[0]
-    #         sorted_indices = np.argsort(similarities)[::-1]
-    #         sorted_instructions = [
-    #             list(knowledge_base_dict.keys())[i] for i in sorted_indices
-    #         ]
-    #         sorted_experiences = [
-    #             list(knowledge_base_dict.values())[i] for i in sorted_indices
-    #         ]
-
-    #         if sorted_instructions[0] != instruction:
-    #             most_similar_task = sorted_instructions[0]
-    #             retrieved_experience = sorted_experiences[0]
-    #         else:
-    #             most_similar_task = sorted_instructions[1]
-    #             retrieved_experience = sorted_experiences[1]
-    #     except:
-    #         most_similar_task = "None"
-    #         retrieved_experience = "None"
-
-    #     return most_similar_task, retrieved_experience
-
-    # def knowledge_fusion(self, web_knowledge, most_similar_task, experience):
-    #     self.rag_agent.add_message(
-    #         f"**Web search result**:\n{web_knowledge}\nNote that the applications are already installed, so you do not need to install again, and the required files already exist.\n\n**Retrieved similar task experience**:\nSimilar task:{most_similar_task}\n{experience}\n\nBased on the web search result and the retrieved similar task experience, if you think the similar task experience is indeed useful to the main task, integrate it with the web search result. Provide the final knowledge in a numbered list."
-    #     )
-    #     integrated_knowledge = call_llm_safe(self.rag_agent)
-    #     return integrated_knowledge
-
     def _generate_step_by_step_plan(
         self, observation: Dict, instruction: str, failure_feedback: str = ""
     ) -> Tuple[Dict, str]:
@@ -281,16 +96,15 @@ class Manager(BaseModule):
         observation["linearized_accessibility_tree"] = tree_input
         
         search_query = ""
+
+        # Perform Retrieval only at the first planning step
         if self.turn_count == 0:
+            
+            self.search_query = self.knowldge_base.formulate_query(instruction, observation)
+            
 
-            # Retrieve knowledge from the knowledge base
-            search_query, retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
-                instruction=instruction,
-                observation=observation,
-                search_engine=self.search_engine,
-            )
-            logger.info("RETRIEVED KNOWLEDGE: %s", retrieved_knowledge)
-
+            retrieved_experience = ""
+            integrated_knowledge = ""
             # Retrieve most similar narrative (task) experience
             most_similar_task, retrieved_experience = (
                 self.knowldge_base.retrieve_narrative_experience(instruction)
@@ -299,27 +113,34 @@ class Manager(BaseModule):
                 "SIMILAR TASK EXPERIENCE: %s",
                 most_similar_task + "\n" + retrieved_experience.strip(),
             )
+            
+            
+            # Retrieve knowledge from the web if search_engine is provided
+            if self.search_engine is not None:
+                retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
+                    instruction=instruction,
+                    search_query=self.search_query,
+                    search_engine=self.search_engine,
+                )
+                logger.info("RETRIEVED KNOWLEDGE: %s", retrieved_knowledge)
 
-            # Fuse the retrieved knowledge and experience
-            integrated_knowledge = self.knowldge_base.knowledge_fusion(
-                observation=observation,
-                instruction=instruction,
-                web_knowledge=retrieved_knowledge,
-                similar_task=most_similar_task,
-                experience=retrieved_experience,
-            )
-
-            integrated_knowledge = self.knowldge_base.knowledge_fusion(
-                observation=observation,
-                instruction=instruction,
-                web_knowledge=retrieved_knowledge,
-                similar_task=most_similar_task,
-                experience=retrieved_experience,
-            )
-            logger.info("INTEGRATED KNOWLEDGE: %s", integrated_knowledge)
+                if retrieved_knowledge is not None:
+                    # Fuse the retrieved knowledge and experience
+                    integrated_knowledge = self.knowldge_base.knowledge_fusion(
+                        observation=observation,
+                        instruction=instruction,
+                        web_knowledge=retrieved_knowledge,
+                        similar_task=most_similar_task,
+                        experience=retrieved_experience,
+                    )
+                    logger.info("INTEGRATED KNOWLEDGE: %s", integrated_knowledge)
+            
+            integrated_knowledge = integrated_knowledge or retrieved_experience
             
             # Add the integrated knowledge to the task instruction in the system prompt 
-            instruction += f"\nYou may refer to some retrieved knowledge if you think they are useful.{integrated_knowledge}"
+            if integrated_knowledge:
+                instruction += f"\nYou may refer to some retrieved knowledge if you think they are useful.{integrated_knowledge}"
+                
             self.generator_agent.add_system_prompt(
                 self.generator_agent.system_prompt.replace(
                     "TASK_DESCRIPTION", instruction

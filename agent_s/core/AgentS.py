@@ -86,7 +86,7 @@ class GraphSearchAgent(UIAgent):
                  platform: str = "macos",
                  action_space: str = "pyatuogui", 
                  observation_type: str = "mixed",
-                 search_engine: str = "LLM"):
+                 search_engine: Optional[str] = None):
         """Initialize GraphSearchAgent
         
         Args:

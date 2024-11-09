@@ -1,13 +1,12 @@
 import os 
-import datetime 
-import base64
 import io
 import pyautogui
 import platform 
-import logging
-import sys
 import time 
 import argparse
+import logging
+import datetime 
+import sys 
 
 if platform.system() == 'Darwin':
             current_platform = 'macos'
@@ -150,7 +149,6 @@ def main():
             platform=current_platform,
             action_space="pyautogui",
             observation_type="mixed",
-            search_engine="LLM"
         )
         
         agent.reset()
