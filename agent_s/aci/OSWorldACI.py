@@ -1,7 +1,7 @@
 import os
 import torch
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 import torchvision
 import base64
 import requests
@@ -322,17 +322,22 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     @agent_action
     def run_terminal_commands(
         self,
-        terminal_commands: List = [], 
+        terminal_commands: List[str] = [],
+        timeout: Optional[int] = 120,
+        output_delay: Optional[float] = 0.2
     ):
-        """Opens a terminal, runs a list of  terminal commands, and closes the terminal
+        """Opens a terminal, runs a list of terminal commands with an optional timeout and delay between commands, and closes the terminal.
         Args:
-            terminal_commands:str, The list of bash commands
+            terminal_commands: List[str], The list of bash commands to execute.
+            timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
+            output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
         """
-        command = "import pyautogui; "
-        command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
+        command = "import subprocess, time; "
         for cmd in terminal_commands:
-            command += f"pyautogui.write({repr(cmd)}); time.sleep(0.2); "
-        command += 'pyautogui.hotkey("alt", "f4")'
+            command += (
+                f"subprocess.run({repr(cmd)}, shell=True, timeout={timeout}); "
+                f"time.sleep({output_delay}); "
+            )
         return command
 
     @agent_action
