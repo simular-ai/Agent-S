@@ -326,7 +326,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         timeout: Optional[int] = 120,
         output_delay: Optional[float] = 0.2
     ):
-        """Opens a terminal, runs a list of terminal commands with an optional timeout and delay between commands, and closes the terminal.
+        """Runs a list of terminal commands in the background using subprocess, with an optional timeout and delay between commands.
         Args:
             terminal_commands: List[str], The list of bash commands to execute.
             timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
