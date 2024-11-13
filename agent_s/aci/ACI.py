@@ -20,6 +20,9 @@ class ACI:
     def get_active_apps(self, obs: Dict) -> List[str]:
         pass 
 
+    def get_top_app(self):
+        pass
+
     def preserve_nodes(self, tree: Any, exclude_roles: set = None) -> List[Dict]:
         pass
 

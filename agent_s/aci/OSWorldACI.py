@@ -79,6 +79,9 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
     def check_new_apps(self, old_apps, new_apps):
         return new_apps - old_apps
+    
+    def get_top_app(self):
+        return self.top_app
 
     def find_active_applications(self, tree):
         # names of applications to keep TODO: soffice is a single application with all the isntances like impress, calc etc. being frames this will need to be dealt with separately
