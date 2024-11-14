@@ -63,6 +63,8 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             component_ns = "https://accessibility.ubuntu.example.org/ns/component"
             value_ns = "https://accessibility.ubuntu.example.org/ns/value"
 
+        self._bash_session = False
+
     def get_active_apps(self, obs: Dict) -> List[str]:
         tree = ET.ElementTree(ET.fromstring(obs["accessibility_tree"]))
         apps = []
@@ -80,7 +82,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def check_new_apps(self, old_apps, new_apps):
         return new_apps - old_apps
     
-    def get_top_app(self):
+    def get_top_app(self, obs):
         return self.top_app
 
     def find_active_applications(self, tree):
@@ -322,26 +324,29 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             self.index_out_of_range_flag = True
         return selected_element
 
-    @agent_action
-    def run_terminal_commands(
-        self,
-        terminal_commands: List[str] = [],
-        timeout: Optional[int] = 120,
-        output_delay: Optional[float] = 0.2
-    ):
-        """Runs a list of terminal commands in the background using subprocess, with an optional timeout and delay between commands.
-        Args:
-            terminal_commands: List[str], The list of bash commands to execute.
-            timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
-            output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
-        """
-        command = "import subprocess, time; "
-        for cmd in terminal_commands:
-            command += (
-                f"subprocess.run({repr(cmd)}, shell=True, timeout={timeout}); "
-                f"time.sleep({output_delay}); "
-            )
-        return command
+    # @agent_action
+    # def run_terminal_commands(
+    #     self,
+    #     terminal_commands: List[str] = [],
+    #     timeout: Optional[int] = 120,
+    #     output_delay: Optional[float] = 0.2
+    # ):
+    #     """Runs a list of terminal commands in a new terminal and closes itt after all commands have been executed.
+    #     Args:
+    #         terminal_commands: List[str], The list of bash commands to execute.
+    #         timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
+    #         output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
+    #     """
+    #     command = "import pyautogui; "
+    #     if not self._bash_session:
+    #         command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
+    #         self._bash_session = True
+    #     else:
+    #         self.switch_applications("gnome-terminal-server")
+    #     for cmd in terminal_commands:
+    #         command += f"pyautogui.write({repr(cmd)}); pyautogui.press('enter'); time.sleep({output_delay}); "
+    #     # command += 'pyautogui.hotkey("alt", "f4")'
+    #     return command
 
     @agent_action
     def click(
