@@ -12,6 +12,40 @@ from .ACI import ACI
 
 logger = logging.getLogger("desktopenv.agent")
 
+install_tmux_cmd = """import subprocess
+
+install_command = f"echo 'password' | sudo -S apt install -y tmux"
+subprocess.run(install_command, shell=True, check=True)
+"""
+
+create_tmux_session_cmd = """import subprocess
+
+cmd = "tmux new-session -d -s {session_name}"
+subprocess.run(cmd, shell=True, check=True)
+"""
+
+attach_and_capture_cmd = """import subprocess
+
+capture_cmd = f"tmux capture-pane -t {session_name} -p"
+output = subprocess.check_output(capture_cmd, shell=True, text=True)
+print("<OUTPUT>\\n", repr(output), "\\n</OUTPUT>\\n")
+"""
+
+run_tmux_cmd = """import subprocess
+
+tmux_cmd = "tmux send-keys -t my_background_session {cmd} C-m"
+process = subprocess.Popen(
+    tmux_cmd, 
+    shell=True, 
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True
+)
+
+stdout, stderr = process.communicate()
+print("<BACKGROUND BASH TERMINAL>")
+"""
+
 
 # Agent action decorator
 def agent_action(func):
@@ -329,24 +363,27 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     #     self,
     #     terminal_commands: List[str] = [],
     #     timeout: Optional[int] = 120,
-    #     output_delay: Optional[float] = 0.2
+    #     output_delay: Optional[float] = 0.2,
+    #     restart: Optional[bool] = False
     # ):
-    #     """Runs a list of terminal commands in a new terminal and closes itt after all commands have been executed.
+    #     """Runs a list of terminal commands in a tmux session.
     #     Args:
     #         terminal_commands: List[str], The list of bash commands to execute.
     #         timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
     #         output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
+    #         restart: Optional[bool], Whether to restart the tmux session before executing the commands. Defaults to False.
     #     """
-    #     command = "import pyautogui; "
-    #     if not self._bash_session:
-    #         command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
-    #         self._bash_session = True
-    #     else:
-    #         self.switch_applications("gnome-terminal-server")
-    #     for cmd in terminal_commands:
-    #         command += f"pyautogui.write({repr(cmd)}); pyautogui.press('enter'); time.sleep({output_delay}); "
-    #     # command += 'pyautogui.hotkey("alt", "f4")'
-    #     return command
+
+        # command = "import pyautogui; "
+        # if not self._bash_session:
+        #     command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
+        #     self._bash_session = True
+        # else:
+        #     self.switch_applications("gnome-terminal-server")
+        # for cmd in terminal_commands:
+        #     command += f"pyautogui.write({repr(cmd)}); pyautogui.press('enter'); time.sleep({output_delay}); "
+        # command += 'pyautogui.hotkey("alt", "f4")'
+        # return command
 
     @agent_action
     def click(
