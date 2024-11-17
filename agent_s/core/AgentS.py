@@ -3,7 +3,7 @@ import time
 import logging
 import os 
 import json
-from typing import List, Dict, Tuple, Optional
+from typing import Any, List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from agent_s.core.Manager import Manager
 from agent_s.core.Worker import Worker
@@ -127,12 +127,13 @@ class GraphSearchAgent(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
+    def predict(self, instruction: str, observation: Dict, info: Dict[str, Any]) -> Tuple[Dict, List[str]]:
         """Predict next UI action sequence
         
         Args:
             instruction: Natural language instruction
             observation: Current UI state observation Dictionary {"accessibility_tree": str, "screenshot": bytes}
+            info: Dictionary containing additional information.
             
         Returns:
             Tuple of (agent info dict, list of actions)
@@ -182,7 +183,9 @@ class GraphSearchAgent(UIAgent):
                 subtask_info=self.current_subtask.info,
                 future_tasks=self.subtasks,
                 done_task=self.completed_tasks,
-                obs=observation)
+                obs=observation,
+                info=info
+            )
 
             self.step_count += 1
 

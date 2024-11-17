@@ -1,3 +1,4 @@
+import ast
 import os
 from typing import Dict, List, Tuple
 import re
@@ -103,6 +104,7 @@ class Worker(BaseModule):
         future_tasks: List[Node],
         done_task: List[Node],
         obs: Dict,
+        info: Dict
     ) -> Tuple[Dict, List]:
         """
         Predict the next action(s) based on the current observation.
@@ -172,6 +174,13 @@ class Worker(BaseModule):
 
         self.remove_ids_from_history()
 
+        # Bash terminal message.
+        terminal_output = info.get("exec_output", {}).get("output", "")
+        if "<BACKGROUND BASH TERMINAL>" in terminal_output:
+            terminal_output = terminal_output.split("<OUTPUT>")[-1].split("</OUTPUT>")[0].strip()
+            terminal_output = [out.strip() for out in ast.literal_eval(terminal_output)]
+            terminal_output = terminal_output[-1]
+
         generator_message = (
             (
                 f"\nYou may use the reflection on the previous trajectory: {reflection}\n"
@@ -181,6 +190,7 @@ class Worker(BaseModule):
             + f"Accessibility Tree: {tree_input}\n"
             f"Text Buffer = [{','.join(agent.notes)}]. "
             f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}. "
+            f"Your background bash terminal output is:\n {terminal_output}\n\n"
         )
 
         print("ACTIVE APP IS: ", agent.get_top_app(obs))
