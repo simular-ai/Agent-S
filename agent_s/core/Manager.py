@@ -94,14 +94,11 @@ class Manager(BaseModule):
             observation
         )
         observation["linearized_accessibility_tree"] = tree_input
-        
-        search_query = ""
 
         # Perform Retrieval only at the first planning step
         if self.turn_count == 0:
             
             self.search_query = self.knowldge_base.formulate_query(instruction, observation)
-            
 
             retrieved_experience = ""
             integrated_knowledge = ""
@@ -183,7 +180,7 @@ class Manager(BaseModule):
         cost = input_tokens * (0.0050 / 1000) + output_tokens * (0.0150 / 1000)
 
         planner_info = {
-            "search_query": search_query,
+            "search_query": self.search_query,
             "goal_plan": plan,
             "num_input_tokens_plan": input_tokens,
             "num_output_tokens_plan": output_tokens,
