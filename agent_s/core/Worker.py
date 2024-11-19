@@ -190,7 +190,7 @@ class Worker(BaseModule):
             + f"Accessibility Tree: {tree_input}\n"
             f"Text Buffer = [{','.join(agent.notes)}]. "
             f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}. "
-            f"Your background bash terminal output is:\n {terminal_output}\n\n"
+            f"Your background bash terminal state is:\n {terminal_output}\n\n"
         )
 
         print("ACTIVE APP IS: ", agent.get_top_app(obs))
