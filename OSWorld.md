@@ -11,7 +11,7 @@ parent/
 
 The next step is to follow the set up instructions for OSWorld: https://github.com/xlang-ai/OSWorld.git.
 
-To easily run Agent-S on OSWorld locally, I'd recommend moving your OSWorld local repository to the parent directory of Agent-S.
+To easily run Agent-S on OSWorld locally, We recommend moving your OSWorld local repository to the parent directory of Agent-S.
 
 ```
 parent/
@@ -19,7 +19,7 @@ parent/
   └── OSWorld/
 ```
 
-I suggest creating a separate conda environment for each repository to avoid dependency conflicts. 
+We suggest creating a separate conda environment for each repository to avoid dependency conflicts. 
 
 ## Step 2: Modifying OSWorld `run.py`
 
@@ -30,18 +30,13 @@ from agent_s.aci.OSWorldACI import OSWorldACI
 from agent_s.core.AgentS import GraphSearchAgent
 ```
 
-If this doesn't work, you can always add the `Agent-S` folder to the system path. 
-
-```
-import sys
-sys.path.append("C:/Users/tuvin/OneDrive/Desktop/Simular/Agent-S")
-from agent_s.aci.OSWorldACI import OSWorldACI
-from agent_s.core.AgentS import GraphSearchAgent
-```
-
 Replace the PromptAgent on line 138 in the test() method with the Graph Search Agent. Specify engine params and instantiate the agent as shown:
 
 ```
+parser.add_argument("--vm_version", type=str, default="new")
+
+...
+
 if args.model.startswith("claude"):
   engine_type = "anthropic"
 elif args.model.startswith("gpt"):
@@ -71,7 +66,7 @@ We have set the latest Agent S to use the latest Ubuntu VM image from OSWorld. H
 
 # Step 3: Best Practices
 
-At this point, you will have set up the Agent-S and OSWorld environments and the VMWare Workstation Pro application. Below, I'll list some best practices, and common problems and their fixes.
+At this point, you will have set up the Agent-S and OSWorld environments and the VMWare Workstation Pro application. Below, we'll list some best practices, and common problems and their fixes.
 
 ---
 
@@ -115,7 +110,7 @@ obs = env.reset(task_config=example)
 obs, reward, done, info = env.step("pyautogui.rightClick()")
 ```
 
-The code above will boot up a VM and restart it. If, for whatever reason, running the starter code below leads to an infinitely long run time, I'd suggest cancelling out of that.
+The code above will boot up a VM and restart it. If, for whatever reason, running the starter code below leads to an infinitely long run time, cancel out of the VM.
 You should then see:
 
 ```
@@ -142,7 +137,7 @@ If even after rerunning the code and deleting the `*.lck` files don't work, then
 env = DesktopEnv(action_space="pyautogui", headless=False, require_terminal=True, path_to_vm=<absolute_path>)
 ```
 
-For example, I am passing the absolute path to the vm. This absolute path is the path to your VM's (Ubuntu0) `.vmx` file. This file is located here:
+Pass the absolute path to your VM's (Ubuntu0) `.vmx` file. This file is located here:
 
 
 ```

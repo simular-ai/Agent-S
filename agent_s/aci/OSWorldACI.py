@@ -12,6 +12,40 @@ from .ACI import ACI
 
 logger = logging.getLogger("desktopenv.agent")
 
+install_tmux_cmd = """import subprocess
+
+install_command = f"echo 'password' | sudo -S apt install -y tmux"
+subprocess.run(install_command, shell=True, check=True)
+"""
+
+create_tmux_session_cmd = """import subprocess
+
+cmd = "tmux new-session -d -s my_background_session"
+subprocess.run(cmd, shell=True, check=True)
+"""
+
+kill_tmux_session_cmd = """import subprocess
+
+cmd = "tmux kill-session -t my_background_session"
+subprocess.run(cmd, shell=True, check=True)
+"""
+
+run_tmux_cmd = """import subprocess, time
+
+try:
+    tmux_cmd = "tmux send-keys -t my_background_session '{cmd}' C-m"
+    process = subprocess.Popen(
+        tmux_cmd, 
+        shell=True, 
+        text=True
+    )
+    time.sleep(0.5)
+    capture_cmd = "tmux capture-pane -t my_background_session -p"
+    output = subprocess.check_output(capture_cmd, shell=True, text=True, timeout={timeout})
+except subprocess.TimeoutExpired:
+    output = f"Command '{cmd}' timed out after {timeout} seconds"
+"""
+
 
 # Agent action decorator
 def agent_action(func):
@@ -63,7 +97,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             component_ns = "https://accessibility.ubuntu.example.org/ns/component"
             value_ns = "https://accessibility.ubuntu.example.org/ns/value"
 
-        self._bash_session = False
+        self._existing_bash_session = False
 
     def get_active_apps(self, obs: Dict) -> List[str]:
         tree = ET.ElementTree(ET.fromstring(obs["accessibility_tree"]))
@@ -329,24 +363,42 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     #     self,
     #     terminal_commands: List[str] = [],
     #     timeout: Optional[int] = 120,
-    #     output_delay: Optional[float] = 0.2
+    #     output_delay: Optional[float] = 0.2,
+    #     restart: Optional[bool] = False
     # ):
-    #     """Runs a list of terminal commands in a new terminal and closes itt after all commands have been executed.
+    #     """Runs a list of terminal commands in a tmux session in the background.
     #     Args:
     #         terminal_commands: List[str], The list of bash commands to execute.
     #         timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
     #         output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
+    #         restart: Optional[bool], Whether to restart the tmux session before executing the commands. Defaults to False.
     #     """
-    #     command = "import pyautogui; "
-    #     if not self._bash_session:
-    #         command += 'pyautogui.hotkey("ctrl", "alt", "t"); time.sleep(1); '
-    #         self._bash_session = True
-    #     else:
-    #         self.switch_applications("gnome-terminal-server")
+    #     command_list = []
+    #     command_list.append("print('<BACKGROUND BASH TERMINAL>')")
+
+    #     if not self._existing_bash_session:
+    #         command_list.append(install_tmux_cmd)
+    #         command_list.append(f"import time; time.sleep({output_delay})")
+    #         command_list.append(create_tmux_session_cmd)
+    #         self._existing_bash_session = True
+
+    #     if restart:
+    #         command_list.append(kill_tmux_session_cmd)
+    #         command_list.append(f"import time; time.sleep({output_delay})")
+    #         command_list.append(create_tmux_session_cmd)
+
+    #     command_list.append("outputs = []")
+    #     command_list.append(f"import time; time.sleep({output_delay})")
     #     for cmd in terminal_commands:
-    #         command += f"pyautogui.write({repr(cmd)}); pyautogui.press('enter'); time.sleep({output_delay}); "
-    #     # command += 'pyautogui.hotkey("alt", "f4")'
-    #     return command
+    #         if "sudo" in cmd:
+    #             cmd = f"echo \'password\' | sudo -S {cmd.lstrip('sudo').strip()}"
+    #         command_list.append(run_tmux_cmd.format(cmd=cmd, timeout=timeout))
+    #         command_list.append(f"import time; time.sleep({output_delay})")
+    #         command_list.append("outputs.append(output)")
+
+    #     command_list.append('print("<OUTPUT>\\n", repr(outputs), "\\n</OUTPUT>\\n")')
+
+    #     return "\n".join(command_list)
 
     @agent_action
     def click(
