@@ -154,4 +154,16 @@ parent/
       UbuntuX/
 ```
 
+📌 **Note**: If you are testing on the `os` domain, there is an [issue](https://github.com/asweigart/pyautogui/issues/198#issuecomment-1465268536) with `pyautogui`. A *hacky* way to solve this is to, inside the VM, locate where the `pyautogui` module is installed and open the `__init__.py` located under the `pyautogui` folder and remove the "<" in the `set(...)` within the following function: 
+
+```
+def isShiftCharacter(character):
+    """
+    Returns True if the ``character`` is a keyboard key that would require the shift key to be held down, such as
+    uppercase letters or the symbols on the keyboard's number row.
+    """
+    # NOTE TODO - This will be different for non-qwerty keyboards.
+    return character.isupper() or character in set('~!@#$%^&*()_+{}|:"<>?')
+```
+
 With these changes, you should be able to get up and running with VMWare, DesktopEnv, and OSWorld! 😊
