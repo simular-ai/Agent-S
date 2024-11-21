@@ -358,47 +358,47 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             self.index_out_of_range_flag = True
         return selected_element
 
-    # @agent_action
-    # def run_terminal_commands(
-    #     self,
-    #     terminal_commands: List[str] = [],
-    #     timeout: Optional[int] = 120,
-    #     output_delay: Optional[float] = 0.2,
-    #     restart: Optional[bool] = False
-    # ):
-    #     """Runs a list of terminal commands in a tmux session in the background.
-    #     Args:
-    #         terminal_commands: List[str], The list of bash commands to execute.
-    #         timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
-    #         output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
-    #         restart: Optional[bool], Whether to restart the tmux session before executing the commands. Defaults to False.
-    #     """
-    #     command_list = []
-    #     command_list.append("print('<BACKGROUND BASH TERMINAL>')")
+    @agent_action
+    def run_terminal_commands(
+        self,
+        terminal_commands: List[str] = [],
+        timeout: Optional[int] = 120,
+        output_delay: Optional[float] = 0.2,
+        restart: Optional[bool] = False
+    ):
+        """Runs a list of terminal commands in a tmux session in the background (without the need to open a terminal).
+        Args:
+            terminal_commands: List[str], The list of bash commands to execute.
+            timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.
+            output_delay: Optional[float], The time in seconds to wait after each command's output before proceeding to the next command. Defaults to 0.2 seconds.
+            restart: Optional[bool], Whether to restart the tmux session before executing the commands. Defaults to False.
+        """
+        command_list = []
+        command_list.append("print('<BACKGROUND BASH TERMINAL>')")
 
-    #     if not self._existing_bash_session:
-    #         command_list.append(install_tmux_cmd)
-    #         command_list.append(f"import time; time.sleep({output_delay})")
-    #         command_list.append(create_tmux_session_cmd)
-    #         self._existing_bash_session = True
+        if not self._existing_bash_session:
+            command_list.append(install_tmux_cmd)
+            command_list.append(f"import time; time.sleep({output_delay})")
+            command_list.append(create_tmux_session_cmd)
+            self._existing_bash_session = True
 
-    #     if restart:
-    #         command_list.append(kill_tmux_session_cmd)
-    #         command_list.append(f"import time; time.sleep({output_delay})")
-    #         command_list.append(create_tmux_session_cmd)
+        if restart:
+            command_list.append(kill_tmux_session_cmd)
+            command_list.append(f"import time; time.sleep({output_delay})")
+            command_list.append(create_tmux_session_cmd)
 
-    #     command_list.append("outputs = []")
-    #     command_list.append(f"import time; time.sleep({output_delay})")
-    #     for cmd in terminal_commands:
-    #         if "sudo" in cmd:
-    #             cmd = f"echo \'password\' | sudo -S {cmd.lstrip('sudo').strip()}"
-    #         command_list.append(run_tmux_cmd.format(cmd=cmd, timeout=timeout))
-    #         command_list.append(f"import time; time.sleep({output_delay})")
-    #         command_list.append("outputs.append(output)")
+        command_list.append("outputs = []")
+        command_list.append(f"import time; time.sleep({output_delay})")
+        for cmd in terminal_commands:
+            if "sudo" in cmd:
+                cmd = f"echo \'password\' | sudo -S {cmd.lstrip('sudo').strip()}"
+            command_list.append(run_tmux_cmd.format(cmd=cmd, timeout=timeout))
+            command_list.append(f"import time; time.sleep({output_delay})")
+            command_list.append("outputs.append(output)")
 
-    #     command_list.append('print("<OUTPUT>\\n", repr(outputs), "\\n</OUTPUT>\\n")')
+        command_list.append('print("<OUTPUT>\\n", repr(outputs), "\\n</OUTPUT>\\n")')
 
-    #     return "\n".join(command_list)
+        return "\n".join(command_list)
 
     @agent_action
     def click(

@@ -178,7 +178,7 @@ class Worker(BaseModule):
         if "<BACKGROUND BASH TERMINAL>" in terminal_output:
             terminal_output = terminal_output.split("<OUTPUT>")[-1].split("</OUTPUT>")[0].strip()
             terminal_output = [out.strip() for out in ast.literal_eval(terminal_output)]
-            terminal_output = terminal_output[-1]
+            terminal_output = terminal_output[-1]  # Gets the latest output.
 
         generator_message = (
             (
@@ -188,8 +188,12 @@ class Worker(BaseModule):
             )
             + f"Accessibility Tree: {tree_input}\n"
             f"Text Buffer = [{','.join(agent.notes)}]. "
-            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}. "
-            f"Your background bash terminal state is:\n {terminal_output}\n\n"
+            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}.\n" +
+            (
+                f"You are provided a bash terminal running in the background with tmux. You recently ran a list of arbitrary terminal commands. Your background bash terminal state is:\n {terminal_output}\n\n" 
+                if terminal_output 
+                else ""
+            )
         )
 
         print("ACTIVE APP IS: ", agent.get_top_app(obs))

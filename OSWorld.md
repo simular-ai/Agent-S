@@ -166,4 +166,6 @@ def isShiftCharacter(character):
     return character.isupper() or character in set('~!@#$%^&*()_+{}|:"<>?')
 ```
 
+📌 **Note**: If in case, your VM encounters an issue with "The root file system on <path> requires a manual fsck", reset the VM to the previous snapshot. 
+
 With these changes, you should be able to get up and running with VMWare, DesktopEnv, and OSWorld! 😊
