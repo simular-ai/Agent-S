@@ -14,7 +14,7 @@ from ApplicationServices import (
     AXUIElementCopyAttributeValue,
 )
 
-from AppKit import NSWorkspace
+from AppKit import *
 
 from .ACI import ACI, agent_action
 
@@ -219,7 +219,6 @@ class MacOSACI(ACI):
         tree = (UIElement(accessibility_tree.attribute('AXFocusedApplication')))
         exclude_roles = ["AXGroup", "AXLayoutArea", "AXLayoutItem", "AXUnknown"]
         preserved_nodes = self.preserve_nodes(tree, exclude_roles).copy()
-        
         tree_elements = ["id\trole\ttitle\ttext"]
         for idx, node in enumerate(preserved_nodes):
             tree_elements.append(
