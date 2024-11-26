@@ -64,9 +64,6 @@ This will show a user query prompt where you can enter your query and interact w
 
 To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
 
-### WindowsAgentArena
-
-To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
 
 ### Setup Retrieval from Web using Perplexica
 AgentS works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
@@ -122,7 +119,7 @@ Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS 
 export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
 ```
 
-You can change the server address by editing the address in [agent_s/ocr_server.py](agent_s/ocr_server.py) file
+You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file
 
 ## 🙌 Contributors
 
