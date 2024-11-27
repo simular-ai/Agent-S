@@ -1,6 +1,7 @@
-## Deplying Agent-S in WindowsAgentArena
+## Deploying Agent-S in WindowsAgentArena
+> ⚠️ **Warning**: The refactored code has not be fully tested on WindowsAgentArena. To reproduce the results on WindowsAgentArena, please use commit 496a9fa of this repository.
 
-1. To use the GUIAgent with WindowsAgentArena, follows the setup instructions at: https://github.com/microsoft/WindowsAgentArena.git. **Please use the development mode while preparing the image and running the client as instructed in https://github.com/microsoft/WindowsAgentArena/blob/main/docs/Development-Tips.md.** 
+1. To use the Agent S with WindowsAgentArena, follows the setup instructions at: https://github.com/microsoft/WindowsAgentArena.git. **Please use the development mode while preparing the image and running the client as instructed in https://github.com/microsoft/WindowsAgentArena/blob/main/docs/Development-Tips.md.** 
 
 2. To deploy our agent in the WindowsAgentArena, copy the agent_s folder in this repository to  `WindowsAgentArena/src/win-arena-container/client/mm_agents`. 
 

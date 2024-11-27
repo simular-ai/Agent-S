@@ -64,6 +64,10 @@ This will show a user query prompt where you can enter your query and interact w
 
 To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
 
+### WindowsAgentArena
+
+To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
+
 
 ### Setup Retrieval from Web using Perplexica
 AgentS works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
