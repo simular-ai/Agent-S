@@ -39,7 +39,7 @@ setup(
      classifiers=[
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.9',
-        'License :: OSI Approved :: Apache License',
+        'License :: OSI Approved :: Apache Software License',
         'Operating System :: MacOS',
         'Operating System :: Ubuntu',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
