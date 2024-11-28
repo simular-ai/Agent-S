@@ -38,7 +38,7 @@ git clone https://github.com/simular-ai/Agent-S.git
 
 Install the agent_s package
 ```
-pip install agent_s
+pip install -e .
 ```
 
 Set your LLM API Keys and other environment variables. You can do this by adding the following lines to your .bashrc (Linux), or .zshrc (MacOS) file. 
