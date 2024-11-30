@@ -30,20 +30,24 @@ cmd = "tmux kill-session -t my_background_session"
 subprocess.run(cmd, shell=True, check=True)
 """
 
-run_tmux_cmd = """import subprocess, time
+run_tmux_cmd = """import subprocess, time, shlex
 
 try:
-    tmux_cmd = "tmux send-keys -t my_background_session '{cmd}' C-m"
+    escaped_cmd = shlex.quote("bash -c '{cmd}'")
+    tmux_cmd = f"tmux send-keys -t my_background_session {{escaped_cmd}} C-m"
+    
+    # Execute the tmux command
     process = subprocess.Popen(
         tmux_cmd, 
         shell=True, 
         text=True
     )
     time.sleep(0.5)
+    
     capture_cmd = "tmux capture-pane -t my_background_session -p"
     output = subprocess.check_output(capture_cmd, shell=True, text=True, timeout={timeout})
 except subprocess.TimeoutExpired:
-    output = f"Command '{cmd}' timed out after {timeout} seconds"
+    output = f"Command {{escaped_cmd}} timed out after {timeout} seconds"
 """
 
 
@@ -366,7 +370,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         output_delay: Optional[float] = 0.2,
         restart: Optional[bool] = False
     ):
-        """Runs a list of terminal commands in a tmux session in the background (without the need to open a terminal).
+        """Runs a list of terminal commands.
         Args:
             terminal_commands: List[str], The list of bash commands to execute.
             timeout: Optional[int], The maximum time in seconds to allow each command to run. Defaults to 120 seconds.

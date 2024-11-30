@@ -878,5 +878,7 @@
   "Recursively go through the folders of the 'photos' directory and copy any .jpg files found into another directory named 'cpjpg'.": "How to recursively copy jpg files from one directory to another in Ubuntu using terminal commands",
   "Change the permission of all regular files under current directory tree to 644": "How to change file permissions to 644 recursively in Ubuntu terminal",
   "Please modify VS Code's settings to disable error reporting for Python missing imports.": "how to disable python import error reporting in VS Code settings",
-  "Please help me open the autosave feature of VS Code and delay AutoSave operations for 500 milliseconds in the VS Code setting.": "how to enable autosave and set delay time in VS Code settings"
+  "Please help me open the autosave feature of VS Code and delay AutoSave operations for 500 milliseconds in the VS Code setting.": "how to enable autosave and set delay time in VS Code settings",
+  "Task:\nPlease set the default Python version to Python3 on my Ubuntu system.": "How to set Python3 as the default Python version on Ubuntu?",
+  "Task:\nPlease create an SSH user named \"charles\" with password \"Ex@mpleP@55w0rd!\" on Ubuntu who is only allowed to access the folder \"/home/test1\".": "How to create a restricted SSH user in Ubuntu with access to a specific directory?"
 }

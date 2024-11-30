@@ -5,6 +5,7 @@ import os
 import json
 from typing import Any, List, Dict, Tuple, Optional
 from dataclasses import dataclass
+from agent_s.aci.OSWorldACI import OSWorldACI
 from agent_s.core.Manager import Manager
 from agent_s.core.Worker import Worker
 from agent_s.aci.ACI import ACI
@@ -104,6 +105,8 @@ class GraphSearchAgent(UIAgent):
     def reset(self) -> None:
         """Reset agent state and initialize components"""
         # Initialize core components
+        if isinstance(self.grounding_agent, OSWorldACI):
+            self.grounding_agent._existing_bash_session = False
         self.planner = Manager(self.engine_params, self.grounding_agent,
                              platform=self.platform, search_engine=self.engine)
         self.executor = Worker(self.engine_params, self.grounding_agent,

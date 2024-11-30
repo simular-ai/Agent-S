@@ -111,7 +111,6 @@ class Manager(BaseModule):
                 most_similar_task + "\n" + retrieved_experience.strip(),
             )
             
-            
             # Retrieve knowledge from the web if search_engine is provided
             if self.search_engine is not None:
                 retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
@@ -153,6 +152,12 @@ class Manager(BaseModule):
                 if failure_feedback
                 else ""
             )
+            + "You are provided access to a bash terminal for executing commands as needed. This terminal is not visible on the screen and is completely separate from any opened terminals. "
+            + "You may choose to use this bash terminal if it is more convenient for you than opening a terminal yourself."
+            + "To run terminal commands for any step of the task in this special bash terminal, "
+            + "use the `run_terminal_commands(terminal_commands: List[str])` function to specify and execute the commands for that step. "
+            + "Ensure that terminal commands are grouped logically within a single call to `run_terminal_commands()` per step. For non-terminal "
+            + "steps, describe the actions clearly and concisely, directly contributing to solving the task. Avoid unnecessary details or intermediate explanations."
         )
 
         self.generator_agent.add_message(
