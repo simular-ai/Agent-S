@@ -130,7 +130,7 @@ class GraphSearchAgent(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(self, instruction: str, observation: Dict, info: Dict[str, Any]) -> Tuple[Dict, List[str]]:
+    def predict(self, instruction: str, observation: Dict, info: Dict) -> Tuple[Dict, List[str]]:
         """Predict next UI action sequence
         
         Args:
