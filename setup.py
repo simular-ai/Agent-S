@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='agent_s',
+    name='gui-agents',
     version='0.1.0',
     description='A library for creating general purpose GUI agents using multimodal LLMs.',
     long_description=open('README.md', encoding='utf-8').read(),
@@ -33,7 +33,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'agent_s=agent_s.cli_app:main',
+            'agent_s_py=agent_s.cli_app:main',
         ],
     },
      classifiers=[
