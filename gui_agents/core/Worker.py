@@ -1,16 +1,16 @@
 import ast
-import os
-from typing import Dict, List, Tuple
-import re
 import logging
+import os
+import re
+from typing import Dict, List, Tuple
 
-from agent_s.core.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.mllm.MultimodalEngine import OpenAIEmbeddingEngine
-from agent_s.core.Knowledge import KnowledgeBase
-from agent_s.core.BaseModule import BaseModule
-from agent_s.aci.ACI import ACI
-from agent_s.utils import common_utils
-from agent_s.utils.common_utils import Node, calculate_tokens, call_llm_safe
+from gui_agents.aci.ACI import ACI
+from gui_agents.core.BaseModule import BaseModule
+from gui_agents.core.Knowledge import KnowledgeBase
+from gui_agents.core.ProceduralMemory import PROCEDURAL_MEMORY
+from gui_agents.mllm.MultimodalEngine import OpenAIEmbeddingEngine
+from gui_agents.utils import common_utils
+from gui_agents.utils.common_utils import Node, calculate_tokens, call_llm_safe
 
 logger = logging.getLogger("desktopenv.agent")
 working_dir = os.path.dirname(os.path.abspath(__file__))

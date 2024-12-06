@@ -1,21 +1,21 @@
-import os 
-import io
-import pyautogui
-import platform 
-import time 
 import argparse
+import datetime
+import io
 import logging
-import datetime 
-import sys 
+import os
+import platform
+import sys
+import time
+
+import pyautogui
 
 if platform.system() == 'Darwin':
             current_platform = 'macos'
-            from agent_s.aci.MacOSACI import MacOSACI
-            from agent_s.aci.MacOSACI import UIElement
+            from gui_agents.aci.MacOSACI import MacOSACI, UIElement
 else:
     raise ValueError("Unsupported platform")
     
-from agent_s.core.AgentS import UIAgent, GraphSearchAgent
+from gui_agents.core.AgentS import GraphSearchAgent, UIAgent
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)

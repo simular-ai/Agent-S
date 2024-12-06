@@ -1,5 +1,5 @@
 import pytest
-from agent_s.aci.UIElementMacOS import UIElement
+from gui_agents.aci.UIElementMacOS import UIElement
 from unittest.mock import Mock, patch
 
 @pytest.fixture

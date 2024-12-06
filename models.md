@@ -28,7 +28,7 @@ export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
 Alternatively you can directly pass the API keys into the engine_params argument while instantating the agent.
 
 ```python
-from agent_s.GraphSearchAgent import GraphSearchAgent
+from gui_agents.GraphSearchAgent import GraphSearchAgent
 engine_params = {
     "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
     "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
@@ -50,7 +50,7 @@ engine_params = {
     "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
     "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
     }
-from agent_s.MultimodalAgent import LMMAgent
+from gui_agents.MultimodalAgent import LMMAgent
 agent = LMMAgent(
     engine_params = engine_params,
 )

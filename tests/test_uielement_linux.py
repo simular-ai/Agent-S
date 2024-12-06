@@ -1,7 +1,10 @@
-import pytest
-from agent_s.aci.UIElementLinux import UIElement
 from unittest.mock import Mock, patch
+
 import pyatspi
+import pytest
+
+from gui_agents.aci.UIElementLinux import UIElement
+
 
 @pytest.fixture
 def mock_accessible():

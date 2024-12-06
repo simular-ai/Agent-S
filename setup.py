@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name='gui-agents',
@@ -10,6 +10,9 @@ setup(
     author_email='eric@simular.ai',
     packages=find_packages(),
     include_package_data=True,
+    package_data={
+        'gui_agents': ['kb/*/*.json']
+    },
     install_requires=[
         'numpy',
         'backoff',
@@ -33,7 +36,7 @@ setup(
     ],
     entry_points={
         'console_scripts': [
-            'agent_s_py=agent_s.cli_app:main',
+            'agent_s=gui_agents.cli_app:main',
         ],
     },
      classifiers=[

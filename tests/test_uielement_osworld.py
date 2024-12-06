@@ -1,6 +1,9 @@
-import pytest
-from agent_s.aci.UIElementOSWorld import UIElement
 import xml.etree.ElementTree as ET
+
+import pytest
+
+from gui_agents.aci.UIElementOSWorld import UIElement
+
 
 @pytest.fixture
 def sample_xml():

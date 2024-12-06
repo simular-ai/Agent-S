@@ -1,5 +1,7 @@
 from typing import Dict, Optional
-from agent_s.mllm.MultimodalAgent import LMMAgent
+
+from gui_agents.mllm.MultimodalAgent import LMMAgent
+
 
 class BaseModule:
     def __init__(self, engine_params: Dict, platform: str):

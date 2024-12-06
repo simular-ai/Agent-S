@@ -1,7 +1,9 @@
-import pyautogui
 import time
+
+import pyautogui
 from AppKit import NSWorkspace
-from agent_s.aci.MacOSACI import MacOSACI
+
+from gui_agents.aci.MacOSACI import MacOSACI
 
 agent = MacOSACI()
 

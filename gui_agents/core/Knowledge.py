@@ -1,14 +1,18 @@
 import json
-import numpy as np
 import os
 import pickle
 from typing import Dict, Tuple
+
+import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from agent_s.core.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.core.BaseModule import BaseModule
-from agent_s.mllm.MultimodalEngine import OpenAIEmbeddingEngine
-from agent_s.utils.query_perplexica import query_to_perplexica
-from agent_s.utils.common_utils import load_knowledge_base, load_embeddings, save_embeddings
+
+from gui_agents.core.BaseModule import BaseModule
+from gui_agents.core.ProceduralMemory import PROCEDURAL_MEMORY
+from gui_agents.mllm.MultimodalEngine import OpenAIEmbeddingEngine
+from gui_agents.utils.common_utils import (load_embeddings,
+                                           load_knowledge_base,
+                                           save_embeddings)
+from gui_agents.utils.query_perplexica import query_to_perplexica
 
 working_dir = os.path.dirname(os.path.abspath(__file__))
 

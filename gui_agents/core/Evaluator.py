@@ -1,22 +1,25 @@
-import time
-from agent_s.ProceduralMemory import PROCEDURAL_MEMORY
-from agent_s.osworld.GroundingAgent import GroundingAgent
-from agent_s.MultimodalEngine import OpenAIEmbeddingEngine
-import numpy as np
 import json
-import pickle
-import os
-import re
-from sklearn.metrics.pairwise import cosine_similarity
-from typing import Dict, List, Tuple, Union
-from agent_s.MultimodalAgent import LMMAgent
 import logging
-from agent_s import osworld_utils
-from agent_s.query_perplexica import query_to_perplexica
+import os
+import pickle
+import re
+import time
 from collections import defaultdict
+from typing import Dict, List, Tuple, Union
+
+import numpy as np
 from desktop_env.desktop_env import DesktopEnv
 from pydantic import BaseModel
-from agent_s.osworld_utils import Dag, Node
+from sklearn.metrics.pairwise import cosine_similarity
+
+from gui_agents import osworld_utils
+from gui_agents.MultimodalAgent import LMMAgent
+from gui_agents.MultimodalEngine import OpenAIEmbeddingEngine
+from gui_agents.osworld.GroundingAgent import GroundingAgent
+from gui_agents.osworld_utils import Dag, Node
+from gui_agents.ProceduralMemory import PROCEDURAL_MEMORY
+from gui_agents.query_perplexica import query_to_perplexica
+
 
 class Evaluator:
     def __init__(self, instruction, engine_params: Dict, script_check: bool = False):

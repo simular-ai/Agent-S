@@ -1,7 +1,10 @@
-from agent_s.mllm.MultimodalAsyncEngine import LMMEngineAsyncOpenAI, LMMEngineAsyncAzureOpenAI
-from agent_s.mllm.MultimodalEngine import LMMEngineCogVLM, LMMEngineLlava
 import base64
-import re 
+import re
+
+from gui_agents.mllm.MultimodalAsyncEngine import (LMMEngineAsyncAzureOpenAI,
+                                                   LMMEngineAsyncOpenAI)
+from gui_agents.mllm.MultimodalEngine import LMMEngineCogVLM, LMMEngineLlava
+
 
 class LMMAgentAsync:
     def __init__(self, engine_params=None, system_prompt=None, engine=None):
