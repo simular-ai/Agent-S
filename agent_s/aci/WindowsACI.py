@@ -184,6 +184,21 @@ class WindowsACI(ACI):
         traverse_and_preserve(tree)
         return preserved_nodes
 
+    def extract_elements_from_screenshot(self, screenshot: bytes) -> Dict[str, Any]:
+        url = os.environ.get("OCR_SERVER_ADDRESS")
+        if not url:
+            raise EnvironmentError("OCR SERVER ADDRESS NOT SET")
+
+        encoded_screenshot = base64.b64encode(screenshot).decode("utf-8")
+        response = requests.post(url, json={"img_bytes": encoded_screenshot})
+
+        if response.status_code != 200:
+            return {
+                "error": f"Request failed with status code {response.status_code}",
+                "results": [],
+            }
+        return response.json()
+
     def linearize_and_annotate_tree(self, obs: Dict, show_all_elements: bool = False) -> str:
         desktop = Desktop(backend="uia")
         try:
