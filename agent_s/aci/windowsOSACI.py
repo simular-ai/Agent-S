@@ -6,8 +6,6 @@ import numpy as np
 import requests
 import base64
 import psutil
-import pyautogui
-import time
 import pywinauto
 from pywinauto import Desktop
 import win32gui
