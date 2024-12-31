@@ -9,7 +9,7 @@ import psutil
 import pyautogui
 import time
 import pywinauto
-from pywinauto import Desktop, Application
+from pywinauto import Desktop
 import win32gui
 import win32process
 
