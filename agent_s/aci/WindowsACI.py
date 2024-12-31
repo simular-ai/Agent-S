@@ -17,7 +17,7 @@ from .ACI import ACI, agent_action
 
 # Helper functions
 def _normalize_key(key: str) -> str:
-    """Convert 'ctrl' to 'control' for pyautogui compatibility"""
+    """Convert 'control' to 'ctrl' for pyautogui compatibility"""
     return 'control' if key == 'ctrl' else key
 
 def list_apps_in_directories():
