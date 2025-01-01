@@ -13,6 +13,8 @@ import win32process
 
 from ACI import ACI, agent_action
 
+os.environ['OCR_SERVER_ADDRESS'] = "http://localhost:8000/ocr/"
+
 # Helper functions
 def _normalize_key(key: str) -> str:
     """Convert 'ctrl' to 'control' for pyautogui compatibility"""
@@ -159,7 +161,7 @@ class WindowsACI(ACI):
                         int(box.get("right", 0)),
                         int(box.get("bottom", 0))
                     ]
-                    for _, _, box in ocr_bboxes
+                    for _, _, box in ocr_bboxes['results']
                 ], dtype=np.float32)
                 
                 # Calculate max IOUs efficiently
@@ -169,7 +171,7 @@ class WindowsACI(ACI):
                     max_ious = np.zeros(len(ocr_boxes_array))
 
                 # Process boxes with low IOU
-                for idx, ((_, content, box), max_iou) in enumerate(zip(ocr_bboxes, max_ious)):
+                for idx, ((_, content, box), max_iou) in enumerate(zip(ocr_bboxes['results'], max_ious)):
                     if max_iou < 0.1:
                         x1 = int(box.get("left", 0))
                         y1 = int(box.get("top", 0))
@@ -213,12 +215,15 @@ class WindowsACI(ACI):
                 f"{idx}\t{node['role']}\t{node['title']}\t{node['text']}"
             )
 
+        print(len(tree_elements), len(preserved_nodes))
         if self.ocr:
             screenshot = obs.get('screenshot', None)
             if screenshot is not None:
+                # return tree_elements, preserved_nodes
                 tree_elements, preserved_nodes = self.add_ocr_elements(
                     screenshot, tree_elements, preserved_nodes
                 )
+                print(len(tree_elements), len(preserved_nodes))
 
         self.nodes = preserved_nodes
         return "\n".join(tree_elements)
