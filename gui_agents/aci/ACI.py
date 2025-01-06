@@ -4,9 +4,11 @@ import os
 
 logger = logging.getLogger("desktopenv.agent")
 
+
 def agent_action(func):
     func.is_agent_action = True
     return func
+
 
 class ACI:
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
@@ -18,7 +20,7 @@ class ACI:
         self.nodes: List[Any] = []
 
     def get_active_apps(self, obs: Dict) -> List[str]:
-        pass 
+        pass
 
     def get_top_app(self):
         pass
@@ -26,10 +28,10 @@ class ACI:
     def preserve_nodes(self, tree: Any, exclude_roles: set = None) -> List[Dict]:
         pass
 
-    def linearize_and_annotate_tree(self, obs: Dict, show_all_elements: bool = False) -> str:
+    def linearize_and_annotate_tree(
+        self, obs: Dict, show_all_elements: bool = False
+    ) -> str:
         pass
 
     def find_element(self, element_id: int) -> Dict:
         pass
-
-

@@ -6,13 +6,14 @@ import torchvision
 import base64
 import requests
 import logging
-import time 
+import time
 
 logger = logging.getLogger("desktopenv.agent")
 
 
 state_ns = "uri:deskat:state.at-spi.gnome.org"
 component_ns = "uri:deskat:component.at-spi.gnome.org"
+
 
 # Agent action decorator
 def agent_action(func):
@@ -71,7 +72,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         apps = []
         root = tree.getroot()
         for item in root:
-                apps.append(item.get("name", "").replace("\\", ""))
+            apps.append(item.get("name", "").replace("\\", ""))
         return apps
 
     def check_new_apps(self, old_apps, new_apps):
@@ -166,7 +167,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         def send_image_to_ocr(screenshot) -> Dict:
 
             # url = os.environ.get("OCR_SERVER_ADDRESS", "")
-            url = 'http://127.0.0.1:8083/ocr/'
+            url = "http://127.0.0.1:8083/ocr/"
             if url == "":
                 raise Exception("OCR SERVER ADDRESS NOT SET")
             encoded_screenshot = base64.b64encode(screenshot).decode("utf-8")
@@ -265,7 +266,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def linearize_and_annotate_tree(self, obs, show_all=False):
         accessibility_tree = obs["accessibility_tree"]
         screenshot = obs["screenshot"]
-        
+
         # convert the accessibility tree from a string representation to an xml tree
         tree = ET.ElementTree(ET.fromstring(accessibility_tree))
 
@@ -278,9 +279,9 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             for application in list(tree.getroot()):
                 if application.attrib.get("name", "") not in to_keep:
                     tree.getroot().remove(application)
-        
+
         # Save tree for debugging
-        # from datetime import datetime 
+        # from datetime import datetime
         # with open(f"tree_raw_{datetime.now()}.xml", "wb") as file:
         #     tree.write(file, encoding="utf-8", xml_declaration=True)
 
@@ -355,8 +356,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
     @agent_action
     def switch_window(self):
-        """Switch to a different application that is already open
-        """
+        """Switch to a different application that is already open"""
         # return self.app_setup_code.replace("APP_NAME", app_code)
         return f"import pyautogui; pyautogui.hotkey('alt', 'tab');"
 

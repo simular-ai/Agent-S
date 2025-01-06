@@ -2,7 +2,6 @@ import inspect
 import textwrap
 
 
-
 class PROCEDURAL_MEMORY:
     @staticmethod
     def construct_worker_procedural_memory(agent_class):
@@ -81,7 +80,6 @@ class PROCEDURAL_MEMORY:
     RAG_AGENT = """
     Given a desktop computer task instruction, you are an agent which should provide useful information as requested, to help another agent follow the instruction and perform the task in CURRENT_OS.
     """
-
 
     # TODO: confirm this prompt
     REFLECTION_ON_TRAJECTORY = """

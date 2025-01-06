@@ -17,16 +17,18 @@ working_dir = os.path.dirname(os.path.abspath(__file__))
 
 class UIAgent:
     """Base class for UI automation agents"""
-    
-    def __init__(self,
-                 engine_params: Dict,
-                 grounding_agent: ACI,
-                 platform: str = "macos", 
-                 action_space: str = "pyautogui",
-                 observation_type: str = "a11y_tree",
-                 search_engine: str = "perplexica"):
+
+    def __init__(
+        self,
+        engine_params: Dict,
+        grounding_agent: ACI,
+        platform: str = "macos",
+        action_space: str = "pyautogui",
+        observation_type: str = "a11y_tree",
+        search_engine: str = "perplexica",
+    ):
         """Initialize UIAgent
-        
+
         Args:
             engine_params: Configuration parameters for the LLM engine
             grounding_agent: Instance of ACI class for UI interaction
@@ -48,11 +50,11 @@ class UIAgent:
 
     def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
         """Generate next action prediction
-        
+
         Args:
             instruction: Natural language instruction
             observation: Current UI state observation
-            
+
         Returns:
             Tuple containing agent info dictionary and list of actions
         """
@@ -60,7 +62,7 @@ class UIAgent:
 
     def update_narrative_memory(self, trajectory: str) -> None:
         """Update narrative memory with task trajectory
-        
+
         Args:
             trajectory: String containing task execution trajectory
         """
@@ -68,54 +70,68 @@ class UIAgent:
 
     def update_episodic_memory(self, meta_data: Dict, subtask_trajectory: str) -> str:
         """Update episodic memory with subtask trajectory
-        
+
         Args:
             meta_data: Metadata about current subtask execution
             subtask_trajectory: String containing subtask execution trajectory
-            
+
         Returns:
             Updated subtask trajectory
         """
         pass
 
+
 class GraphSearchAgent(UIAgent):
     """Agent that uses hierarchical planning and directed acyclic graph modeling for UI automation"""
 
-    def __init__(self,
-                 engine_params: Dict,
-                 grounding_agent: ACI,
-                 platform: str = "macos",
-                 action_space: str = "pyatuogui", 
-                 observation_type: str = "mixed",
-                 search_engine: Optional[str] = None):
+    def __init__(
+        self,
+        engine_params: Dict,
+        grounding_agent: ACI,
+        platform: str = "macos",
+        action_space: str = "pyatuogui",
+        observation_type: str = "mixed",
+        search_engine: Optional[str] = None,
+    ):
         """Initialize GraphSearchAgent
-        
+
         Args:
             engine_params: Configuration parameters for the LLM engine
             grounding_agent: Instance of ACI class for UI interaction
-            platform: Operating system platform (macos, ubuntu) 
+            platform: Operating system platform (macos, ubuntu)
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
         """
-        super().__init__(engine_params, grounding_agent, platform, action_space,
-                        observation_type, search_engine)
+        super().__init__(
+            engine_params,
+            grounding_agent,
+            platform,
+            action_space,
+            observation_type,
+            search_engine,
+        )
         self.reset()
 
     def reset(self) -> None:
         """Reset agent state and initialize components"""
         # Initialize core components
-        self.planner = Manager(self.engine_params, self.grounding_agent,
-                             platform=self.platform, search_engine=self.engine)
-        self.executor = Worker(self.engine_params, self.grounding_agent,
-                             platform=self.platform)
+        self.planner = Manager(
+            self.engine_params,
+            self.grounding_agent,
+            platform=self.platform,
+            search_engine=self.engine,
+        )
+        self.executor = Worker(
+            self.engine_params, self.grounding_agent, platform=self.platform
+        )
 
         # Reset state variables
         self.requires_replan: bool = True
-        self.needs_next_subtask: bool = True 
+        self.needs_next_subtask: bool = True
         self.step_count: int = 0
         self.turn_count: int = 0
-        self.failure_feedback: str = ''
+        self.failure_feedback: str = ""
         self.should_send_action: bool = False
         self.completed_tasks: List[Node] = []
         self.current_subtask: Optional[Node] = None
@@ -130,12 +146,12 @@ class GraphSearchAgent(UIAgent):
 
     def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
         """Predict next UI action sequence
-        
+
         Args:
             instruction: Natural language instruction
             observation: Current UI state observation Dictionary {"accessibility_tree": str, "screenshot": bytes}
             info: Dictionary containing additional information.
-            
+
         Returns:
             Tuple of (agent info dict, list of actions)
         """
@@ -143,16 +159,16 @@ class GraphSearchAgent(UIAgent):
         planner_info = {}
         executor_info = {}
         evaluator_info = {
-            'obs_evaluator_response': '',
-            'num_input_tokens_evaluator': 0,
-            'num_output_tokens_evaluator': 0,
-            'evaluator_cost': 0.
+            "obs_evaluator_response": "",
+            "num_input_tokens_evaluator": 0,
+            "num_output_tokens_evaluator": 0,
+            "evaluator_cost": 0.0,
         }
         actions = []
 
         # If the DONE response by the executor is for a subtask, then the agent should continue with the next subtask without sending the action to the environment
         while not self.should_send_action:
-            self.subtask_status = 'In'
+            self.subtask_status = "In"
             # if replan is true, generate a new plan. True at start, then true again after a failed plan
             if self.requires_replan:
                 logger.info("(RE)PLANNING...")
@@ -160,11 +176,12 @@ class GraphSearchAgent(UIAgent):
                 planner_info, self.subtasks = self.planner.get_action_queue(
                     instruction=instruction,
                     observation=observation,
-                    failure_feedback=self.failure_feedback)
+                    failure_feedback=self.failure_feedback,
+                )
 
                 self.requires_replan = False
-                if 'search_query' in planner_info:
-                    self.search_query = planner_info['search_query']
+                if "search_query" in planner_info:
+                    self.search_query = planner_info["search_query"]
                 else:
                     self.search_query = ""
 
@@ -174,7 +191,7 @@ class GraphSearchAgent(UIAgent):
                 self.current_subtask = self.subtasks.pop(0)
                 logger.info(f"NEXT SUBTASK: {self.current_subtask}")
                 self.needs_next_subtask = False
-                self.subtask_status = 'Start'
+                self.subtask_status = "Start"
 
             # get the next action from the executor
             executor_info, actions = self.executor.generate_next_action(
@@ -191,7 +208,7 @@ class GraphSearchAgent(UIAgent):
 
             # set the should_send_action flag to True if the executor returns an action
             self.should_send_action = True
-            if 'FAIL' in actions:
+            if "FAIL" in actions:
                 self.requires_replan = True
                 # set the failure feedback to the evaluator feedback
                 self.failure_feedback = f"Completed subtasks: {self.completed_tasks}. The subtask {self.current_subtask} cannot be completed. Please try another approach. {executor_info['plan_code']}. Please replan."
@@ -204,13 +221,13 @@ class GraphSearchAgent(UIAgent):
                 if self.subtasks:
                     self.should_send_action = False
 
-            elif 'DONE' in actions:
+            elif "DONE" in actions:
                 self.requires_replan = False
                 self.completed_tasks.append(self.current_subtask)
                 self.needs_next_subtask = True
                 if self.subtasks:
                     self.should_send_action = False
-                self.subtask_status = 'Done'
+                self.subtask_status = "Done"
 
                 self.reset_executor_state()
 
@@ -219,66 +236,80 @@ class GraphSearchAgent(UIAgent):
         self.should_send_action = False
 
         # concatenate the three info dictionaries
-        info = {**{k: v for d in [planner_info or {}, executor_info or {},
-                                  evaluator_info or {}] for k, v in d.items()}}
-        info.update({
-        'subtask': self.current_subtask.name,
-        'subtask_info': self.current_subtask.info,
-        'subtask_status': self.subtask_status})
-
+        info = {
+            **{
+                k: v
+                for d in [planner_info or {}, executor_info or {}, evaluator_info or {}]
+                for k, v in d.items()
+            }
+        }
+        info.update(
+            {
+                "subtask": self.current_subtask.name,
+                "subtask_info": self.current_subtask.info,
+                "subtask_status": self.subtask_status,
+            }
+        )
 
         return info, actions
-    
+
     def update_narrative_memory(self, trajectory: str) -> None:
         """Update narrative memory from task trajectory
-        
+
         Args:
             trajectory: String containing task execution trajectory
         """
         try:
-            reflection_path = os.path.join(working_dir, "../kb", self.platform, 
-                                         "narrative_memory.json")
+            reflection_path = os.path.join(
+                working_dir, "../kb", self.platform, "narrative_memory.json"
+            )
             try:
                 reflections = json.load(open(reflection_path))
             except:
                 reflections = {}
-                
+
             if self.search_query not in reflections:
                 reflection = self.planner.summarize_narrative(trajectory)
                 reflections[self.search_query] = reflection
-                
+
             with open(reflection_path, "w") as f:
                 json.dump(reflections, f, indent=2)
-                    
+
         except Exception as e:
             logger.error(f"Failed to update narrative memory: {e}")
 
     def update_episodic_memory(self, meta_data: Dict, subtask_trajectory: str) -> str:
         """Update episodic memory from subtask trajectory
-        
+
         Args:
             meta_data: Metadata about current subtask execution
             subtask_trajectory: String containing subtask execution trajectory
-            
+
         Returns:
             Updated subtask trajectory
         """
-        subtask = meta_data['subtask']
-        subtask_info = meta_data['subtask_info']
-        subtask_status = meta_data['subtask_status']
+        subtask = meta_data["subtask"]
+        subtask_info = meta_data["subtask_info"]
+        subtask_status = meta_data["subtask_status"]
         # Handle subtask trajectory
-        if subtask_status == 'Start' or subtask_status == 'Done':
+        if subtask_status == "Start" or subtask_status == "Done":
             # If it's a new subtask start, finalize the previous subtask trajectory if it exists
             if subtask_trajectory:
-                subtask_trajectory += '\nSubtask Completed.\n'
-                subtask_key = subtask_trajectory.split("\n----------------------\n\nPlan:\n")[0]
+                subtask_trajectory += "\nSubtask Completed.\n"
+                subtask_key = subtask_trajectory.split(
+                    "\n----------------------\n\nPlan:\n"
+                )[0]
                 try:
-                    subtask_path = os.path.join(working_dir, "../kb", self.platform, "episodic_memory.json")
+                    subtask_path = os.path.join(
+                        working_dir, "../kb", self.platform, "episodic_memory.json"
+                    )
                     kb = json.load(open(subtask_path))
                 except:
                     kb = {}
                 if subtask_key not in kb.keys():
-                    subtask_summarization = self.planner.summarize_episode(subtask_trajectory)
+                    subtask_summarization = self.planner.summarize_episode(
+                        subtask_trajectory
+                    )
                     kb[subtask_key] = subtask_summarization
                 else:
                     subtask_summarization = kb[subtask_key]
@@ -287,14 +318,25 @@ class GraphSearchAgent(UIAgent):
                 with open(subtask_path, "w") as fout:
                     json.dump(kb, fout, indent=2)
                 # Reset for the next subtask
-                subtask_trajectory = ''
+                subtask_trajectory = ""
             # Start a new subtask trajectory
-            subtask_trajectory = 'Task:\n' + self.search_query + '\n\nSubtask: ' + subtask + '\nSubtask Instruction: ' + subtask_info + '\n----------------------\n\nPlan:\n' + meta_data['executor_plan'] + '\n'
-        elif subtask_status == 'In':
+            subtask_trajectory = (
+                "Task:\n"
+                + self.search_query
+                + "\n\nSubtask: "
+                + subtask
+                + "\nSubtask Instruction: "
+                + subtask_info
+                + "\n----------------------\n\nPlan:\n"
+                + meta_data["executor_plan"]
+                + "\n"
+            )
+        elif subtask_status == "In":
             # Continue appending to the current subtask trajectory if it's still ongoing
-            subtask_trajectory += '\n----------------------\n\nPlan:\n' + meta_data['executor_plan'] + '\n'
+            subtask_trajectory += (
+                "\n----------------------\n\nPlan:\n"
+                + meta_data["executor_plan"]
+                + "\n"
+            )
 
         return subtask_trajectory
-
-
-

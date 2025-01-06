@@ -21,12 +21,12 @@ class Worker(BaseModule):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = 'macos',
+        platform: str = "macos",
         search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
     ):
-        '''
+        """
         Worker receives a subtask list and active subtask and generates the next action for the to execute.
         Args:
             engine_params: Dict
@@ -37,9 +37,9 @@ class Worker(BaseModule):
                 The search engine to use
             enable_reflection: bool
                 Whether to enable reflection
-            use_subtask_experience: bool    
+            use_subtask_experience: bool
                 Whether to use subtask experience
-        '''
+        """
         self.grounding_agent = grounding_agent
         self.platform = platform
         self.enable_reflection = enable_reflection
@@ -57,13 +57,19 @@ class Worker(BaseModule):
                 agent.remove_message_at(1)
 
     def reset(self):
-        self.generator_agent = self._create_agent(PROCEDURAL_MEMORY.construct_worker_procedural_memory(
-            type(self.grounding_agent)
-        ).replace("CURRENT_OS", self.platform))
-        self.reflection_agent = self._create_agent(PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY)
-        
-        self.knowledge_base = KnowledgeBase(platform=self.platform, engine_params=self.engine_params)
-        
+        self.generator_agent = self._create_agent(
+            PROCEDURAL_MEMORY.construct_worker_procedural_memory(
+                type(self.grounding_agent)
+            ).replace("CURRENT_OS", self.platform)
+        )
+        self.reflection_agent = self._create_agent(
+            PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY
+        )
+
+        self.knowledge_base = KnowledgeBase(
+            platform=self.platform, engine_params=self.engine_params
+        )
+
         self.turn_count = 0
         self.planner_history = []
         self.reflections = []
@@ -136,9 +142,11 @@ class Worker(BaseModule):
                 instruction += "\nYou may refer to some similar subtask experience if you think they are useful. {}".format(
                     retrieved_similar_subtask + "\n" + retrieved_subtask_experience
                 )
-                
+
             self.generator_agent.add_system_prompt(
-                self.generator_agent.system_prompt.replace("SUBTASK_DESCRIPTION", subtask)
+                self.generator_agent.system_prompt.replace(
+                    "SUBTASK_DESCRIPTION", subtask
+                )
                 .replace("TASK_DESCRIPTION", instruction)
                 .replace("FUTURE_TASKS", ", ".join([f.name for f in future_tasks]))
                 .replace("DONE_TASKS", ",".join(d.name for d in done_task))

@@ -14,24 +14,27 @@ if platform.system() == "Windows":
 
 from ACI import ACI, agent_action
 
+
 # Helper functions
 def _normalize_key(key: str) -> str:
     """Convert 'ctrl' to 'control' for pyautogui compatibility"""
-    return 'ctrl' if key == 'control' else key
-    
+    return "ctrl" if key == "control" else key
+
+
 def list_apps_in_directories():
     directories_to_search = [
-        os.environ.get('PROGRAMFILES', 'C:\\Program Files'),
-        os.environ.get('PROGRAMFILES(X86)', 'C:\\Program Files (x86)')
+        os.environ.get("PROGRAMFILES", "C:\\Program Files"),
+        os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"),
     ]
     apps = []
     for directory in directories_to_search:
         if os.path.exists(directory):
             for root, dirs, files in os.walk(directory):
                 for file in files:
-                    if file.endswith('.exe'):
+                    if file.endswith(".exe"):
                         apps.append(file)
     return apps
+
 
 def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
     """
@@ -60,6 +63,7 @@ def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
     # Calculate IOU
     iou = np.where(union > 0, intersection / union, 0)
     return iou
+
 
 # WindowsACI Class
 class WindowsACI(ACI):
@@ -91,13 +95,15 @@ class WindowsACI(ACI):
                     w, h = size
 
                     if x >= 0 and y >= 0 and w > 0 and h > 0:
-                        preserved_nodes.append({
-                            'position': (x, y),
-                            'size': (w, h),
-                            'title': element.title(),
-                            'text': element.text(),
-                            'role': role
-                        })
+                        preserved_nodes.append(
+                            {
+                                "position": (x, y),
+                                "size": (w, h),
+                                "title": element.title(),
+                                "text": element.text(),
+                                "role": role,
+                            }
+                        )
 
             children = element.children()
             if children:
@@ -111,7 +117,7 @@ class WindowsACI(ACI):
         url = os.environ.get("OCR_SERVER_ADDRESS")
         if not url:
             raise EnvironmentError("OCR SERVER ADDRESS NOT SET")
-            
+
         encoded_screenshot = base64.b64encode(screenshot).decode("utf-8")
         response = requests.post(url, json={"img_bytes": encoded_screenshot})
 
@@ -123,7 +129,10 @@ class WindowsACI(ACI):
         return response.json()
 
     def add_ocr_elements(
-        self, screenshot, linearized_accessibility_tree: List[str], preserved_nodes: List[Dict]
+        self,
+        screenshot,
+        linearized_accessibility_tree: List[str],
+        preserved_nodes: List[Dict],
     ) -> Tuple[List[str], List[Dict]]:
         """
         Add OCR-detected elements to the accessibility tree if they don't overlap with existing elements
@@ -131,15 +140,18 @@ class WindowsACI(ACI):
         """
         # Convert preserved nodes to numpy array of bounding boxes
         if preserved_nodes:
-            tree_bboxes = np.array([
+            tree_bboxes = np.array(
                 [
-                    node['position'][0],
-                    node['position'][1],
-                    node['position'][0] + node['size'][0],
-                    node['position'][1] + node['size'][1]
-                ]
-                for node in preserved_nodes
-            ], dtype=np.float32)
+                    [
+                        node["position"][0],
+                        node["position"][1],
+                        node["position"][0] + node["size"][0],
+                        node["position"][1] + node["size"][1],
+                    ]
+                    for node in preserved_nodes
+                ],
+                dtype=np.float32,
+            )
         else:
             tree_bboxes = np.empty((0, 4), dtype=np.float32)
 
@@ -151,18 +163,21 @@ class WindowsACI(ACI):
         else:
             if ocr_bboxes:
                 preserved_nodes_index = len(preserved_nodes)
-                
+
                 # Convert OCR boxes to numpy array
-                ocr_boxes_array = np.array([
+                ocr_boxes_array = np.array(
                     [
-                        int(box.get("left", 0)),
-                        int(box.get("top", 0)),
-                        int(box.get("right", 0)),
-                        int(box.get("bottom", 0))
-                    ]
-                    for _, _, box in ocr_bboxes['results']
-                ], dtype=np.float32)
-                
+                        [
+                            int(box.get("left", 0)),
+                            int(box.get("top", 0)),
+                            int(box.get("right", 0)),
+                            int(box.get("bottom", 0)),
+                        ]
+                        for _, _, box in ocr_bboxes["results"]
+                    ],
+                    dtype=np.float32,
+                )
+
                 # Calculate max IOUs efficiently
                 if len(tree_bboxes) > 0:
                     max_ious = box_iou(tree_bboxes, ocr_boxes_array).max(axis=0)
@@ -170,33 +185,39 @@ class WindowsACI(ACI):
                     max_ious = np.zeros(len(ocr_boxes_array))
 
                 # Process boxes with low IOU
-                for idx, ((_, content, box), max_iou) in enumerate(zip(ocr_bboxes['results'], max_ious)):
+                for idx, ((_, content, box), max_iou) in enumerate(
+                    zip(ocr_bboxes["results"], max_ious)
+                ):
                     if max_iou < 0.1:
                         x1 = int(box.get("left", 0))
                         y1 = int(box.get("top", 0))
                         x2 = int(box.get("right", 0))
                         y2 = int(box.get("bottom", 0))
-                        
+
                         linearized_accessibility_tree.append(
                             f"{preserved_nodes_index}\tButton\t\t{content}\t\t"
                         )
-                        
+
                         node = {
-                            'position': (x1, y1),
-                            'size': (x2 - x1, y2 - y1),
-                            'title': "",
-                            'text': content,
-                            'role': "Button"
+                            "position": (x1, y1),
+                            "size": (x2 - x1, y2 - y1),
+                            "title": "",
+                            "text": content,
+                            "role": "Button",
                         }
                         preserved_nodes.append(node)
                         preserved_nodes_index += 1
 
         return linearized_accessibility_tree, preserved_nodes
 
-    def linearize_and_annotate_tree(self, obs: Dict, show_all_elements: bool = False) -> str:
+    def linearize_and_annotate_tree(
+        self, obs: Dict, show_all_elements: bool = False
+    ) -> str:
         desktop = Desktop(backend="uia")
         try:
-            tree = desktop.window(handle=win32gui.GetForegroundWindow()).wrapper_object()
+            tree = desktop.window(
+                handle=win32gui.GetForegroundWindow()
+            ).wrapper_object()
         except Exception as e:
             print(f"Error accessing foreground window: {e}")
             self.nodes = []
@@ -206,7 +227,9 @@ class WindowsACI(ACI):
         preserved_nodes = self.preserve_nodes(UIElement(tree), exclude_roles).copy()
 
         if not preserved_nodes and show_all_elements:
-            preserved_nodes = self.preserve_nodes(UIElement(tree), exclude_roles=[]).copy()
+            preserved_nodes = self.preserve_nodes(
+                UIElement(tree), exclude_roles=[]
+            ).copy()
 
         tree_elements = ["id\trole\ttitle\ttext"]
         for idx, node in enumerate(preserved_nodes):
@@ -215,7 +238,7 @@ class WindowsACI(ACI):
             )
 
         if self.ocr:
-            screenshot = obs.get('screenshot', None)
+            screenshot = obs.get("screenshot", None)
             if screenshot is not None:
                 # return tree_elements, preserved_nodes
                 tree_elements, preserved_nodes = self.add_ocr_elements(
@@ -238,19 +261,19 @@ class WindowsACI(ACI):
 
     @agent_action
     def open(self, app_or_file_name: str):
-        '''Open an application or file
-            Args:
-                app_or_file_name:str, the name of the application or file to open
-        '''
+        """Open an application or file
+        Args:
+            app_or_file_name:str, the name of the application or file to open
+        """
         command = f"import pyautogui; import time; pyautogui.hotkey('win', 'r', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
         return command
 
     @agent_action
     def switch_applications(self, app_or_file_name):
-        '''Switch to a different application. Utility function to use instead of alt+tab
-            Args:
-                app_or_file_name:str, the name of the application or file to switch to
-        '''
+        """Switch to a different application. Utility function to use instead of alt+tab
+        Args:
+            app_or_file_name:str, the name of the application or file to switch to
+        """
         command = f"import pyautogui; import time; pyautogui.hotkey('win', 'd', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
         return command
 
@@ -398,7 +421,9 @@ class WindowsACI(ACI):
 
         x = int(coordinates[0] + sizes[0] // 2)
         y = int(coordinates[1] + sizes[1] // 2)
-        command = f"import pyautogui; pyautogui.moveTo({x}, {y}); pyautogui.scroll({clicks})"
+        command = (
+            f"import pyautogui; pyautogui.moveTo({x}, {y}); pyautogui.scroll({clicks})"
+        )
         return command
 
     @agent_action
@@ -450,6 +475,7 @@ class WindowsACI(ACI):
     def fail(self):
         """End the current task with a failure"""
         return """FAIL"""
+
 
 # UIElement Class
 class UIElement:
@@ -507,23 +533,23 @@ class UIElement:
     @staticmethod
     def get_current_applications(obs: Dict):
         apps = []
-        for proc in psutil.process_iter(['pid', 'name']):
-            apps.append(proc.info['name'])
+        for proc in psutil.process_iter(["pid", "name"]):
+            apps.append(proc.info["name"])
         return apps
 
     @staticmethod
     def get_top_app(obs: Dict):
         hwnd = win32gui.GetForegroundWindow()
         _, pid = win32process.GetWindowThreadProcessId(hwnd)
-        for proc in psutil.process_iter(['pid', 'name']):
-            if proc.info['pid'] == pid:
-                return proc.info['name']
+        for proc in psutil.process_iter(["pid", "name"]):
+            if proc.info["pid"] == pid:
+                return proc.info["name"]
         return None
 
     @staticmethod
     def list_apps_in_directories():
         return list_apps_in_directories()
-    
+
     @staticmethod
     def systemWideElement():
         desktop = Desktop(backend="uia")

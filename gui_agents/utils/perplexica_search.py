@@ -10,38 +10,43 @@ import requests
 import time
 from bs4 import BeautifulSoup
 
+
 def perplexica_search(query):
     current_file = os.path.abspath(__file__)
     current_dir = os.path.dirname(current_file)
     try:
-        current_dict = json.load(open((os.path.join(current_dir, "perplexica_search.json"))))
+        current_dict = json.load(
+            open((os.path.join(current_dir, "perplexica_search.json")))
+        )
     except:
         current_dict = {}
     if query in current_dict.keys():
         return current_dict[query]
 
-    result = ''
+    result = ""
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     driver = webdriver.Chrome(options=chrome_options)
-    
-    search_url = f'http://localhost:3000/?q={query}'
+
+    search_url = f"http://localhost:3000/?q={query}"
     driver.get(search_url)
     try:
-        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, "li")))
+        WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.TAG_NAME, "li"))
+        )
         time.sleep(3)
     except:
         time.sleep(20)
-    
+
     html_content = driver.page_source
-    soup = BeautifulSoup(html_content, 'html.parser')
-    li_results = soup.find_all('li')
+    soup = BeautifulSoup(html_content, "html.parser")
+    li_results = soup.find_all("li")
     for li in li_results:
         text = li.get_text(separator=" ", strip=True)
-        text = re.sub(r' \d+( \d+)* \.', '.', text)
-        text = re.sub(r'\. \d+( \d+)*', '.', text)
-        text = re.sub(r'\" \d+( \d+)*', '"', text)
-        result = result + text + '\n'
+        text = re.sub(r" \d+( \d+)* \.", ".", text)
+        text = re.sub(r"\. \d+( \d+)*", ".", text)
+        text = re.sub(r"\" \d+( \d+)*", '"', text)
+        result = result + text + "\n"
 
     driver.quit()
 
@@ -50,6 +55,7 @@ def perplexica_search(query):
         json.dump(current_dict, fout, indent=2)
 
     return result.strip()
+
 
 def _test_search():
 

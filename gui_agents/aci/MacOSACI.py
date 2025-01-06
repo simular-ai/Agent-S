@@ -1,7 +1,7 @@
 import os
 from typing import Dict, List, Tuple, Any
-import numpy as np 
-import requests 
+import numpy as np
+import requests
 import base64
 
 
@@ -21,15 +21,19 @@ from .ACI import ACI, agent_action
 
 def _normalize_key(key: str) -> str:
     """Convert 'cmd' to 'command' for pyautogui compatibility"""
-    return 'command' if key == 'cmd' else key
+    return "command" if key == "cmd" else key
+
 
 def list_apps_in_directories(directories):
     apps = []
     for directory in directories:
         if os.path.exists(directory):
-            directory_apps = [app for app in os.listdir(directory) if app.endswith(".app")]
+            directory_apps = [
+                app for app in os.listdir(directory) if app.endswith(".app")
+            ]
             apps.extend(directory_apps)
     return apps
+
 
 def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
     """
@@ -40,81 +44,88 @@ def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
     """
     # Calculate areas of boxes1
     area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
-    
+
     # Calculate areas of boxes2
     area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
-    
+
     # Get intersections using broadcasting
     lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
     rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
-    
+
     # Calculate intersection areas
     wh = np.clip(rb - lt, 0, None)  # [N,M,2]
     intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
-    
+
     # Calculate union areas
     union = area1[:, None] + area2[None, :] - intersection
-    
+
     # Calculate IOU
     iou = np.where(union > 0, intersection / union, 0)
     return iou
+
 
 class MacOSACI(ACI):
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
         super().__init__(top_app_only=top_app_only, ocr=ocr)
         # Directories to search for applications in MacOS
-        directories_to_search = [
-            "/System/Applications",
-            "/Applications"
-        ]
+        directories_to_search = ["/System/Applications", "/Applications"]
         self.all_apps = list_apps_in_directories(directories_to_search)
 
     def get_active_apps(self, obs: Dict) -> List[str]:
         return UIElement.get_current_applications(obs)
-    
+
     def get_top_app(self, obs: Dict) -> str:
         return UIElement.get_top_app(obs)
 
     def preserve_nodes(self, tree, exclude_roles=None):
         if exclude_roles is None:
             exclude_roles = set()
-        
+
         preserved_nodes = []
 
         # Inner function to recursively traverse the accessibility tree
         def traverse_and_preserve(element):
-            role = element.attribute('AXRole')
+            role = element.attribute("AXRole")
 
             if role not in exclude_roles:
                 # TODO: get coordinate values directly from interface
-                position = element.attribute('AXPosition')
-                size = element.attribute('AXSize')
+                position = element.attribute("AXPosition")
+                size = element.attribute("AXSize")
                 if position and size:
-                        pos_parts = position.__repr__().split().copy()
-                        # Find the parts containing 'x:' and 'y:'
-                        x_part = next(part for part in pos_parts if part.startswith('x:'))
-                        y_part = next(part for part in pos_parts if part.startswith('y:'))
-                        
-                        # Extract the numerical values after 'x:' and 'y:'
-                        x = float(x_part.split(':')[1])
-                        y = float(y_part.split(':')[1])
+                    pos_parts = position.__repr__().split().copy()
+                    # Find the parts containing 'x:' and 'y:'
+                    x_part = next(part for part in pos_parts if part.startswith("x:"))
+                    y_part = next(part for part in pos_parts if part.startswith("y:"))
 
-                        size_parts = size.__repr__().split().copy()
-                        # Find the parts containing 'Width:' and 'Height:'
-                        width_part = next(part for part in size_parts if part.startswith('w:'))
-                        height_part = next(part for part in size_parts if part.startswith('h:'))
+                    # Extract the numerical values after 'x:' and 'y:'
+                    x = float(x_part.split(":")[1])
+                    y = float(y_part.split(":")[1])
 
-                        # Extract the numerical values after 'Width:' and 'Height:'
-                        w = float(width_part.split(':')[1])
-                        h = float(height_part.split(':')[1])
-        
-                        if x >= 0 and y >= 0 and w > 0 and h > 0:
-                            preserved_nodes.append({'position': (x, y), 
-                                                    'size' : (w, h), 
-                                                    'title': str(element.attribute('AXTitle')), 
-                                                    'text': str(element.attribute('AXDescription')) or str(element.attribute('AXValue')),
-                                                    'role': str(element.attribute('AXRole'))})
-            
+                    size_parts = size.__repr__().split().copy()
+                    # Find the parts containing 'Width:' and 'Height:'
+                    width_part = next(
+                        part for part in size_parts if part.startswith("w:")
+                    )
+                    height_part = next(
+                        part for part in size_parts if part.startswith("h:")
+                    )
+
+                    # Extract the numerical values after 'Width:' and 'Height:'
+                    w = float(width_part.split(":")[1])
+                    h = float(height_part.split(":")[1])
+
+                    if x >= 0 and y >= 0 and w > 0 and h > 0:
+                        preserved_nodes.append(
+                            {
+                                "position": (x, y),
+                                "size": (w, h),
+                                "title": str(element.attribute("AXTitle")),
+                                "text": str(element.attribute("AXDescription"))
+                                or str(element.attribute("AXValue")),
+                                "role": str(element.attribute("AXRole")),
+                            }
+                        )
+
             children = element.children()
             if children:
                 for child_ref in children:
@@ -125,12 +136,12 @@ class MacOSACI(ACI):
         traverse_and_preserve(tree)
 
         return preserved_nodes
-    
+
     def extract_elements_from_screenshot(self, screenshot: bytes) -> Dict[str, Any]:
         url = os.environ.get("OCR_SERVER_ADDRESS")
         if not url:
             raise EnvironmentError("OCR SERVER ADDRESS NOT SET")
-            
+
         encoded_screenshot = base64.b64encode(screenshot).decode("utf-8")
         response = requests.post(url, json={"img_bytes": encoded_screenshot})
 
@@ -140,9 +151,12 @@ class MacOSACI(ACI):
                 "results": [],
             }
         return response.json()
-    
+
     def add_ocr_elements(
-        self, screenshot, linearized_accessibility_tree: List[str], preserved_nodes: List[Dict]
+        self,
+        screenshot,
+        linearized_accessibility_tree: List[str],
+        preserved_nodes: List[Dict],
     ) -> Tuple[List[str], List[Dict]]:
         """
         Add OCR-detected elements to the accessibility tree if they don't overlap with existing elements
@@ -150,15 +164,18 @@ class MacOSACI(ACI):
         """
         # Convert preserved nodes to numpy array of bounding boxes
         if preserved_nodes:
-            tree_bboxes = np.array([
+            tree_bboxes = np.array(
                 [
-                    node['position'][0],
-                    node['position'][1],
-                    node['position'][0] + node['size'][0],
-                    node['position'][1] + node['size'][1]
-                ]
-                for node in preserved_nodes
-            ], dtype=np.float32)
+                    [
+                        node["position"][0],
+                        node["position"][1],
+                        node["position"][0] + node["size"][0],
+                        node["position"][1] + node["size"][1],
+                    ]
+                    for node in preserved_nodes
+                ],
+                dtype=np.float32,
+            )
         else:
             tree_bboxes = np.empty((0, 4), dtype=np.float32)
 
@@ -170,18 +187,21 @@ class MacOSACI(ACI):
         else:
             if ocr_bboxes:
                 preserved_nodes_index = len(preserved_nodes)
-                
+
                 # Convert OCR boxes to numpy array
-                ocr_boxes_array = np.array([
+                ocr_boxes_array = np.array(
                     [
-                        int(box.get("left", 0)),
-                        int(box.get("top", 0)),
-                        int(box.get("right", 0)),
-                        int(box.get("bottom", 0))
-                    ]
-                    for _, _, box in ocr_bboxes
-                ], dtype=np.float32)
-                
+                        [
+                            int(box.get("left", 0)),
+                            int(box.get("top", 0)),
+                            int(box.get("right", 0)),
+                            int(box.get("bottom", 0)),
+                        ]
+                        for _, _, box in ocr_bboxes
+                    ],
+                    dtype=np.float32,
+                )
+
                 # Calculate max IOUs efficiently
                 if len(tree_bboxes) > 0:
                     max_ious = box_iou(tree_bboxes, ocr_boxes_array).max(axis=0)
@@ -189,34 +209,40 @@ class MacOSACI(ACI):
                     max_ious = np.zeros(len(ocr_boxes_array))
 
                 # Process boxes with low IOU
-                for idx, ((_, content, box), max_iou) in enumerate(zip(ocr_bboxes, max_ious)):
+                for idx, ((_, content, box), max_iou) in enumerate(
+                    zip(ocr_bboxes, max_ious)
+                ):
                     if max_iou < 0.1:
                         x1 = int(box.get("left", 0))
                         y1 = int(box.get("top", 0))
                         x2 = int(box.get("right", 0))
                         y2 = int(box.get("bottom", 0))
-                        
+
                         linearized_accessibility_tree.append(
                             f"{preserved_nodes_index}\tAXButton\t\t{content}\t\t"
                         )
-                        
+
                         node = {
-                            'position': (x1, y1),
-                            'size': (x2 - x1, y2 - y1),
-                            'title': "",
-                            'text': content,
-                            'role': "AXButton"
+                            "position": (x1, y1),
+                            "size": (x2 - x1, y2 - y1),
+                            "title": "",
+                            "text": content,
+                            "role": "AXButton",
                         }
                         preserved_nodes.append(node)
                         preserved_nodes_index += 1
 
         return linearized_accessibility_tree, preserved_nodes
 
-    def linearize_and_annotate_tree(self, obs: Dict, show_all_elements: bool = False) -> str:
-        accessibility_tree = obs['accessibility_tree']
-        screenshot = obs['screenshot']  
-        self.top_app = NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
-        tree = (UIElement(accessibility_tree.attribute('AXFocusedApplication')))
+    def linearize_and_annotate_tree(
+        self, obs: Dict, show_all_elements: bool = False
+    ) -> str:
+        accessibility_tree = obs["accessibility_tree"]
+        screenshot = obs["screenshot"]
+        self.top_app = (
+            NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
+        )
+        tree = UIElement(accessibility_tree.attribute("AXFocusedApplication"))
         exclude_roles = ["AXGroup", "AXLayoutArea", "AXLayoutItem", "AXUnknown"]
         preserved_nodes = self.preserve_nodes(tree, exclude_roles).copy()
         tree_elements = ["id\trole\ttitle\ttext"]
@@ -232,7 +258,6 @@ class MacOSACI(ACI):
 
         self.nodes = preserved_nodes
         return "\n".join(tree_elements)
-    
 
     def find_element(self, element_id: int) -> Dict:
         try:
@@ -244,18 +269,18 @@ class MacOSACI(ACI):
 
     @agent_action
     def open(self, app_or_file_name: str):
-        '''Open an application or file
-            Args:
-                app_or_file_name:str, the name of the application or file to open
-        '''
-        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)" 
+        """Open an application or file
+        Args:
+            app_or_file_name:str, the name of the application or file to open
+        """
+        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
 
     @agent_action
     def switch_applications(self, app_or_file_name):
-        '''Switch to a different an application. Utility function to use instead of command+tab
-            Args:
-                app_or_file_name:str, the name of the application or file to switch to
-        '''
+        """Switch to a different an application. Utility function to use instead of command+tab
+        Args:
+            app_or_file_name:str, the name of the application or file to switch to
+        """
         return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
 
     @agent_action
@@ -333,7 +358,6 @@ class MacOSACI(ACI):
                 # Use 'command' instead of 'cmd'
                 command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
 
-
             command += f"pyautogui.write({repr(text)}); "
 
             if enter:
@@ -345,7 +369,6 @@ class MacOSACI(ACI):
             if overwrite:
                 # Use 'command' instead of 'cmd'
                 command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
-
 
             command += f"pyautogui.write({repr(text)}); "
 
@@ -525,7 +548,7 @@ class UIElement(object):
         w = float(width_part.split(":")[1])
         h = float(height_part.split(":")[1])
         return (w, h)
-    
+
     def isValid(self):
         if self.position() is not None and self.size() is not None:
             return True
@@ -577,8 +600,3 @@ class UIElement(object):
 
     def __repr__(self):
         return "UIElement%s" % (self.ref)
-
-
-
-
-    
