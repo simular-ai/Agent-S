@@ -1,10 +1,11 @@
 import json
-import pickle
 import os
-from tqdm import tqdm
+import pickle
 import time
+
 import openai
 from openai import OpenAI
+from tqdm import tqdm
 
 
 def process_embeddings_linearly(keys, model="text-embedding-3-small"):

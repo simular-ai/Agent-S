@@ -1,10 +1,8 @@
 import base64
 import re
 
-from gui_agents.mllm.MultimodalAsyncEngine import (
-    LMMEngineAsyncAzureOpenAI,
-    LMMEngineAsyncOpenAI,
-)
+from gui_agents.mllm.MultimodalAsyncEngine import (LMMEngineAsyncAzureOpenAI,
+                                                   LMMEngineAsyncOpenAI)
 from gui_agents.mllm.MultimodalEngine import LMMEngineCogVLM, LMMEngineLlava
 
 

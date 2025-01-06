@@ -3,19 +3,18 @@
 # License: MIT
 
 import os
-import backoff
-import openai
-from openai import APIConnectionError, APIError, RateLimitError, AzureOpenAI, OpenAI
-
-from anthropic import Anthropic
-
-import requests
-from PIL import Image
-from io import BytesIO
 import re
-import torch
-import numpy as np
+from io import BytesIO
 
+import backoff
+import numpy as np
+import openai
+import requests
+import torch
+from anthropic import Anthropic
+from openai import (APIConnectionError, APIError, AzureOpenAI, OpenAI,
+                    RateLimitError)
+from PIL import Image
 
 # TODO: Import only if module exists, else ignore
 # from llava.model.builder import load_pretrained_model

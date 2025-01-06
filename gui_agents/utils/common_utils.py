@@ -1,25 +1,21 @@
 import base64
+import io
 import json
 import os
+import pickle
 import re
 import tempfile
-import xml.etree.ElementTree as ET
-from xml.etree.ElementTree import Element
-from io import BytesIO
-from typing import List
 import time
-import tiktoken
-
-import io
 import xml.etree.ElementTree as ET
-from typing import Tuple, List, Union, Dict
+from io import BytesIO
+from typing import Dict, List, Tuple, Union
+from xml.etree.ElementTree import Element
 
+import numpy as np
+import tiktoken
+import torch
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ValidationError
-import torch
-import numpy as np
-
-import pickle
 
 
 def find_leaf_nodes(xlm_file_str):

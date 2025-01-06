@@ -1,7 +1,8 @@
-import requests
 import json
-import toml
 import os
+
+import requests
+import toml
 
 current_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(current_path)

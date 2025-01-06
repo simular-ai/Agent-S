@@ -1,11 +1,12 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
-from PIL import Image
-import io
-import numpy as np
-from paddleocr import PaddleOCR
 import base64
 import gc
+import io
+
+import numpy as np
+from fastapi import FastAPI
+from paddleocr import PaddleOCR
+from PIL import Image
+from pydantic import BaseModel
 
 app = FastAPI()
 ocr_module = PaddleOCR(use_angle_cls=True, lang="en")

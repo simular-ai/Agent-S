@@ -1,20 +1,13 @@
+import base64
 import os
-from typing import Dict, List, Tuple, Any
+from typing import Any, Dict, List, Tuple
+
 import numpy as np
 import requests
-import base64
-
-
-from ApplicationServices import (
-    AXUIElementCreateSystemWide,
-)
-
-from ApplicationServices import (
-    AXUIElementCopyAttributeNames,
-    AXUIElementCopyAttributeValue,
-)
-
 from AppKit import *
+from ApplicationServices import (AXUIElementCopyAttributeNames,
+                                 AXUIElementCopyAttributeValue,
+                                 AXUIElementCreateSystemWide)
 
 from .ACI import ACI, agent_action
 

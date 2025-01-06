@@ -38,7 +38,8 @@ setup(
     ],
     extras_require={
         'dev': [
-            'black'  # Code formatter for linting
+            'black',  # Code formatter for linting
+            'isort'
         ]
     },
     entry_points={

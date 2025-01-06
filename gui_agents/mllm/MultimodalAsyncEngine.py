@@ -1,16 +1,12 @@
 import os
+from io import BytesIO
+
 import backoff
 import openai
-from openai import (
-    APIConnectionError,
-    APIError,
-    RateLimitError,
-    AsyncOpenAI,
-    AsyncAzureOpenAI,
-)
 import requests
+from openai import (APIConnectionError, APIError, AsyncAzureOpenAI,
+                    AsyncOpenAI, RateLimitError)
 from PIL import Image
-from io import BytesIO
 
 
 def image_parser(args):

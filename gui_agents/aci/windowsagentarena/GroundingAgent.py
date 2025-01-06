@@ -1,12 +1,13 @@
+import base64
+import logging
 import os
-import torch
+import time
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
-import torchvision
-import base64
+
 import requests
-import logging
-import time
+import torch
+import torchvision
 
 logger = logging.getLogger("desktopenv.agent")
 

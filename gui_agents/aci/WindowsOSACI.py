@@ -1,10 +1,11 @@
-import os
-from typing import Dict, List, Tuple, Any
-import numpy as np
-import requests
 import base64
-import psutil
+import os
 import platform
+from typing import Any, Dict, List, Tuple
+
+import numpy as np
+import psutil
+import requests
 
 if platform.system() == "Windows":
     import pywinauto

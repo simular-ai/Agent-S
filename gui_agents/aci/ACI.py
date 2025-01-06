@@ -1,6 +1,6 @@
-from typing import Dict, List, Tuple, Any
 import logging
 import os
+from typing import Any, Dict, List, Tuple
 
 logger = logging.getLogger("desktopenv.agent")
 
