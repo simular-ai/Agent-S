@@ -1,30 +1,39 @@
 import base64
 import os
+import platform
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import psutil
 import requests
-from AppKit import *
-from ApplicationServices import (AXUIElementCopyAttributeNames,
-                                 AXUIElementCopyAttributeValue,
-                                 AXUIElementCreateSystemWide)
 
-from .ACI import ACI, agent_action
+if platform.system() == "Windows":
+    import pywinauto
+    from pywinauto import Desktop
+    import win32gui
+    import win32process
+
+from ACI import ACI, agent_action
 
 
+# Helper functions
 def _normalize_key(key: str) -> str:
-    """Convert 'cmd' to 'command' for pyautogui compatibility"""
-    return "command" if key == "cmd" else key
+    """Convert 'ctrl' to 'control' for pyautogui compatibility"""
+    return "ctrl" if key == "control" else key
 
 
-def list_apps_in_directories(directories):
+def list_apps_in_directories():
+    directories_to_search = [
+        os.environ.get("PROGRAMFILES", "C:\\Program Files"),
+        os.environ.get("PROGRAMFILES(X86)", "C:\\Program Files (x86)"),
+    ]
     apps = []
-    for directory in directories:
+    for directory in directories_to_search:
         if os.path.exists(directory):
-            directory_apps = [
-                app for app in os.listdir(directory) if app.endswith(".app")
-            ]
-            apps.extend(directory_apps)
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    if file.endswith(".exe"):
+                        apps.append(file)
     return apps
 
 
@@ -57,12 +66,12 @@ def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
     return iou
 
 
-class MacOSACI(ACI):
+# WindowsACI Class
+class WindowsACI(ACI):
     def __init__(self, top_app_only: bool = True, ocr: bool = False):
         super().__init__(top_app_only=top_app_only, ocr=ocr)
-        # Directories to search for applications in MacOS
-        directories_to_search = ["/System/Applications", "/Applications"]
-        self.all_apps = list_apps_in_directories(directories_to_search)
+        self.nodes = []
+        self.all_apps = list_apps_in_directories()
 
     def get_active_apps(self, obs: Dict) -> List[str]:
         return UIElement.get_current_applications(obs)
@@ -76,58 +85,33 @@ class MacOSACI(ACI):
 
         preserved_nodes = []
 
-        # Inner function to recursively traverse the accessibility tree
         def traverse_and_preserve(element):
-            role = element.attribute("AXRole")
+            role = element.role()
 
             if role not in exclude_roles:
-                # TODO: get coordinate values directly from interface
-                position = element.attribute("AXPosition")
-                size = element.attribute("AXSize")
+                position = element.position()
+                size = element.size()
                 if position and size:
-                    pos_parts = position.__repr__().split().copy()
-                    # Find the parts containing 'x:' and 'y:'
-                    x_part = next(part for part in pos_parts if part.startswith("x:"))
-                    y_part = next(part for part in pos_parts if part.startswith("y:"))
-
-                    # Extract the numerical values after 'x:' and 'y:'
-                    x = float(x_part.split(":")[1])
-                    y = float(y_part.split(":")[1])
-
-                    size_parts = size.__repr__().split().copy()
-                    # Find the parts containing 'Width:' and 'Height:'
-                    width_part = next(
-                        part for part in size_parts if part.startswith("w:")
-                    )
-                    height_part = next(
-                        part for part in size_parts if part.startswith("h:")
-                    )
-
-                    # Extract the numerical values after 'Width:' and 'Height:'
-                    w = float(width_part.split(":")[1])
-                    h = float(height_part.split(":")[1])
+                    x, y = position
+                    w, h = size
 
                     if x >= 0 and y >= 0 and w > 0 and h > 0:
                         preserved_nodes.append(
                             {
                                 "position": (x, y),
                                 "size": (w, h),
-                                "title": str(element.attribute("AXTitle")),
-                                "text": str(element.attribute("AXDescription"))
-                                or str(element.attribute("AXValue")),
-                                "role": str(element.attribute("AXRole")),
+                                "title": element.title(),
+                                "text": element.text(),
+                                "role": role,
                             }
                         )
 
             children = element.children()
             if children:
-                for child_ref in children:
-                    child_element = UIElement(child_ref)
+                for child_element in children:
                     traverse_and_preserve(child_element)
 
-        # Start traversing from the given element
         traverse_and_preserve(tree)
-
         return preserved_nodes
 
     def extract_elements_from_screenshot(self, screenshot: bytes) -> Dict[str, Any]:
@@ -190,7 +174,7 @@ class MacOSACI(ACI):
                             int(box.get("right", 0)),
                             int(box.get("bottom", 0)),
                         ]
-                        for _, _, box in ocr_bboxes
+                        for _, _, box in ocr_bboxes["results"]
                     ],
                     dtype=np.float32,
                 )
@@ -203,7 +187,7 @@ class MacOSACI(ACI):
 
                 # Process boxes with low IOU
                 for idx, ((_, content, box), max_iou) in enumerate(
-                    zip(ocr_bboxes, max_ious)
+                    zip(ocr_bboxes["results"], max_ious)
                 ):
                     if max_iou < 0.1:
                         x1 = int(box.get("left", 0))
@@ -212,7 +196,7 @@ class MacOSACI(ACI):
                         y2 = int(box.get("bottom", 0))
 
                         linearized_accessibility_tree.append(
-                            f"{preserved_nodes_index}\tAXButton\t\t{content}\t\t"
+                            f"{preserved_nodes_index}\tButton\t\t{content}\t\t"
                         )
 
                         node = {
@@ -220,7 +204,7 @@ class MacOSACI(ACI):
                             "size": (x2 - x1, y2 - y1),
                             "title": "",
                             "text": content,
-                            "role": "AXButton",
+                            "role": "Button",
                         }
                         preserved_nodes.append(node)
                         preserved_nodes_index += 1
@@ -230,14 +214,24 @@ class MacOSACI(ACI):
     def linearize_and_annotate_tree(
         self, obs: Dict, show_all_elements: bool = False
     ) -> str:
-        accessibility_tree = obs["accessibility_tree"]
-        screenshot = obs["screenshot"]
-        self.top_app = (
-            NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
-        )
-        tree = UIElement(accessibility_tree.attribute("AXFocusedApplication"))
-        exclude_roles = ["AXGroup", "AXLayoutArea", "AXLayoutItem", "AXUnknown"]
-        preserved_nodes = self.preserve_nodes(tree, exclude_roles).copy()
+        desktop = Desktop(backend="uia")
+        try:
+            tree = desktop.window(
+                handle=win32gui.GetForegroundWindow()
+            ).wrapper_object()
+        except Exception as e:
+            print(f"Error accessing foreground window: {e}")
+            self.nodes = []
+            return ""
+
+        exclude_roles = ["Pane", "Group", "Unknown"]
+        preserved_nodes = self.preserve_nodes(UIElement(tree), exclude_roles).copy()
+
+        if not preserved_nodes and show_all_elements:
+            preserved_nodes = self.preserve_nodes(
+                UIElement(tree), exclude_roles=[]
+            ).copy()
+
         tree_elements = ["id\trole\ttitle\ttext"]
         for idx, node in enumerate(preserved_nodes):
             tree_elements.append(
@@ -245,14 +239,20 @@ class MacOSACI(ACI):
             )
 
         if self.ocr:
-            tree_elements, preserved_nodes = self.add_ocr_elements(
-                screenshot, tree_elements, preserved_nodes, "AXButton"
-            )
+            screenshot = obs.get("screenshot", None)
+            if screenshot is not None:
+                # return tree_elements, preserved_nodes
+                tree_elements, preserved_nodes = self.add_ocr_elements(
+                    screenshot, tree_elements, preserved_nodes
+                )
 
         self.nodes = preserved_nodes
         return "\n".join(tree_elements)
 
     def find_element(self, element_id: int) -> Dict:
+        if not self.nodes:
+            print("No elements found in the accessibility tree.")
+            raise IndexError("No elements to select.")
         try:
             return self.nodes[element_id]
         except IndexError:
@@ -266,15 +266,17 @@ class MacOSACI(ACI):
         Args:
             app_or_file_name:str, the name of the application or file to open
         """
-        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
+        command = f"import pyautogui; import time; pyautogui.hotkey('win', 'r', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
+        return command
 
     @agent_action
     def switch_applications(self, app_or_file_name):
-        """Switch to a different an application. Utility function to use instead of command+tab
+        """Switch to a different application. Utility function to use instead of alt+tab
         Args:
             app_or_file_name:str, the name of the application or file to switch to
         """
-        return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
+        command = f"import pyautogui; import time; pyautogui.hotkey('win', 'd', interval=0.5); pyautogui.typewrite({repr(app_or_file_name)}); pyautogui.press('enter'); time.sleep(1.0)"
+        return command
 
     @agent_action
     def click(
@@ -296,21 +298,19 @@ class MacOSACI(ACI):
         sizes: Tuple[int, int] = node["size"]
 
         # Calculate the center of the element
-        x = coordinates[0] + sizes[0] // 2
-        y = coordinates[1] + sizes[1] // 2
+        x = int(coordinates[0] + sizes[0] // 2)
+        y = int(coordinates[1] + sizes[1] // 2)
 
         command = "import pyautogui; "
 
-        # Normalize any 'cmd' to 'command'
+        # Normalize any 'ctrl' to 'control'
         hold_keys = [_normalize_key(k) for k in hold_keys]
 
-        # TODO: specified duration?
         for k in hold_keys:
             command += f"pyautogui.keyDown({repr(k)}); "
-        command += f"""import pyautogui; pyautogui.click({x}, {y}, clicks={num_clicks}, button={repr(button_type)}); """
+        command += f"""pyautogui.click({x}, {y}, clicks={num_clicks}, button={repr(button_type)}); """
         for k in hold_keys:
             command += f"pyautogui.keyUp({repr(k)}); "
-        # Return pyautoguicode to click on the element
         return command
 
     @agent_action
@@ -326,42 +326,35 @@ class MacOSACI(ACI):
             element_id:int ID of the element to type into. If not provided, typing will start at the current cursor location.
             text:str the text to type
             overwrite:bool Assign it to True if the text should overwrite the existing text, otherwise assign it to False. Using this argument clears all text in an element.
-            enter:bool Assign it to True if the enter (return) key should be pressed after typing the text, otherwise assign it to False.
+            enter:bool Assign it to True if the enter key should be pressed after typing the text, otherwise assign it to False.
         """
         try:
-            # Use the provided element_id or default to None
             node = self.find_element(element_id) if element_id is not None else None
         except:
             node = None
 
         if node is not None:
-            # If a node is found, retrieve its coordinates and size
             coordinates = node["position"]
             sizes = node["size"]
 
-            # Calculate the center of the element
-            x = coordinates[0] + sizes[0] // 2
-            y = coordinates[1] + sizes[1] // 2
+            x = int(coordinates[0] + sizes[0] // 2)
+            y = int(coordinates[1] + sizes[1] // 2)
 
-            # Start typing at the center of the element
             command = "import pyautogui; "
             command += f"pyautogui.click({x}, {y}); "
 
             if overwrite:
-                # Use 'command' instead of 'cmd'
-                command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
+                command += f"pyautogui.hotkey('ctrl', 'a', interval=0.5); pyautogui.press('backspace'); "
 
             command += f"pyautogui.write({repr(text)}); "
 
             if enter:
                 command += "pyautogui.press('enter'); "
         else:
-            # If no element is found, start typing at the current cursor location
             command = "import pyautogui; "
 
             if overwrite:
-                # Use 'command' instead of 'cmd'
-                command += f"pyautogui.hotkey('command', 'a', interval=1); pyautogui.press('backspace'); "
+                command += f"pyautogui.hotkey('ctrl', 'a', interval=0.5); pyautogui.press('backspace'); "
 
             command += f"pyautogui.write({repr(text)}); "
 
@@ -395,24 +388,20 @@ class MacOSACI(ACI):
         coordinates2 = node2["position"]
         sizes2 = node2["size"]
 
-        # Calculate the center of the element
-        x1 = coordinates1[0] + sizes1[0] // 2
-        y1 = coordinates1[1] + sizes1[1] // 2
+        x1 = int(coordinates1[0] + sizes1[0] // 2)
+        y1 = int(coordinates1[1] + sizes1[1] // 2)
 
-        x2 = coordinates2[0] + sizes2[0] // 2
-        y2 = coordinates2[1] + sizes2[1] // 2
+        x2 = int(coordinates2[0] + sizes2[0] // 2)
+        y2 = int(coordinates2[1] + sizes2[1] // 2)
 
         command = "import pyautogui; "
 
         command += f"pyautogui.moveTo({x1}, {y1}); "
-        # TODO: specified duration?
         for k in hold_keys:
             command += f"pyautogui.keyDown({repr(k)}); "
-        command += f"pyautogui.dragTo({x2}, {y2}, duration=1.); pyautogui.mouseUp(); "
+        command += f"pyautogui.dragTo({x2}, {y2}, duration=1.0); pyautogui.mouseUp(); "
         for k in hold_keys:
             command += f"pyautogui.keyUp({repr(k)}); "
-
-        # Return pyautoguicode to drag and drop the elements
 
         return command
 
@@ -427,37 +416,35 @@ class MacOSACI(ACI):
             node = self.find_element(element_id)
         except:
             node = self.find_element(0)
-        # print(node.attrib)
+
         coordinates = node["position"]
         sizes = node["size"]
 
-        # Calculate the center of the element
-        x = coordinates[0] + sizes[0] // 2
-        y = coordinates[1] + sizes[1] // 2
-        return (
+        x = int(coordinates[0] + sizes[0] // 2)
+        y = int(coordinates[1] + sizes[1] // 2)
+        command = (
             f"import pyautogui; pyautogui.moveTo({x}, {y}); pyautogui.scroll({clicks})"
         )
+        return command
 
     @agent_action
-    def hotkey(self, keys: List):
+    def hotkey(self, keys: List[str]):
         """Press a hotkey combination
         Args:
-            keys:List the keys to press in combination in a list format (e.g. ['shift', 'c'])
+            keys:List[str] the keys to press in combination in a list format (e.g. ['shift', 'c'])
         """
-        # Normalize any 'cmd' to 'command'
         keys = [_normalize_key(k) for k in keys]
-        # add quotes around the keys
         keys = [f"'{key}'" for key in keys]
-        return f"import pyautogui; pyautogui.hotkey({', '.join(keys)}, interval=1)"
+        command = f"import pyautogui; pyautogui.hotkey({', '.join(keys)}, interval=0.5)"
+        return command
 
     @agent_action
-    def hold_and_press(self, hold_keys: List, press_keys: List):
+    def hold_and_press(self, hold_keys: List[str], press_keys: List[str]):
         """Hold a list of keys and press a list of keys
         Args:
-            hold_keys:List, list of keys to hold
-            press_keys:List, list of keys to press in a sequence
+            hold_keys:List[str], list of keys to hold
+            press_keys:List[str], list of keys to press in a sequence
         """
-        # Normalize any 'cmd' to 'command' in both lists
         hold_keys = [_normalize_key(k) for k in hold_keys]
         press_keys = [_normalize_key(k) for k in press_keys]
 
@@ -477,7 +464,8 @@ class MacOSACI(ACI):
         Args:
             time:float the amount of time to wait in seconds
         """
-        return f"""import time; time.sleep({time})"""
+        command = f"import time; time.sleep({time})"
+        return command
 
     @agent_action
     def done(self):
@@ -490,106 +478,83 @@ class MacOSACI(ACI):
         return """FAIL"""
 
 
-class UIElement(object):
+# UIElement Class
+class UIElement:
+    def __init__(self, element=None):
+        if isinstance(element, pywinauto.application.WindowSpecification):
+            self.element = element.wrapper_object()
+        else:
+            self.element = element  # This should be a control wrapper
 
-    def __init__(self, ref=None):
-        self.ref = ref
-
-    def getAttributeNames(self):
-        error_code, attributeNames = AXUIElementCopyAttributeNames(self.ref, None)
-        return list(attributeNames)
+    def get_attribute_names(self):
+        return list(self.element.element_info.get_properties().keys())
 
     def attribute(self, key: str):
-        error, value = AXUIElementCopyAttributeValue(self.ref, key, None)
-        return value
+        props = self.element.element_info.get_properties()
+        return props.get(key, None)
 
     def children(self):
-        return self.attribute("AXChildren")
-
-    def systemWideElement():
-        ref = AXUIElementCreateSystemWide()
-        return UIElement(ref)
+        try:
+            return [UIElement(child) for child in self.element.children()]
+        except Exception as e:
+            print(f"Error accessing children: {e}")
+            return []
 
     def role(self):
-        return self.attribute("AXRole")
+        return self.element.element_info.control_type
 
     def position(self):
-        pos = self.attribute("AXPosition")
-        if pos is None:
-            return None
-        pos_parts = pos.__repr__().split().copy()
-        # Find the parts containing 'x:' and 'y:'
-        x_part = next(part for part in pos_parts if part.startswith("x:"))
-        y_part = next(part for part in pos_parts if part.startswith("y:"))
-
-        # Extract the numerical values after 'x:' and 'y:'
-        x = float(x_part.split(":")[1])
-        y = float(y_part.split(":")[1])
-
-        return (x, y)
+        rect = self.element.rectangle()
+        return (rect.left, rect.top)
 
     def size(self):
-        size = self.attribute("AXSize")
-        if size is None:
-            return None
-        size_parts = size.__repr__().split().copy()
-        # Find the parts containing 'Width:' and 'Height:'
-        width_part = next(part for part in size_parts if part.startswith("w:"))
-        height_part = next(part for part in size_parts if part.startswith("h:"))
+        rect = self.element.rectangle()
+        return (rect.width(), rect.height())
 
-        # Extract the numerical values after 'Width:' and 'Height:'
-        w = float(width_part.split(":")[1])
-        h = float(height_part.split(":")[1])
-        return (w, h)
+    def title(self):
+        return self.element.element_info.name
+
+    def text(self):
+        return self.element.window_text()
 
     def isValid(self):
-        if self.position() is not None and self.size() is not None:
-            return True
+        return self.position() is not None and self.size() is not None
 
-    def parse(self, element):
-        position = element.position(element)
-        size = element.size(element)
+    def parse(self):
+        position = self.position()
+        size = self.size()
         return {
             "position": position,
             "size": size,
-            "title": str(element.attribute("AXTitle")),
-            "text": str(element.attribute("AXDescription"))
-            or str(element.attribute("AXValue")),
-            "role": str(element.attribute("AXRole")),
+            "title": self.title(),
+            "text": self.text(),
+            "role": self.role(),
         }
 
     @staticmethod
     def get_current_applications(obs: Dict):
-        # Get the shared workspace instance
-        workspace = NSWorkspace.sharedWorkspace()
-
-        # Get a list of running applications
-        running_apps = workspace.runningApplications()
-
-        # Iterate through the list and print each application's name
-        current_apps = []
-        for app in running_apps:
-            if app.activationPolicy() == 0:
-                app_name = app.localizedName()
-                current_apps.append(app_name)
-
-        return current_apps
-
-    @staticmethod
-    def list_apps_in_directories():
-        directories_to_search = ["/System/Applications", "/Applications"]
         apps = []
-        for directory in directories_to_search:
-            if os.path.exists(directory):
-                directory_apps = [
-                    app for app in os.listdir(directory) if app.endswith(".app")
-                ]
-                apps.extend(directory_apps)
+        for proc in psutil.process_iter(["pid", "name"]):
+            apps.append(proc.info["name"])
         return apps
 
     @staticmethod
     def get_top_app(obs: Dict):
-        return NSWorkspace.sharedWorkspace().frontmostApplication().localizedName()
+        hwnd = win32gui.GetForegroundWindow()
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        for proc in psutil.process_iter(["pid", "name"]):
+            if proc.info["pid"] == pid:
+                return proc.info["name"]
+        return None
+
+    @staticmethod
+    def list_apps_in_directories():
+        return list_apps_in_directories()
+
+    @staticmethod
+    def systemWideElement():
+        desktop = Desktop(backend="uia")
+        return UIElement(desktop)
 
     def __repr__(self):
-        return "UIElement%s" % (self.ref)
+        return f"UIElement({self.element})"

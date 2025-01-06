@@ -1,14 +1,16 @@
+import base64
+import logging
 import os
-import torch
+import time
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
-import torchvision
-import base64
-import requests
-import logging
-import time 
+from typing import Dict, List, Optional, Tuple
 
-from .ACI import ACI 
+import requests
+import torch
+import torchvision
+
+from .ACI import ACI
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -349,7 +351,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
     def check_new_apps(self, old_apps, new_apps):
         return new_apps - old_apps
-    
+
     def get_top_app(self, obs):
         return self.top_app
 
@@ -736,7 +738,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def type(
         self,
         element_id: int = None,
-        text: str = '',
+        text: str = "",
         overwrite: bool = False,
         enter: bool = False,
     ):

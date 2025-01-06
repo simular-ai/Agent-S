@@ -32,8 +32,16 @@ setup(
         'tiktoken',
         'pyobjc; platform_system == "Darwin"',
         'pyautogui',
-        'toml'
+        'toml',
+        'pywinauto; platform_system == "Windows"',  # Only for Windows
+        'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
+    extras_require={
+        'dev': [
+            'black',  # Code formatter for linting
+            'isort'
+        ]
+    },
     entry_points={
         'console_scripts': [
             'agent_s=gui_agents.cli_app:main',

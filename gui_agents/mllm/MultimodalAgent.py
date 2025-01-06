@@ -177,31 +177,31 @@ class LMMAgent:
                         message["content"].append(
                             {
                                 "type": "image",
-                                "source":{
+                                "source": {
                                     "type": "base64",
                                     "media_type": "image/png",
                                     "data": base64_image,
-                                }
+                                },
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
                     base64_image = self.encode_image(image_content)
                     message["content"].append(
-                            {
-                                "type": "image",
-                                "source":{
-                                    "type": "base64",
-                                    "media_type": "image/png",
-                                    "data": base64_image,
-                                }
-                            }
-                        )
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": base64_image,
+                            },
+                        }
+                    )
             self.messages.append(message)
 
-        # Locally hosted vLLM model inference 
+        # Locally hosted vLLM model inference
         elif isinstance(self.engine, LMMEnginevLLM):
-           # infer role from previous message
+            # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
                     role = "user"
@@ -224,17 +224,14 @@ class LMMAgent:
                         message["content"].append(
                             {
                                 "type": "image",
-                                "image":  f"data:image;base64,{base64_image}"
+                                "image": f"data:image;base64,{base64_image}",
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
                     base64_image = self.encode_image(image_content)
                     message["content"].append(
-                        {
-                            "type": "image",
-                            "image":  f"data:image;base64,{base64_image}"
-                        }
+                        {"type": "image", "image": f"data:image;base64,{base64_image}"}
                     )
             self.messages.append(message)
 
