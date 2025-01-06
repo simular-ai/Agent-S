@@ -32,7 +32,9 @@ setup(
         'tiktoken',
         'pyobjc; platform_system == "Darwin"',
         'pyautogui',
-        'toml'
+        'toml',
+        'pywinauto; platform_system == "Windows"',  # Only for Windows
+        'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
     entry_points={
         'console_scripts': [

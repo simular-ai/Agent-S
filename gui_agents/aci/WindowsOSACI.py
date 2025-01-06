@@ -1,19 +1,18 @@
-# windowsOSACI.py
-
 import os
 from typing import Dict, List, Tuple, Any
 import numpy as np
 import requests
 import base64
 import psutil
-import pywinauto
-from pywinauto import Desktop
-import win32gui
-import win32process
+import platform
+
+if platform.system() == "Windows":
+    import pywinauto
+    from pywinauto import Desktop
+    import win32gui
+    import win32process
 
 from ACI import ACI, agent_action
-
-os.environ['OCR_SERVER_ADDRESS'] = "http://localhost:8000/ocr/"
 
 # Helper functions
 def _normalize_key(key: str) -> str:
@@ -215,7 +214,6 @@ class WindowsACI(ACI):
                 f"{idx}\t{node['role']}\t{node['title']}\t{node['text']}"
             )
 
-        print(len(tree_elements), len(preserved_nodes))
         if self.ocr:
             screenshot = obs.get('screenshot', None)
             if screenshot is not None:
@@ -223,7 +221,6 @@ class WindowsACI(ACI):
                 tree_elements, preserved_nodes = self.add_ocr_elements(
                     screenshot, tree_elements, preserved_nodes
                 )
-                print(len(tree_elements), len(preserved_nodes))
 
         self.nodes = preserved_nodes
         return "\n".join(tree_elements)
