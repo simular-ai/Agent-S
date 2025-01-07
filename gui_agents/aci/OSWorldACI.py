@@ -52,6 +52,7 @@ except subprocess.TimeoutExpired:
 """
 
 set_cell_values_cmd = """import uno
+import time
 import subprocess
 
 def identify_document_type(component):
@@ -98,9 +99,13 @@ def set_cell_values(new_cell_values: dict[str, str], app_name: str = "Untitled 1
     subprocess.run(
         [
             "soffice",
-            "--accept=socket,host=localhost,port=2002;urp;StarOffice.Service"
+            "--accept=socket,host=localhost,port=2002;urp;StarOffice.Service",
+            "--norestore",
+            {{app_name}}
         ]
     )
+
+    time.sleep(5)
 
     local_context = uno.getComponentContext()
     resolver = local_context.ServiceManager.createInstanceWithContext(
@@ -638,7 +643,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def set_cell_values(
         self, cell_values: Dict[str, Any], app_name: str, sheet_name: str
     ):
-        """Sets individual cell values in a spreadsheet. For example, setting A2 to "hello" would be done by passing {"A2": "hello"} as cell_values.
+        """Sets individual cell values in a spreadsheet. For example, setting A2 to "hello" would be done by passing {"A2": "hello"} as cell_values. The sheet must be opened before this command can be used.
         Args:
             cell_values: Dict[str, Any], A dictionary of cell values to set in the spreadsheet. The keys are the cell coordinates in the format "A1", "B2", etc.
                 Supported value types include: float, int, string, bool, formulas.
