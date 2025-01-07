@@ -12,6 +12,9 @@ import pyautogui
 if platform.system() == "Darwin":
     current_platform = "macos"
     from gui_agents.aci.MacOSACI import MacOSACI, UIElement
+elif platform.system() == "Windows":
+    current_platform = "windows"
+    from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
 else:
     raise ValueError("Unsupported platform")
 
@@ -150,6 +153,8 @@ def main():
 
     if platform.system() == "Darwin":
         grounding_agent = MacOSACI()
+    elif platform.system() == "Windows":
+        grounding_agent = WindowsACI()
     else:
         raise ValueError("Unsupported platform")
 
