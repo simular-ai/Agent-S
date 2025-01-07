@@ -4,7 +4,6 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from typing import Any, Dict, List, Optional, Tuple
-from typing import Dict, List, Optional, Tuple
 
 import requests
 import torch
@@ -238,7 +237,7 @@ def insert_text_operation(app_name: str, value: str):
 
 insert_text_operation("{app_name}", "{value}")
 """
-    
+
 replace_text_uno_cmd = """
 def replace_text_in_document(text_doc, search_text, replace_text):
     search_descriptor = text_doc.createSearchDescriptor()
@@ -280,7 +279,6 @@ def delete_text_operation(app_name: str, num_chars: int):
 
 delete_text_operation("{app_name}", {num_chars})
 """
-
 
 
 # Agent action decorator
@@ -600,7 +598,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         terminal_commands: List[str] = [],
         timeout: Optional[int] = 120,
         output_delay: Optional[float] = 0.2,
-        restart: Optional[bool] = False
+        restart: Optional[bool] = False,
     ):
         """Runs a list of terminal commands.
         Args:
@@ -627,7 +625,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         command_list.append(f"import time; time.sleep({output_delay})")
         for cmd in terminal_commands:
             if "sudo" in cmd:
-                cmd = f"echo \'password\' | sudo -S {cmd.lstrip('sudo').strip()}"
+                cmd = f"echo 'password' | sudo -S {cmd.lstrip('sudo').strip()}"
             command_list.append(run_tmux_cmd.format(cmd=cmd, timeout=timeout))
             command_list.append(f"import time; time.sleep({output_delay})")
             command_list.append("outputs.append(output)")
@@ -638,16 +636,13 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
     @agent_action
     def set_cell_values(
-        self, 
-        cell_values: Dict[str, Any], 
-        app_name: str, 
-        sheet_name: str
+        self, cell_values: Dict[str, Any], app_name: str, sheet_name: str
     ):
         """Sets individual cell values in a spreadsheet. For example, setting A2 to "hello" would be done by passing {"A2": "hello"} as cell_values.
         Args:
-            cell_values: Dict[str, Any], A dictionary of cell values to set in the spreadsheet. The keys are the cell coordinates in the format "A1", "B2", etc. 
+            cell_values: Dict[str, Any], A dictionary of cell values to set in the spreadsheet. The keys are the cell coordinates in the format "A1", "B2", etc.
                 Supported value types include: float, int, string, bool, formulas.
-            app_name: str, The name of the spreadsheet application. 
+            app_name: str, The name of the spreadsheet application.
             sheet_name: str, The name of the sheet in the spreadsheet.
         """
         return set_cell_values_cmd.format(

@@ -109,7 +109,7 @@ class Worker(BaseModule):
         future_tasks: List[Node],
         done_task: List[Node],
         obs: Dict,
-        info: Dict
+        info: Dict,
     ) -> Tuple[Dict, List]:
         """
         Predict the next action(s) based on the current observation.
@@ -184,7 +184,9 @@ class Worker(BaseModule):
         # Bash terminal message.
         terminal_output = info.get("exec_output", {}).get("output", "")
         if "<BACKGROUND BASH TERMINAL>" in terminal_output:
-            terminal_output = terminal_output.split("<OUTPUT>")[-1].split("</OUTPUT>")[0].strip()
+            terminal_output = (
+                terminal_output.split("<OUTPUT>")[-1].split("</OUTPUT>")[0].strip()
+            )
             terminal_output = [out.strip() for out in ast.literal_eval(terminal_output)]
             terminal_output = terminal_output[-1]  # Gets the latest output.
 
@@ -196,10 +198,10 @@ class Worker(BaseModule):
             )
             + f"Accessibility Tree: {tree_input}\n"
             f"Text Buffer = [{','.join(agent.notes)}]. "
-            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}.\n" +
-            (
-                f"You are provided a bash terminal. You recently ran a list of arbitrary terminal commands. Your bash terminal state is:\n {terminal_output}\n\n" 
-                if terminal_output 
+            f"The current open applications are {agent.get_active_apps(obs)} and the active app is {agent.get_top_app(obs)}.\n"
+            + (
+                f"You are provided a bash terminal. You recently ran a list of arbitrary terminal commands. Your bash terminal state is:\n {terminal_output}\n\n"
+                if terminal_output
                 else ""
             )
         )

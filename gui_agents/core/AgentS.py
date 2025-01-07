@@ -1,14 +1,15 @@
-import platform
-import time 
-import logging
-import os 
 import json
-from typing import Any, List, Dict, Tuple, Optional
+import logging
+import os
+import platform
+import time
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
+
+from gui_agents.aci.ACI import ACI
 from gui_agents.aci.OSWorldACI import OSWorldACI
 from gui_agents.core.Manager import Manager
 from gui_agents.core.Worker import Worker
-from gui_agents.aci.ACI import ACI
 from gui_agents.utils.common_utils import Node
 
 logger = logging.getLogger("desktopenv.agent")
@@ -118,10 +119,15 @@ class GraphSearchAgent(UIAgent):
         # Initialize core components
         if isinstance(self.grounding_agent, OSWorldACI):
             self.grounding_agent._existing_bash_session = False
-        self.planner = Manager(self.engine_params, self.grounding_agent,
-                             platform=self.platform, search_engine=self.engine)
-        self.executor = Worker(self.engine_params, self.grounding_agent,
-                             platform=self.platform)
+        self.planner = Manager(
+            self.engine_params,
+            self.grounding_agent,
+            platform=self.platform,
+            search_engine=self.engine,
+        )
+        self.executor = Worker(
+            self.engine_params, self.grounding_agent, platform=self.platform
+        )
 
         # Reset state variables
         self.requires_replan: bool = True
@@ -141,7 +147,9 @@ class GraphSearchAgent(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(self, instruction: str, observation: Dict, info: Dict) -> Tuple[Dict, List[str]]:
+    def predict(
+        self, instruction: str, observation: Dict, info: Dict
+    ) -> Tuple[Dict, List[str]]:
         """Predict next UI action sequence
 
         Args:
@@ -199,7 +207,7 @@ class GraphSearchAgent(UIAgent):
                 future_tasks=self.subtasks,
                 done_task=self.completed_tasks,
                 obs=observation,
-                info=info
+                info=info,
             )
 
             self.step_count += 1

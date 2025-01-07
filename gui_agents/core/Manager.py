@@ -106,7 +106,6 @@ class Manager(BaseModule):
                 "SIMILAR TASK EXPERIENCE: %s",
                 most_similar_task + "\n" + retrieved_experience.strip(),
             )
-            
 
             # Retrieve knowledge from the web if search_engine is provided
             if self.search_engine is not None:
