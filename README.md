@@ -10,6 +10,15 @@
   🗨️<a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>
 </p>
 
+## Table of Contents
+
+1. [💡 Introduction](#-introduction)
+2. [🎯 Current Results](#-current-results)
+3. [🛠️ Installation](#%EF%B8%8F-installation) 
+4. [🚀 Usage](#-usage)
+5. [🙌 Contributors](#-contributors)
+6. [💬 Citation](#-citation)
+
 ## 💡 Introduction
 
 <p align="center">
@@ -68,6 +77,23 @@ To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWor
 
 To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
 
+### Windows
+
+To deploy Agent S on Windows, use the `WindowsACI`:
+
+```
+from gui_agents.aci.WindowsOSACI import WindowsACI
+
+grounding_agent = WindowsACI()
+agent = GraphSearchAgent(
+  engine_params,
+  grounding_agent,
+  platform='windows',
+  action_space="pyautogui",
+  observation_type="mixed",
+  search_engine="Perplexica"
+)
+```
 
 ### Setup Retrieval from Web using Perplexica
 AgentS works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
