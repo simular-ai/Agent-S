@@ -4,8 +4,13 @@ from io import BytesIO
 import backoff
 import openai
 import requests
-from openai import (APIConnectionError, APIError, AsyncAzureOpenAI,
-                    AsyncOpenAI, RateLimitError)
+from openai import (
+    APIConnectionError,
+    APIError,
+    AsyncAzureOpenAI,
+    AsyncOpenAI,
+    RateLimitError,
+)
 from PIL import Image
 
 

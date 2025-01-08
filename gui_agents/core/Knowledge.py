@@ -9,9 +9,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 from gui_agents.core.BaseModule import BaseModule
 from gui_agents.core.ProceduralMemory import PROCEDURAL_MEMORY
 from gui_agents.mllm.MultimodalEngine import OpenAIEmbeddingEngine
-from gui_agents.utils.common_utils import (load_embeddings,
-                                           load_knowledge_base,
-                                           save_embeddings)
+from gui_agents.utils.common_utils import (
+    load_embeddings,
+    load_knowledge_base,
+    save_embeddings,
+)
 from gui_agents.utils.query_perplexica import query_to_perplexica
 
 working_dir = os.path.dirname(os.path.abspath(__file__))

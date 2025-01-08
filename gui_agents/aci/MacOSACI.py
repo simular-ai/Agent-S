@@ -5,9 +5,11 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 from AppKit import *
-from ApplicationServices import (AXUIElementCopyAttributeNames,
-                                 AXUIElementCopyAttributeValue,
-                                 AXUIElementCreateSystemWide)
+from ApplicationServices import (
+    AXUIElementCopyAttributeNames,
+    AXUIElementCopyAttributeValue,
+    AXUIElementCreateSystemWide,
+)
 
 from .ACI import ACI, agent_action
 
