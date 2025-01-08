@@ -5,9 +5,12 @@
 import base64
 import re
 
-from gui_agents.mllm.MultimodalEngine import (LMMEngineAnthropic,
-                                              LMMEngineAzureOpenAI,
-                                              LMMEngineOpenAI, LMMEnginevLLM)
+from gui_agents.mllm.MultimodalEngine import (
+    LMMEngineAnthropic,
+    LMMEngineAzureOpenAI,
+    LMMEngineOpenAI,
+    LMMEnginevLLM,
+)
 
 data_type_map = {
     "openai": {"image_url": "image_url"},

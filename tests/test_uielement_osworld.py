@@ -20,10 +20,12 @@ def sample_xml():
     </root>
     """
 
+
 @pytest.fixture
 def ui_element(sample_xml):
     tree = ET.ElementTree(ET.fromstring(sample_xml))
     return UIElement(tree.getroot())
+
 
 def test_nodeFromTree(sample_xml):
     """Test creating UIElement from XML string"""
@@ -31,10 +33,12 @@ def test_nodeFromTree(sample_xml):
     assert element is not None
     assert isinstance(element, UIElement)
 
+
 def test_position(ui_element):
     """Test position extraction from XML"""
     button = ui_element.children()[0].children()[0]
     assert button.position() == (100, 200)
+
 
 def test_size(ui_element):
     """Test size extraction from XML"""

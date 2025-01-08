@@ -7,8 +7,13 @@ from gui_agents.aci.ACI import ACI
 from gui_agents.core.BaseModule import BaseModule
 from gui_agents.core.Knowledge import KnowledgeBase
 from gui_agents.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.utils.common_utils import (Dag, Node, calculate_tokens,
-                                           call_llm_safe, parse_dag)
+from gui_agents.utils.common_utils import (
+    Dag,
+    Node,
+    calculate_tokens,
+    call_llm_safe,
+    parse_dag,
+)
 
 logger = logging.getLogger("desktopenv.agent")
 

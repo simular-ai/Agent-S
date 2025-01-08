@@ -14,7 +14,7 @@ if platform.system() == "Darwin":
     from gui_agents.aci.MacOSACI import MacOSACI, UIElement
 elif platform.system() == "Windows":
     current_platform = "windows"
-    from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
+    from gui_agents.aci.WindowsOSACI import UIElement, WindowsACI
 else:
     raise ValueError("Unsupported platform")
 
