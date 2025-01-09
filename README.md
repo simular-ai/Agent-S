@@ -153,7 +153,18 @@ agent = GraphSearchAgent(
   observation_type="mixed",
   search_engine="Perplexica"
 )
+
+obs = {
+  "screenshot": <screenshot>,
+  "accessibility_tree": <accessibility_tree>,
+}
+instruction = "..."
+info, action = agent.predict(instruction=instruction, observation=obs)
+
+exec(action[0])
 ```
+
+Refer to `cli_app.py` for more details on how the inference loop works.
 
 ### OSWorld
 
