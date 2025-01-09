@@ -38,82 +38,46 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 </p>
 
 
-## 🛠️ Installation
+## 🛠️ Installation & Setup
 
-Clone the repository
+Clone the repository:
 ```
 git clone https://github.com/simular-ai/Agent-S.git
 ```
 
-Install the gui-agents package
+Install the gui-agents package:
 ```
 pip install gui-agents
 ```
 
-Set your LLM API Keys and other environment variables. You can do this by adding the following lines to your .bashrc (Linux), or .zshrc (MacOS) file. 
+Set your LLM API Keys and other environment variables. You can do this by adding the following line to your .bashrc (Linux), or .zshrc (MacOS) file. 
 
 ```
 export OPENAI_API_KEY=<YOUR_API_KEY>
 ```
+
+Alternatively, you can set the environment variable in your Python script:
+
+```
+import os
+os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
+```
+
 We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [models.md](models.md).
 
-> ⚠️ **Warning**: The agent will directly run python code to control your computer. Please use with care.
-
-## 🚀 Usage
-
-### Run Locally on your Own Computer
-
-Run agent_s on your computer using:  
-```
-agent_s --model gpt-4o
-```
-This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](models.md).
-
-### OSWorld
-
-To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
-
-### WindowsAgentArena
-
-To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
-
-### Windows
-
-To deploy Agent S on Windows, use the `WindowsACI`:
-
-```
-from gui_agents.aci.WindowsOSACI import WindowsACI
-
-grounding_agent = WindowsACI()
-agent = GraphSearchAgent(
-  engine_params,
-  grounding_agent,
-  platform='windows',
-  action_space="pyautogui",
-  observation_type="mixed",
-  search_engine="Perplexica"
-)
-```
-
 ### Setup Retrieval from Web using Perplexica
-AgentS works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
+Agent S works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
 
-1. Ensure Docker is installed and running on your system.
+1. Ensure Docker Desktop is installed and running on your system.
 
-2. Initialize the Perplexica submodule:
-
-   ```bash
-   cd Agent-S
-   git submodule update --init
-   ```
-
-3. After initializing, navigate to the directory containing the project files.
+2. Navigate to the directory containing the project files.
 
    ```bash
-   cd Perplexica
+    cd Perplexica
+    git submodule update --init
    ```
 
-4. Rename the `sample.config.toml` file to `config.toml`. For Docker setups, you need only fill in the following fields:
+3. Rename the `sample.config.toml` file to `config.toml`. For Docker setups, you need only fill in the following fields:
 
    - `OPENAI`: Your OpenAI API key. **You only need to fill this if you wish to use OpenAI's models**.
    - `OLLAMA`: Your Ollama API URL. You should enter it as `http://host.docker.internal:PORT_NUMBER`. If you installed Ollama on port 11434, use `http://host.docker.internal:11434`. For other ports, adjust accordingly. **You need to fill this if you wish to use Ollama's models instead of OpenAI's**.
@@ -124,23 +88,23 @@ AgentS works best with web-knowledge retrieval. To enable this feature, you need
 
    - `SIMILARITY_MEASURE`: The similarity measure to use (This is filled by default; you can leave it as is if you are unsure about it.)
 
-5. Ensure you are in the directory containing the `docker-compose.yaml` file and execute:
+4. Ensure you are in the directory containing the `docker-compose.yaml` file and execute:
 
    ```bash
    docker compose up -d
    ```
 
-6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
+5. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
 
-For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git)
+For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git).
 
 ### Setup Paddle-OCR Server
 
 Run the ocr_server.py file code to use OCR-based bounding boxes.
 
 ```
-cd agent_s
-python ocr_server.py
+cd Agent-S
+python gui_agents/utils/ocr_server.py
 ```
 
 Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS environment variable as shown below. For a better experience, add the following line directly to your .bashrc (Linux), or .zshrc (MacOS) file.
@@ -149,12 +113,59 @@ Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS 
 export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
 ```
 
-You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file
+You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file.
+
+
+> ⚠️ **Warning**: The agent will directly run python code to control your computer. Please use with care.
+
+## 🚀 Usage
+
+### CLI
+
+Run agent_s on your computer using:  
+```
+agent_s --model gpt-4o
+```
+This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](models.md).
+
+### `gui_agents` SDK
+
+To deploy Agent S on MacOS or Windows:
+
+```
+from gui_agents.aci.WindowsOSACI import WindowsACI
+from gui_agents.aci.MacOSACI import MacOSACI
+
+platform = "macos"  # or "windows"
+
+if platform == "macos":
+  grounding_agent = MacOSACI()
+elif platform == "windows":
+  grounding_agent = WindowsACI()
+else:
+  raise ValueError("Unsupported platform")
+
+agent = GraphSearchAgent(
+  engine_params,
+  grounding_agent,
+  platform=platform,
+  action_space="pyautogui",
+  observation_type="mixed",
+  search_engine="Perplexica"
+)
+```
+
+### OSWorld
+
+To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
+
+### WindowsAgentArena
+
+To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
 
 ## 🙌 Contributors
 
-We’re grateful to all the amazing people who have contributed to this project. Thank you! 🙏  
-[Contributors List](https://github.com/simular-ai/Agent-S/graphs/contributors)
+We’re grateful to all the [amazing people](https://github.com/simular-ai/Agent-S/graphs/contributors) who have contributed to this project. Thank you! 🙏  
 
 ## 💬 Citation
 ```

@@ -13,7 +13,7 @@ if platform.system() == "Windows":
     import win32gui
     import win32process
 
-from ACI import ACI, agent_action
+from gui_agents.aci.ACI import ACI, agent_action
 
 
 # Helper functions
