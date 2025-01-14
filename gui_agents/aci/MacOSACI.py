@@ -4,14 +4,17 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 import requests
-from AppKit import *
-from ApplicationServices import (
-    AXUIElementCopyAttributeNames,
-    AXUIElementCopyAttributeValue,
-    AXUIElementCreateSystemWide,
-)
+import platform
 
-from .ACI import ACI, agent_action
+if platform.system() == "Darwin":
+    from AppKit import *
+    from ApplicationServices import (
+        AXUIElementCopyAttributeNames,
+        AXUIElementCopyAttributeValue,
+        AXUIElementCreateSystemWide,
+    )
+
+from gui_agents.aci.ACI import ACI, agent_action
 
 
 def _normalize_key(key: str) -> str:

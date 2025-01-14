@@ -9,7 +9,7 @@ import requests
 import torch
 import torchvision
 
-from .ACI import ACI
+from gui_agents.aci.ACI import ACI
 
 logger = logging.getLogger("desktopenv.agent")
 
