@@ -100,17 +100,17 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 
 ### Setup Paddle-OCR Server
 
+Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS environment variable as shown below. For a better experience, add the following line directly to your .bashrc (Linux), or .zshrc (MacOS) file.
+
+```
+export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
+```
+
 Run the ocr_server.py file code to use OCR-based bounding boxes.
 
 ```
 cd Agent-S
 python gui_agents/utils/ocr_server.py
-```
-
-Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS environment variable as shown below. For a better experience, add the following line directly to your .bashrc (Linux), or .zshrc (MacOS) file.
-
-```
-export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
 ```
 
 You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file.
@@ -140,10 +140,17 @@ platform = "macos"  # or "windows"
 
 if platform == "macos":
   grounding_agent = MacOSACI()
+  from gui_agents.aci.MacOSACI import UIElement
 elif platform == "windows":
   grounding_agent = WindowsACI()
+  from gui_agents.aci.WindowsOSACI import UIElement
 else:
   raise ValueError("Unsupported platform")
+
+engine_params = {
+    "engine_type": "openai",
+    "model": "gpt-4o",
+}
 
 agent = GraphSearchAgent(
   engine_params,
@@ -154,11 +161,20 @@ agent = GraphSearchAgent(
   search_engine="Perplexica"
 )
 
+# Get screenshot.
+screenshot = pyautogui.screenshot()
+buffered = io.BytesIO()
+screenshot.save(buffered, format="PNG")
+screenshot_bytes = buffered.getvalue()
+
+# Get accessibility tree.
+acc_tree = UIElement.systemWideElement()
+
 obs = {
-  "screenshot": <screenshot>,
-  "accessibility_tree": <accessibility_tree>,
+  "screenshot": screenshot_bytes,
+  "accessibility_tree": acc_tree,
 }
-instruction = "..."
+instruction = "Close VS Code"
 info, action = agent.predict(instruction=instruction, observation=obs)
 
 exec(action[0])
