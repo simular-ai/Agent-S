@@ -133,14 +133,21 @@ This will show a user query prompt where you can enter your query and interact w
 To deploy Agent S on MacOS or Windows:
 
 ```
-platform = "Darwin"  # or "Windows"
+import pyautogui
+import io
+from gui_agents.core.AgentS import GraphSearchAgent
+import platform
 
-if platform == "Darwin":
+
+if platform.system() == "Darwin":
   from gui_agents.aci.MacOSACI import MacOSACI, UIElement
   grounding_agent = MacOSACI()
-elif platform == "Windows":
+elif platform.system() == "Windows":
   from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
   grounding_agent = WindowsACI()
+elif platform.system() == "Linux":
+  from gui_agents.aci.OSWorldACI import OSWorldACI, get_acc_tree
+  grounding_agent = OSWorldACI()
 else:
   raise ValueError("Unsupported platform")
 
@@ -152,7 +159,7 @@ engine_params = {
 agent = GraphSearchAgent(
   engine_params,
   grounding_agent,
-  platform=platform,
+  platform="ubuntu",  # "macos", "windows"
   action_space="pyautogui",
   observation_type="mixed",
   search_engine="Perplexica"
@@ -160,17 +167,21 @@ agent = GraphSearchAgent(
 
 # Get screenshot.
 screenshot = pyautogui.screenshot()
-buffered = io.BytesIO()
+buffered = io.BytesIO() 
 screenshot.save(buffered, format="PNG")
 screenshot_bytes = buffered.getvalue()
 
 # Get accessibility tree.
-acc_tree = UIElement.systemWideElement()
+if platform.system() != "Linux":
+    acc_tree = UIElement.systemWideElement()
+elif platform.system() == "Linux":
+    acc_tree = get_acc_tree()
 
 obs = {
   "screenshot": screenshot_bytes,
   "accessibility_tree": acc_tree,
 }
+
 instruction = "Close VS Code"
 info, action = agent.predict(instruction=instruction, observation=obs)
 
