@@ -136,12 +136,12 @@ To deploy Agent S on MacOS or Windows:
 from gui_agents.aci.WindowsOSACI import WindowsACI
 from gui_agents.aci.MacOSACI import MacOSACI
 
-platform = "macos"  # or "windows"
+platform = "Darwin"  # or "Windows"
 
-if platform == "macos":
+if platform == "Darwin":
   grounding_agent = MacOSACI()
   from gui_agents.aci.MacOSACI import UIElement
-elif platform == "windows":
+elif platform == "Windows":
   grounding_agent = WindowsACI()
   from gui_agents.aci.WindowsOSACI import UIElement
 else:
