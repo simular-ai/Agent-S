@@ -133,17 +133,14 @@ This will show a user query prompt where you can enter your query and interact w
 To deploy Agent S on MacOS or Windows:
 
 ```
-from gui_agents.aci.WindowsOSACI import WindowsACI
-from gui_agents.aci.MacOSACI import MacOSACI
-
 platform = "Darwin"  # or "Windows"
 
 if platform == "Darwin":
+  from gui_agents.aci.MacOSACI import MacOSACI, UIElement
   grounding_agent = MacOSACI()
-  from gui_agents.aci.MacOSACI import UIElement
 elif platform == "Windows":
+  from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
   grounding_agent = WindowsACI()
-  from gui_agents.aci.WindowsOSACI import UIElement
 else:
   raise ValueError("Unsupported platform")
 
