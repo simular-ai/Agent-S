@@ -138,7 +138,6 @@ import io
 from gui_agents.core.AgentS import GraphSearchAgent
 import platform
 
-
 if platform.system() == "Darwin":
   from gui_agents.aci.MacOSACI import MacOSACI, UIElement
   grounding_agent = MacOSACI()
@@ -146,8 +145,8 @@ elif platform.system() == "Windows":
   from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
   grounding_agent = WindowsACI()
 elif platform.system() == "Linux":
-  from gui_agents.aci.OSWorldACI import OSWorldACI, get_acc_tree
-  grounding_agent = OSWorldACI()
+  from gui_agents.aci.LinuxOSACI import LinuxACI, UIElement
+  grounding_agent = LinuxACI()
 else:
   raise ValueError("Unsupported platform")
 
@@ -172,10 +171,7 @@ screenshot.save(buffered, format="PNG")
 screenshot_bytes = buffered.getvalue()
 
 # Get accessibility tree.
-if platform.system() != "Linux":
-    acc_tree = UIElement.systemWideElement()
-elif platform.system() == "Linux":
-    acc_tree = get_acc_tree()
+acc_tree = UIElement.systemWideElement()
 
 obs = {
   "screenshot": screenshot_bytes,

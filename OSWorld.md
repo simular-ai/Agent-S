@@ -26,7 +26,7 @@ We suggest creating a separate conda environment for each repository to avoid de
 After completing the setup instructions, import the GraphSearchAgent into the run.py file in OSWorld. The GraphSearchAgent is the parent agent used in the Agent S framework. To understand the architecture of this GraphSearchAgent, refer to [Agent S Architecture](images/agent_s_architecture.pdf).
 
 ```
-from gui_agents.aci.OSWorldACI import OSWorldACI
+from gui_agents.aci.LinuxOSACI import LinuxACI
 from gui_agents.core.AgentS import GraphSearchAgent
 ```
 
@@ -49,7 +49,7 @@ engine_params = {
   "model": args.model,
 }
 
-grounding_agent = OSWorldACI(vm_version=args.vm_version)
+grounding_agent = LinuxACI(vm_version=args.vm_version)
 agent = GraphSearchAgent(
   engine_params,
   grounding_agent,

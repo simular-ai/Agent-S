@@ -3,7 +3,7 @@ import logging
 import os
 import time
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any, Sequence
 
 import requests
 import torch
@@ -25,11 +25,7 @@ if platform.system() == "Linux":
     from lxml.etree import _Element
     from typing import Optional, Dict, Any, List
 
-    import platform
-    from typing import Any, Optional, Sequence
     import lxml.etree
-    from flask import jsonify
-    from lxml.etree import _Element
     import concurrent.futures
 
 logger = logging.getLogger("desktopenv.agent")
@@ -75,7 +71,7 @@ def agent_action(func):
     return func
 
 
-class OSWorldACI(ACI):
+class LinuxACI(ACI):
     def __init__(self, top_app=None, vm_version="new", top_app_only=True, ocr=True):
         self.active_apps = set()
         self.top_app = top_app
@@ -879,3 +875,82 @@ def get_acc_tree() -> str:
             xml_node.append(xml_tree)
     acc_tree = lxml.etree.tostring(xml_node, encoding="unicode")
     return acc_tree
+
+
+class UIElement(object):
+    def __init__(self, node: Accessible):
+        self.node: Accessible = node
+
+    def getAttributeNames(self):
+        attributes = self.node.getAttributes()
+
+    @staticmethod
+    def systemWideElement():
+        # desktop = pyatspi.Registry.getDesktop(0)
+        # for app in desktop:
+        #     for window in app:
+        #         if window.getState().contains(pyatspi.STATE_ACTIVE):
+        #             active_node = app
+        # return UIElement(active_node)
+        return get_acc_tree()
+
+    @property
+    def states(self):
+        state_names = []
+        states: List[StateType] = self.node.getState().get_states()
+        for st in states:
+            state_name: str = StateType._enum_lookup[st]
+            state_names.append(state_name)
+        return state_names
+
+    @property
+    def attributes(self):
+        try:
+            attributes: List[str] = self.node.getAttributes()
+            attribute_dict = {}
+            for attrbt in attributes:
+                attribute_name: str
+                attribute_value: str
+                attribute_name, attribute_value = attrbt.split(":", maxsplit=1)
+                attribute_dict[attribute_name] = attribute_value
+            return attribute_dict
+        except NotImplementedError:
+            return None
+
+    @property
+    def component(self):
+        try:
+            component: Component = self.node.queryComponent()
+            return component
+        except NotImplementedError:
+            return None
+
+    @property
+    def value(self):
+        try:
+            value: ATValue = self.node.queryValue()
+            return value
+        except NotImplementedError:
+            return None
+
+    @property
+    def text(self):
+        try:
+            text_obj: ATText = self.node.queryText()
+        except NotImplementedError:
+            return ""
+        else:
+            text: str = text_obj.getText(0, text_obj.characterCount)
+            text = text.replace("\ufffc", "").replace("\ufffd", "")
+            return text
+
+    @property
+    def role(self):
+        return self.node.getRoleName()
+
+    def children(self):
+        """Return list of children of the current node"""
+        return list(self.node)
+
+    def __repr__(self):
+        return "UIElement%s" % (self.node)
