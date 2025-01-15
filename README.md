@@ -4,11 +4,16 @@
 </h1>
 
 <p align="center">
-  🌐<a href="https://www.simular.ai/agent-s">[Website]</a>
-  📄<a href="https://arxiv.org/abs/2410.08164">[Paper]</a>
-  🎥<a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[Video]</a>
-  🗨️<a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>
+  🌐 <a href="https://www.simular.ai/agent-s">[Website]</a>
+  📄 <a href="https://arxiv.org/abs/2410.08164">[Paper]</a>
+  🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[Video]</a>
+  🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>
 </p>
+
+## 🥳 Updates
+
+- **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac and OSWorld with ease!
+- **2024/10/10**: Released [Agent S paper](https://arxiv.org/abs/2410.08164)!
 
 ## Table of Contents
 
@@ -39,6 +44,8 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 
 ## 🛠️ Installation & Setup
+
+> ❗**Warning**❗: If you are on a Linux machine, creating a `conda` environment will interfere with `pyatspi`. As of now, there's no clean solution for this issue. Proceed through the installation without using `conda` or any virtual environment.
 
 Clone the repository:
 ```
@@ -116,7 +123,7 @@ python gui_agents/utils/ocr_server.py
 You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file.
 
 
-> ⚠️ **Warning**: The agent will directly run python code to control your computer. Please use with care.
+> ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
 
 ## 🚀 Usage
 
