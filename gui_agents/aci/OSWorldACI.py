@@ -11,7 +11,7 @@ import torchvision
 
 from gui_agents.aci.ACI import ACI
 
-import platform 
+import platform
 
 if platform.system() == "Linux":
     import pyatspi
@@ -692,8 +692,11 @@ _accessibility_ns_map_ubuntu = {
 MAX_WIDTH = 1024
 MAX_DEPTH = 50
 
+
 # Ref: https://github.com/xlang-ai/OSWorld/blob/main/desktop_env/server/main.py#L793
-def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = None) -> _Element:
+def _create_atspi_node(
+    node: Accessible, depth: int = 0, flag: Optional[str] = None
+) -> _Element:
     node_name = node.name
     attribute_dict: Dict[str, Any] = {"name": node_name}
 
@@ -704,27 +707,42 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
         state_name: str = state_name.split("_", maxsplit=1)[1].lower()
         if len(state_name) == 0:
             continue
-        attribute_dict["{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["st"], state_name)] = "true"
+        attribute_dict[
+            "{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["st"], state_name)
+        ] = "true"
 
     #  Attributes
     attributes: Dict[str, str] = node.get_attributes()
     for attribute_name, attribute_value in attributes.items():
         if len(attribute_name) == 0:
             continue
-        attribute_dict["{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["attr"], attribute_name)] = attribute_value
+        attribute_dict[
+            "{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["attr"], attribute_name)
+        ] = attribute_value
 
     #  Component
-    if attribute_dict.get("{{{:}}}visible".format(_accessibility_ns_map_ubuntu["st"]), "false") == "true" \
-            and attribute_dict.get("{{{:}}}showing".format(_accessibility_ns_map_ubuntu["st"]), "false") == "true":
+    if (
+        attribute_dict.get(
+            "{{{:}}}visible".format(_accessibility_ns_map_ubuntu["st"]), "false"
+        )
+        == "true"
+        and attribute_dict.get(
+            "{{{:}}}showing".format(_accessibility_ns_map_ubuntu["st"]), "false"
+        )
+        == "true"
+    ):
         try:
             component: Component = node.queryComponent()
         except NotImplementedError:
             pass
         else:
             bbox: Sequence[int] = component.getExtents(pyatspi.XY_SCREEN)
-            attribute_dict["{{{:}}}screencoord".format(_accessibility_ns_map_ubuntu["cp"])] = \
-                str(tuple(bbox[0:2]))
-            attribute_dict["{{{:}}}size".format(_accessibility_ns_map_ubuntu["cp"])] = str(tuple(bbox[2:]))
+            attribute_dict[
+                "{{{:}}}screencoord".format(_accessibility_ns_map_ubuntu["cp"])
+            ] = str(tuple(bbox[0:2]))
+            attribute_dict["{{{:}}}size".format(_accessibility_ns_map_ubuntu["cp"])] = (
+                str(tuple(bbox[2:]))
+            )
 
     text = ""
     #  Text
@@ -763,7 +781,7 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
             ("value", lambda: value.currentValue),
             ("min", lambda: value.minimumValue),
             ("max", lambda: value.maximumValue),
-            ("step", lambda: value.minimumIncrement)
+            ("step", lambda: value.minimumIncrement),
         ]:
             try:
                 attribute_dict[f"{value_key}{attr_name}"] = str(attr_func())
@@ -777,10 +795,13 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
         for i in range(action.nActions):
             action_name: str = action.getName(i).replace(" ", "-")
             attribute_dict[
-                "{{{:}}}{:}_desc".format(_accessibility_ns_map_ubuntu["act"], action_name)] = action.getDescription(
-                i)
+                "{{{:}}}{:}_desc".format(
+                    _accessibility_ns_map_ubuntu["act"], action_name
+                )
+            ] = action.getDescription(i)
             attribute_dict[
-                "{{{:}}}{:}_kb".format(_accessibility_ns_map_ubuntu["act"], action_name)] = action.getKeyBinding(i)
+                "{{{:}}}{:}_kb".format(_accessibility_ns_map_ubuntu["act"], action_name)
+            ] = action.getKeyBinding(i)
     except NotImplementedError:
         pass
 
@@ -796,9 +817,7 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
             flag = "thunderbird"
 
     xml_node = lxml.etree.Element(
-        node_role_name,
-        attrib=attribute_dict,
-        nsmap=_accessibility_ns_map_ubuntu
+        node_role_name, attrib=attribute_dict, nsmap=_accessibility_ns_map_ubuntu
     )
 
     if len(text) > 0:
@@ -824,7 +843,9 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
                 child_node: Accessible = node[index_base + clm]
                 showing: bool = child_node.getState().contains(STATE_SHOWING)
                 if showing:
-                    child_node: _Element = _create_atspi_node(child_node, depth + 1, flag)
+                    child_node: _Element = _create_atspi_node(
+                        child_node, depth + 1, flag
+                    )
                     if not first_showing:
                         column_base = clm
                         first_showing = True
@@ -844,12 +865,15 @@ def _create_atspi_node(node: Accessible, depth: int = 0, flag: Optional[str] = N
         except:
             pass
         return xml_node
-    
+
+
 def get_acc_tree() -> str:
     desktop: Accessible = pyatspi.Registry.getDesktop(0)
     xml_node = lxml.etree.Element("desktop-frame", nsmap=_accessibility_ns_map_ubuntu)
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        futures = [executor.submit(_create_atspi_node, app_node, 1) for app_node in desktop]
+        futures = [
+            executor.submit(_create_atspi_node, app_node, 1) for app_node in desktop
+        ]
         for future in concurrent.futures.as_completed(futures):
             xml_tree = future.result()
             xml_node.append(xml_tree)
