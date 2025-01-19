@@ -675,8 +675,8 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
 
 class UIElement(object):
-    def __init__(self, node: Accessible):
-        self.node: Accessible = node
+    def __init__(self, node):
+        self.node = node
 
     def getAttributeNames(self):
         attributes = self.node.getAttributes()
