@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:<br>
-  <small>An Open Agentic Framework that Uses Computers Like a Human</small>
+  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
+  <small>Using Computers Like a Human</small>
 </h1>
 
 <p align="center">
