@@ -4,10 +4,8 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Optional, Tuple, Any, Sequence
-
+import numpy as np
 import requests
-import torch
-import torchvision
 
 from gui_agents.aci.ACI import ACI
 
@@ -30,40 +28,33 @@ if platform.system() == "Linux":
 
 logger = logging.getLogger("desktopenv.agent")
 
-install_tmux_cmd = """import subprocess
+def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
+    """
+    Fast vectorized IOU implementation using only NumPy
+    boxes1: [N, 4] array of boxes
+    boxes2: [M, 4] array of boxes
+    Returns: [N, M] array of IOU values
+    """
+    # Calculate areas of boxes1
+    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
 
-install_command = f"echo 'password' | sudo -S apt install -y tmux"
-subprocess.run(install_command, shell=True, check=True)
-"""
+    # Calculate areas of boxes2
+    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
 
-create_tmux_session_cmd = """import subprocess
+    # Get intersections using broadcasting
+    lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
+    rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
 
-cmd = "tmux new-session -d -s my_background_session"
-subprocess.run(cmd, shell=True, check=True)
-"""
+    # Calculate intersection areas
+    wh = np.clip(rb - lt, 0, None)  # [N,M,2]
+    intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
 
-kill_tmux_session_cmd = """import subprocess
+    # Calculate union areas
+    union = area1[:, None] + area2[None, :] - intersection
 
-cmd = "tmux kill-session -t my_background_session"
-subprocess.run(cmd, shell=True, check=True)
-"""
-
-run_tmux_cmd = """import subprocess, time
-
-try:
-    tmux_cmd = "tmux send-keys -t my_background_session '{cmd}' C-m"
-    process = subprocess.Popen(
-        tmux_cmd, 
-        shell=True, 
-        text=True
-    )
-    time.sleep(0.5)
-    capture_cmd = "tmux capture-pane -t my_background_session -p"
-    output = subprocess.check_output(capture_cmd, shell=True, text=True, timeout={timeout})
-except subprocess.TimeoutExpired:
-    output = f"Command '{cmd}' timed out after {timeout} seconds"
-"""
-
+    # Calculate IOU
+    iou = np.where(union > 0, intersection / union, 0)
+    return iou
 
 # Agent action decorator
 def agent_action(func):
@@ -292,10 +283,9 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                         int(box.get("bottom", 0)),
                     )
                     iou = (
-                        torchvision.ops.box_iou(
-                            torch.tensor(tree_bboxes), torch.tensor([[x1, y1, x2, y2]])
+                        box_iou(
+                            np.array(tree_bboxes, dtype=np.float32), np.array([[x1, y1, x2, y2]], dtype=np.float32)
                         )
-                        .numpy()
                         .flatten()
                     )
 

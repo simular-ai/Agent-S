@@ -4,10 +4,8 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
-
+import numpy as np
 import requests
-import torch
-import torchvision
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -15,6 +13,34 @@ logger = logging.getLogger("desktopenv.agent")
 state_ns = "uri:deskat:state.at-spi.gnome.org"
 component_ns = "uri:deskat:component.at-spi.gnome.org"
 
+
+def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
+    """
+    Fast vectorized IOU implementation using only NumPy
+    boxes1: [N, 4] array of boxes
+    boxes2: [M, 4] array of boxes
+    Returns: [N, M] array of IOU values
+    """
+    # Calculate areas of boxes1
+    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
+
+    # Calculate areas of boxes2
+    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
+
+    # Get intersections using broadcasting
+    lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
+    rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
+
+    # Calculate intersection areas
+    wh = np.clip(rb - lt, 0, None)  # [N,M,2]
+    intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
+
+    # Calculate union areas
+    union = area1[:, None] + area2[None, :] - intersection
+
+    # Calculate IOU
+    iou = np.where(union > 0, intersection / union, 0)
+    return iou
 
 # Agent action decorator
 def agent_action(func):
@@ -232,10 +258,9 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                         int(box.get("bottom", 0)),
                     )
                     iou = (
-                        torchvision.ops.box_iou(
-                            torch.tensor(tree_bboxes), torch.tensor([[x1, y1, x2, y2]])
+                        box_iou(
+                            np.array(tree_bboxes, dtype=np.float32), np.array([[x1, y1, x2, y2]], dtype=np.float32)
                         )
-                        .numpy()
                         .flatten()
                     )
 
