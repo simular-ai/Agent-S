@@ -8,6 +8,7 @@ import numpy as np
 import requests
 
 from gui_agents.aci.ACI import ACI
+from gui_agents.utils.common_utils import box_iou
 
 import platform
 
@@ -26,35 +27,22 @@ if platform.system() == "Linux":
     import lxml.etree
     import concurrent.futures
 
+_accessibility_ns_map_ubuntu = {
+    "st": "https://accessibility.ubuntu.example.org/ns/state",
+    "attr": "https://accessibility.ubuntu.example.org/ns/attributes",
+    "cp": "https://accessibility.ubuntu.example.org/ns/component",
+    "doc": "https://accessibility.ubuntu.example.org/ns/document",
+    "docattr": "https://accessibility.ubuntu.example.org/ns/document/attributes",
+    "txt": "https://accessibility.ubuntu.example.org/ns/text",
+    "val": "https://accessibility.ubuntu.example.org/ns/value",
+    "act": "https://accessibility.ubuntu.example.org/ns/action",
+}
+
+MAX_DEPTH = 50
+MAX_WIDTH = 1024
+
 logger = logging.getLogger("desktopenv.agent")
 
-def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
-    """
-    Fast vectorized IOU implementation using only NumPy
-    boxes1: [N, 4] array of boxes
-    boxes2: [M, 4] array of boxes
-    Returns: [N, M] array of IOU values
-    """
-    # Calculate areas of boxes1
-    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
-
-    # Calculate areas of boxes2
-    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
-
-    # Get intersections using broadcasting
-    lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
-    rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
-
-    # Calculate intersection areas
-    wh = np.clip(rb - lt, 0, None)  # [N,M,2]
-    intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
-
-    # Calculate union areas
-    union = area1[:, None] + area2[None, :] - intersection
-
-    # Calculate IOU
-    iou = np.where(union > 0, intersection / union, 0)
-    return iou
 
 # Agent action decorator
 def agent_action(func):
@@ -282,12 +270,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                         int(box.get("right", 0)),
                         int(box.get("bottom", 0)),
                     )
-                    iou = (
-                        box_iou(
-                            np.array(tree_bboxes, dtype=np.float32), np.array([[x1, y1, x2, y2]], dtype=np.float32)
-                        )
-                        .flatten()
-                    )
+                    iou = box_iou(
+                        np.array(tree_bboxes, dtype=np.float32),
+                        np.array([[x1, y1, x2, y2]], dtype=np.float32),
+                    ).flatten()
 
                     if max(iou) < 0.1:
                         # Add the element to the linearized accessibility tree
@@ -664,6 +650,184 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         return """FAIL"""
 
 
+def _create_atspi_node(
+    node: Accessible, depth: int = 0, flag: Optional[str] = None
+) -> _Element:
+    node_name = node.name
+    attribute_dict: Dict[str, Any] = {"name": node_name}
+
+    #  States
+    states: List[StateType] = node.getState().get_states()
+    for st in states:
+        state_name: str = StateType._enum_lookup[st]
+        state_name: str = state_name.split("_", maxsplit=1)[1].lower()
+        if len(state_name) == 0:
+            continue
+        attribute_dict[
+            "{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["st"], state_name)
+        ] = "true"
+
+    #  Attributes
+    attributes: Dict[str, str] = node.get_attributes()
+    for attribute_name, attribute_value in attributes.items():
+        if len(attribute_name) == 0:
+            continue
+        attribute_dict[
+            "{{{:}}}{:}".format(_accessibility_ns_map_ubuntu["attr"], attribute_name)
+        ] = attribute_value
+
+    #  Component
+    if (
+        attribute_dict.get(
+            "{{{:}}}visible".format(_accessibility_ns_map_ubuntu["st"]), "false"
+        )
+        == "true"
+        and attribute_dict.get(
+            "{{{:}}}showing".format(_accessibility_ns_map_ubuntu["st"]), "false"
+        )
+        == "true"
+    ):
+        try:
+            component: Component = node.queryComponent()
+        except NotImplementedError:
+            pass
+        else:
+            bbox: Sequence[int] = component.getExtents(pyatspi.XY_SCREEN)
+            attribute_dict[
+                "{{{:}}}screencoord".format(_accessibility_ns_map_ubuntu["cp"])
+            ] = str(tuple(bbox[0:2]))
+            attribute_dict["{{{:}}}size".format(_accessibility_ns_map_ubuntu["cp"])] = (
+                str(tuple(bbox[2:]))
+            )
+
+    text = ""
+    #  Text
+    try:
+        text_obj: ATText = node.queryText()
+        # only text shown on current screen is available
+        # attribute_dict["txt:text"] = text_obj.getText(0, text_obj.characterCount)
+        text: str = text_obj.getText(0, text_obj.characterCount)
+        # if flag=="thunderbird":
+        # appeared in thunderbird (uFFFC) (not only in thunderbird), "Object
+        # Replacement Character" in Unicode, "used as placeholder in text for
+        # an otherwise unspecified object; uFFFD is another "Replacement
+        # Character", just in case
+        text = text.replace("\ufffc", "").replace("\ufffd", "")
+    except NotImplementedError:
+        pass
+
+    #  Image, Selection, Value, Action
+    try:
+        node.queryImage()
+        attribute_dict["image"] = "true"
+    except NotImplementedError:
+        pass
+
+    try:
+        node.querySelection()
+        attribute_dict["selection"] = "true"
+    except NotImplementedError:
+        pass
+
+    try:
+        value: ATValue = node.queryValue()
+        value_key = f"{{{_accessibility_ns_map_ubuntu['val']}}}"
+
+        for attr_name, attr_func in [
+            ("value", lambda: value.currentValue),
+            ("min", lambda: value.minimumValue),
+            ("max", lambda: value.maximumValue),
+            ("step", lambda: value.minimumIncrement),
+        ]:
+            try:
+                attribute_dict[f"{value_key}{attr_name}"] = str(attr_func())
+            except:
+                pass
+    except NotImplementedError:
+        pass
+
+    try:
+        action: ATAction = node.queryAction()
+        for i in range(action.nActions):
+            action_name: str = action.getName(i).replace(" ", "-")
+            attribute_dict[
+                "{{{:}}}{:}_desc".format(
+                    _accessibility_ns_map_ubuntu["act"], action_name
+                )
+            ] = action.getDescription(i)
+            attribute_dict[
+                "{{{:}}}{:}_kb".format(_accessibility_ns_map_ubuntu["act"], action_name)
+            ] = action.getKeyBinding(i)
+    except NotImplementedError:
+        pass
+
+    # Add from here if we need more attributes in the future...
+
+    raw_role_name: str = node.getRoleName().strip()
+    node_role_name = (raw_role_name or "unknown").replace(" ", "-")
+
+    if not flag:
+        if raw_role_name == "document spreadsheet":
+            flag = "calc"
+        if raw_role_name == "application" and node.name == "Thunderbird":
+            flag = "thunderbird"
+
+    xml_node = lxml.etree.Element(
+        node_role_name, attrib=attribute_dict, nsmap=_accessibility_ns_map_ubuntu
+    )
+
+    if len(text) > 0:
+        xml_node.text = text
+
+    if depth == MAX_DEPTH:
+        logger.warning("Max depth reached")
+        return xml_node
+
+    if flag == "calc" and node_role_name == "table":
+        # Maximum column: 1024 if ver<=7.3 else 16384
+        # Maximum row: 104 8576
+        # Maximun sheet: 1 0000
+
+        global libreoffice_version_tuple
+        MAXIMUN_COLUMN = 1024 if libreoffice_version_tuple < (7, 4) else 16384
+        MAX_ROW = 104_8576
+
+        index_base = 0
+        first_showing = False
+        column_base = None
+        for r in range(MAX_ROW):
+            for clm in range(column_base or 0, MAXIMUN_COLUMN):
+                child_node: Accessible = node[index_base + clm]
+                showing: bool = child_node.getState().contains(STATE_SHOWING)
+                if showing:
+                    child_node: _Element = _create_atspi_node(
+                        child_node, depth + 1, flag
+                    )
+                    if not first_showing:
+                        column_base = clm
+                        first_showing = True
+                    xml_node.append(child_node)
+                elif first_showing and column_base is not None or clm >= 500:
+                    break
+            if first_showing and clm == column_base or not first_showing and r >= 500:
+                break
+            index_base += MAXIMUN_COLUMN
+        return xml_node
+    else:
+        try:
+            for i, ch in enumerate(node):
+                if i == MAX_WIDTH:
+                    logger.warning("Max width reached")
+                    break
+                xml_node.append(_create_atspi_node(ch, depth + 1, flag))
+        except:
+            logger.warning(
+                "Error occurred during children traversing. Has Ignored. Node: %s",
+                lxml.etree.tostring(xml_node, encoding="unicode"),
+            )
+        return xml_node
+
+
 class UIElement(object):
     def __init__(self, node):
         self.node = node
@@ -673,12 +837,24 @@ class UIElement(object):
 
     @staticmethod
     def systemWideElement():
-        desktop = pyatspi.Registry.getDesktop(0)
-        for app in desktop:
-            for window in app:
-                if window.getState().contains(pyatspi.STATE_ACTIVE):
-                    active_node = app
-        return UIElement(active_node)
+        # desktop = pyatspi.Registry.getDesktop(0)
+        # for app in desktop:
+        #     for window in app:
+        #         if window.getState().contains(pyatspi.STATE_ACTIVE):
+        #             active_node = app
+        # return UIElement(active_node)
+        desktop: Accessible = pyatspi.Registry.getDesktop(0)
+        xml_node = lxml.etree.Element(
+            "desktop-frame", nsmap=_accessibility_ns_map_ubuntu
+        )
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            futures = [
+                executor.submit(_create_atspi_node, app_node, 1) for app_node in desktop
+            ]
+            for future in concurrent.futures.as_completed(futures):
+                xml_tree = future.result()
+                xml_node.append(xml_tree)
+        return lxml.etree.tostring(xml_node, encoding="unicode")
 
     @property
     def states(self):

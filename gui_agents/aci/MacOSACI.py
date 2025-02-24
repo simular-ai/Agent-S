@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 import platform
+from gui_agents.utils.common_utils import box_iou
 
 if platform.system() == "Darwin":
     from AppKit import *
@@ -31,35 +32,6 @@ def list_apps_in_directories(directories):
             ]
             apps.extend(directory_apps)
     return apps
-
-
-def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
-    """
-    Fast vectorized IOU implementation using only NumPy
-    boxes1: [N, 4] array of boxes
-    boxes2: [M, 4] array of boxes
-    Returns: [N, M] array of IOU values
-    """
-    # Calculate areas of boxes1
-    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
-
-    # Calculate areas of boxes2
-    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
-
-    # Get intersections using broadcasting
-    lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
-    rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
-
-    # Calculate intersection areas
-    wh = np.clip(rb - lt, 0, None)  # [N,M,2]
-    intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
-
-    # Calculate union areas
-    union = area1[:, None] + area2[None, :] - intersection
-
-    # Calculate IOU
-    iou = np.where(union > 0, intersection / union, 0)
-    return iou
 
 
 class MacOSACI(ACI):
