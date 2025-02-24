@@ -13,7 +13,6 @@ from xml.etree.ElementTree import Element
 
 import numpy as np
 import tiktoken
-import torch
 from PIL import Image, ImageDraw, ImageFont
 from pydantic import BaseModel, ValidationError
 
@@ -718,9 +717,38 @@ def parse_code_from_som_string(input_string, masks):
     return actions
 
 
+def box_iou(boxes1: np.ndarray, boxes2: np.ndarray) -> np.ndarray:
+    """
+    Fast vectorized IOU implementation using only NumPy
+    boxes1: [N, 4] array of boxes
+    boxes2: [M, 4] array of boxes
+    Returns: [N, M] array of IOU values
+    """
+    # Calculate areas of boxes1
+    area1 = (boxes1[:, 2] - boxes1[:, 0]) * (boxes1[:, 3] - boxes1[:, 1])
+
+    # Calculate areas of boxes2
+    area2 = (boxes2[:, 2] - boxes2[:, 0]) * (boxes2[:, 3] - boxes2[:, 1])
+
+    # Get intersections using broadcasting
+    lt = np.maximum(boxes1[:, None, :2], boxes2[None, :, :2])  # [N,M,2]
+    rb = np.minimum(boxes1[:, None, 2:], boxes2[None, :, 2:])  # [N,M,2]
+
+    # Calculate intersection areas
+    wh = np.clip(rb - lt, 0, None)  # [N,M,2]
+    intersection = wh[:, :, 0] * wh[:, :, 1]  # [N,M]
+
+    # Calculate union areas
+    union = area1[:, None] + area2[None, :] - intersection
+
+    # Calculate IOU
+    iou = np.where(union > 0, intersection / union, 0)
+    return iou
+
+
 def calculate_iou(rect1, rect2):
     """
-    Calculate the Intersection over Union (IoU) of two rectangles using torchvision.
+    Calculate the Intersection over Union (IoU) of two rectangles using numpy.
 
     Parameters:
     rect1, rect2: Tuples containing the coordinates of the rectangles in the form (x_min, y_min, x_max, y_max)
@@ -729,11 +757,11 @@ def calculate_iou(rect1, rect2):
     IoU: Intersection over Union value
     """
     # Convert the coordinates to tensors
-    box1 = torch.tensor([rect1], dtype=torch.float32)
-    box2 = torch.tensor([rect2], dtype=torch.float32)
+    box1 = np.array([rect1], dtype=np.float32)
+    box2 = np.array([rect2], dtype=np.float32)
 
-    # Calculate IoU using torchvision
-    iou = ops.box_iou(box1, box2).item()
+    # Calculate IoU using numpy
+    iou = box_iou(box1, box2)
 
     return iou
 

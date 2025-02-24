@@ -4,10 +4,9 @@ import os
 import time
 import xml.etree.ElementTree as ET
 from typing import Dict, List, Tuple
-
+import numpy as np
 import requests
-import torch
-import torchvision
+from gui_agents.utils.common_utils import box_iou
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -231,13 +230,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                         int(box.get("right", 0)),
                         int(box.get("bottom", 0)),
                     )
-                    iou = (
-                        torchvision.ops.box_iou(
-                            torch.tensor(tree_bboxes), torch.tensor([[x1, y1, x2, y2]])
-                        )
-                        .numpy()
-                        .flatten()
-                    )
+                    iou = box_iou(
+                        np.array(tree_bboxes, dtype=np.float32),
+                        np.array([[x1, y1, x2, y2]], dtype=np.float32),
+                    ).flatten()
 
                     if max(iou) < 0.1:
                         # Add the element to the linearized accessibility tree

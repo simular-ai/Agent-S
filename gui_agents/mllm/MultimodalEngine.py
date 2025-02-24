@@ -10,7 +10,6 @@ import backoff
 import numpy as np
 import openai
 import requests
-import torch
 from anthropic import Anthropic
 from openai import APIConnectionError, APIError, AzureOpenAI, OpenAI, RateLimitError
 from PIL import Image
