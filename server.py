@@ -1,9 +1,12 @@
 import asyncio
+import platform
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from gui_agents.core.AgentS import GraphSearchAgent
 from gui_agents.aci.LinuxOSACI import LinuxACI
+from gui_agents.aci.MacOSACI import MacOSACI
+from gui_agents.aci.WindowsOSACI import WindowsOSACI
 
 app = FastAPI()
 
@@ -11,12 +14,25 @@ engine_params = {
     "engine_type": "openai",
     "model": "gpt-4o",
 }
-grounding_agent = LinuxACI()
+
+# Determine the operating system and select appropriate ACI
+os_name = platform.system().lower()
+if os_name == "linux":
+    grounding_agent = LinuxACI()
+    platform_name = "ubuntu"
+elif os_name == "darwin":
+    grounding_agent = MacOSACI()
+    platform_name = "macos"
+elif os_name == "windows":
+    grounding_agent = WindowsOSACI()
+    platform_name = "windows"
+else:
+    raise ValueError(f"Unsupported operating system: {os_name}")
 
 agent = GraphSearchAgent(
     engine_params,
     grounding_agent,
-    platform="ubuntu",
+    platform=platform_name,
     action_space="pyautogui",
     observation_type="mixed",
 )
