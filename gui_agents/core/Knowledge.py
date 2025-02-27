@@ -27,7 +27,7 @@ class KnowledgeBase(BaseModule):
 
         # initialize embedding engine
         # TODO: Support other embedding engines
-        self.embedding_engine = OpenAIEmbeddingEngine()
+        self.embedding_engine = OpenAIEmbeddingEngine(api_key=engine_params["api_key"])
 
         self.rag_module_system_prompt = PROCEDURAL_MEMORY.RAG_AGENT.replace(
             "CURRENT_OS", self.platform
