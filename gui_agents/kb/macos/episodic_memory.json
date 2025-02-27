@@ -1,1 +1,3 @@
-{}
+{
+  "Task:\nHow to open Safari and navigate to a website on macOS?\n\nSubtask: Switch to Safari\nSubtask Instruction: Use the application switcher (usually `Command + Tab`) to navigate to Safari.": "**Subtask: Switch to Safari**\n\n1. **Action:** Use the application switcher to navigate to Safari.\n   - **Grounded Action:** \n     ```python\n     agent.hotkey(['command', 'tab'])\n     ```\n\n2. **Action:** Try an alternative method to switch to Safari using the Dock.\n   - **Grounded Action:** \n     ```python\n     agent.click(element1_id, element2_id, \"left\")\n     ```"
+}
