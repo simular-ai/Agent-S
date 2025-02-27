@@ -1,13 +1,14 @@
 import asyncio
 import os
 import platform
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from gui_agents.core.AgentS import GraphSearchAgent
 import io
 import pyautogui
 import time
+from threading import Event, Lock
 
 # Determine the operating system and select appropriate ACI
 os_name = platform.system().lower()
@@ -28,6 +29,17 @@ else:
 
 app = FastAPI()
 
+# Add global lock and status tracking
+agent_lock = Lock()
+agent_status = {
+    "is_running": False,
+    "current_instruction": None,
+    "start_time": None
+}
+
+# Add a stop event
+stop_event = Event()
+
 class InstructionData(BaseModel):
     screenshot: str
     accessibility_tree: str
@@ -47,12 +59,18 @@ async def stream_code(code: str):
         await asyncio.sleep(0.1)
 
 def run_agent(agent: GraphSearchAgent, instruction: str):
+    global stop_event
+    stop_event.clear()  # Reset the stop event
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
     for _ in range(15):
+        # Check if stop was requested
+        if stop_event.is_set():
+            print("Agent execution stopped by user")
+            return
 
-        print("interation", _)
+        print("iteration", _)
 
         obs["accessibility_tree"] = UIElement.systemWideElement()
 
@@ -111,35 +129,69 @@ def run_agent(agent: GraphSearchAgent, instruction: str):
 
 @app.post("/run")
 async def run(request: RunRequest):
-    if "gpt" in request.model:
-        engine_type = "openai"
-    elif "claude" in request.model:
-        engine_type = "anthropic"
-
-    engine_params = {
-        "engine_type": engine_type,
-        "model": request.model,
-        "api_key": request.api_key,
-    }
-
-    print("engine_params", engine_params)
-
-    agent = GraphSearchAgent(
-        engine_params,
-        grounding_agent,
-        platform=platform_name,
-        action_space="pyautogui",
-        observation_type="mixed",
-    )
-
-    agent.reset()
-
-    print("start the agent")
-
-    # Run the agent on your own device
-    run_agent(agent, request.instruction)
+    global agent_status
     
-    return {"status": "completed"}
+    # Check if agent is already running
+    if not agent_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409, 
+            detail="An agent is already running. Use /status to check current run or /stop to stop it."
+        )
+    
+    try:
+        agent_status = {
+            "is_running": True,
+            "current_instruction": request.instruction,
+            "start_time": time.time(),
+            "model": request.model
+        }
+        
+        if "gpt" in request.model:
+            engine_type = "openai"
+        elif "claude" in request.model:
+            engine_type = "anthropic"
+
+        engine_params = {
+            "engine_type": engine_type,
+            "model": request.model,
+            "api_key": request.api_key,
+        }
+
+        print("engine_params", engine_params)
+
+        agent = GraphSearchAgent(
+            engine_params,
+            grounding_agent,
+            platform=platform_name,
+            action_space="pyautogui",
+            observation_type="mixed",
+        )
+
+        agent.reset()
+        print("start the agent")
+        run_agent(agent, request.instruction)
+        
+        return {"status": "completed"}
+    
+    finally:
+        agent_status = {
+            "is_running": False,
+            "current_instruction": None,
+            "start_time": None
+        }
+        agent_lock.release()
+
+@app.get("/status")
+async def get_status():
+    if agent_status["is_running"]:
+        duration = time.time() - agent_status["start_time"]
+        return {
+            "status": "running",
+            "instruction": agent_status["current_instruction"],
+            "model": agent_status["model"],
+            "running_for_seconds": round(duration, 2)
+        }
+    return {"status": "idle"}
 
 @app.post("/execute")
 async def execute_command_stream(cmd: CommandRequest):
@@ -164,3 +216,25 @@ async def execute_command_stream(cmd: CommandRequest):
     info, code = agent.predict(instruction=instruction, observation=obs)
 
     return StreamingResponse(stream_code(code), media_type="text/plain")
+
+@app.post("/stop")
+async def stop_agent():
+    if not agent_status["is_running"]:
+        raise HTTPException(
+            status_code=404,
+            detail="No agent is currently running"
+        )
+    
+    global stop_event
+    stop_event.set()
+    return {"status": "stop signal sent"}
+
+import uvicorn
+
+if __name__ == "__main__":
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",  # Allows external access
+        port=8000,       # Default port for FastAPI
+        reload=True      # Auto-reload on code changes
+    ) 
