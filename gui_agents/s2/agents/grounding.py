@@ -28,30 +28,6 @@ class ACI:
         self.notes: List[str] = []
 
 
-class StrEnum(Enum):
-    def __str__(self):
-        return str(self.value)
-
-
-class ScalingSource(StrEnum):
-    COMPUTER = "computer"
-    API = "api"
-
-
-class Resolution(TypedDict):
-    width: int
-    height: int
-
-
-# sizes above XGA/WXGA are not recommended (see README.md)
-# scale down to one of these targets if ComputerTool._scaling_enabled is set
-MAX_SCALING_TARGETS: dict[str, Resolution] = {
-    "XGA": Resolution(width=1024, height=768),  # 4:3
-    "WXGA": Resolution(width=1280, height=800),  # 16:10
-    "FWXGA": Resolution(width=1366, height=768),  # ~16:9
-}
-
-
 # Agent action decorator
 def agent_action(func):
     func.is_agent_action = True
@@ -218,31 +194,6 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             engine_params={"engine_type": "openai", "model": "gpt-4o"},
             system_prompt=PROCEDURAL_MEMORY.PHRASE_TO_WORD_COORDS_PROMPT,
         )
-
-    def scale_coordinates(self, source: ScalingSource, x: int, y: int):
-        """Scale coordinates to a target maximum resolution."""
-        ratio = self.width / self.height
-        target_dimension = None
-        for dimension in MAX_SCALING_TARGETS.values():
-            # allow some error in the aspect ratio - not ratios are exactly 16:9
-            if abs(dimension["width"] / dimension["height"] - ratio) < 0.02:
-                if dimension["width"] < self.width:
-                    target_dimension = dimension
-                break
-        if target_dimension is None:
-            return x, y
-        # should be less than 1
-        x_scaling_factor = target_dimension["width"] / self.width
-        y_scaling_factor = target_dimension["height"] / self.height
-        if source == ScalingSource.API:
-            # scale up
-            coords = round(x / x_scaling_factor), round(y / y_scaling_factor)
-            print("Scaling coordinates from", x, y, "to", coords)
-            return coords
-        # scale down
-        coords = round(x * x_scaling_factor), round(y * y_scaling_factor)
-        print("Scaling coordinates from", x, y, "to", coords)
-        return coords
 
     # Given the state and worker's referring expression, use a hosted grounding VLM to generate (x,y)
     def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
