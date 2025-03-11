@@ -4,10 +4,10 @@ import os
 import shutil
 from typing import Any, Dict, List, Optional, Tuple
 
-from agent_s.core.grounding import ACI
-from agent_s.core.worker import Worker
-from agent_s.core.manager import Manager
-from agent_s.utils.common_utils import Node
+from gui_agents.v2.core.grounding import ACI
+from gui_agents.v2.core.worker import Worker
+from gui_agents.v2.core.manager import Manager
+from gui_agents.v2.utils.common_utils import Node
 
 logger = logging.getLogger("desktopenv.agent")
 working_dir = os.path.dirname(os.path.abspath(__file__))
@@ -89,7 +89,7 @@ class GraphSearchAgent(UIAgent):
         engine_params: Dict,
         grounding_agent: ACI,
         platform: str = "macos",
-        action_space: str = "pyatuogui",
+        action_space: str = "pyautogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
         domain: Optional[str] = None,
