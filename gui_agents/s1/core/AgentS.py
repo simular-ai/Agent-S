@@ -1,13 +1,15 @@
 import json
 import logging
 import os
-import shutil
+import platform
+import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
-from gui_agents.v2.core.grounding import ACI
-from gui_agents.v2.core.worker import Worker
-from gui_agents.v2.core.manager import Manager
-from gui_agents.v2.utils.common_utils import Node
+from gui_agents.s1.aci.ACI import ACI
+from gui_agents.s1.core.Manager import Manager
+from gui_agents.s1.core.Worker import Worker
+from gui_agents.s1.utils.common_utils import Node
 
 logger = logging.getLogger("desktopenv.agent")
 working_dir = os.path.dirname(os.path.abspath(__file__))
@@ -24,7 +26,6 @@ class UIAgent:
         action_space: str = "pyautogui",
         observation_type: str = "a11y_tree",
         search_engine: str = "perplexica",
-        domain: str = "all",
     ):
         """Initialize UIAgent
 
@@ -42,7 +43,6 @@ class UIAgent:
         self.action_space = action_space
         self.observation_type = observation_type
         self.engine = search_engine
-        self.domain = domain
 
     def reset(self) -> None:
         """Reset agent state"""
@@ -89,12 +89,9 @@ class GraphSearchAgent(UIAgent):
         engine_params: Dict,
         grounding_agent: ACI,
         platform: str = "macos",
-        action_space: str = "pyautogui",
+        action_space: str = "pyatuogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
-        domain: Optional[str] = None,
-        memory_root_path: str = os.getcwd(),
-        memory_folder_name: str = "kb",
     ):
         """Initialize GraphSearchAgent
 
@@ -105,9 +102,6 @@ class GraphSearchAgent(UIAgent):
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
-            domain: Domain to use for planning (all, web, desktop)
-            memory_root_path: Path to memory directory. Defaults to current working directory.
-            memory_folder_name: Name of memory folder. Defaults to "kb".
         """
         super().__init__(
             engine_params,
@@ -116,30 +110,7 @@ class GraphSearchAgent(UIAgent):
             action_space,
             observation_type,
             search_engine,
-            domain,
         )
-
-        self.memory_root_path = memory_root_path
-        self.memory_folder_name = memory_folder_name
-
-        # Initialize agent's knowledge base on user's current working directory.
-        print("Downloading knowledge base initial Agent-S knowledge...")
-        self.local_kb_path = os.path.join(
-            self.memory_root_path, self.memory_folder_name, self.platform
-        )
-
-        library_kb_path = os.path.join(working_dir, "../kb", self.platform)
-        if not os.path.exists(self.local_kb_path):
-            shutil.copytree(library_kb_path, self.local_kb_path)
-            print("Successfully completed download of knowledge base.")
-        else:
-            print(
-                f"Path local_kb_path {self.local_kb_path} already exists. Skipping download."
-            )
-            print(
-                f"If you'd like to re-download the initial knowledge base, please delete the existing knowledge base at {self.local_kb_path}."
-            )
-
         self.reset()
 
     def reset(self) -> None:
@@ -150,16 +121,9 @@ class GraphSearchAgent(UIAgent):
             self.grounding_agent,
             platform=self.platform,
             search_engine=self.engine,
-            domain=self.domain,
-            local_kb_path=self.local_kb_path,
         )
         self.executor = Worker(
-            self.engine_params,
-            self.grounding_agent,
-            platform=self.platform,
-            domain=self.domain,
-            use_subtask_experience=True,
-            local_kb_path=self.local_kb_path,
+            self.engine_params, self.grounding_agent, platform=self.platform
         )
 
         # Reset state variables
@@ -167,7 +131,7 @@ class GraphSearchAgent(UIAgent):
         self.needs_next_subtask: bool = True
         self.step_count: int = 0
         self.turn_count: int = 0
-        self.failure_subtask: Optional[Node] = None
+        self.failure_feedback: str = ""
         self.should_send_action: bool = False
         self.completed_tasks: List[Node] = []
         self.current_subtask: Optional[Node] = None
@@ -180,9 +144,17 @@ class GraphSearchAgent(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(
-        self, instruction: str, observation: Dict, info: Dict[str, Any]
-    ) -> Tuple[Dict, List[str]]:
+    def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
+        """Predict next UI action sequence
+
+        Args:
+            instruction: Natural language instruction
+            observation: Current UI state observation Dictionary {"accessibility_tree": str, "screenshot": bytes}
+            info: Dictionary containing additional information.
+
+        Returns:
+            Tuple of (agent info dict, list of actions)
+        """
         # Initialize the three info dictionaries
         planner_info = {}
         executor_info = {}
@@ -197,15 +169,14 @@ class GraphSearchAgent(UIAgent):
         # If the DONE response by the executor is for a subtask, then the agent should continue with the next subtask without sending the action to the environment
         while not self.should_send_action:
             self.subtask_status = "In"
-            # If replan is true, generate a new plan. True at start, after a failed plan, or after subtask completion
+            # if replan is true, generate a new plan. True at start, then true again after a failed plan
             if self.requires_replan:
                 logger.info("(RE)PLANNING...")
+                # failure feedback is the reason for the failure of the previous plan
                 planner_info, self.subtasks = self.planner.get_action_queue(
                     instruction=instruction,
                     observation=observation,
-                    failed_subtask=self.failure_subtask,
-                    completed_subtasks_list=self.completed_tasks,
-                    remaining_subtasks_list=self.subtasks,
+                    failure_feedback=self.failure_feedback,
                 )
 
                 self.requires_replan = False
@@ -217,26 +188,6 @@ class GraphSearchAgent(UIAgent):
             # use the exectuor to complete the topmost subtask
             if self.needs_next_subtask:
                 logger.info("GETTING NEXT SUBTASK...")
-
-                # this can be empty if the DAG planner deems that all subtasks are completed
-                if len(self.subtasks) <= 0:
-                    self.requires_replan = True
-                    self.needs_next_subtask = True
-                    self.failure_subtask = None
-                    self.completed_tasks.append(self.current_subtask)
-
-                    # reset executor state
-                    self.reset_executor_state()
-                    self.should_send_action = True
-                    self.subtask_status = "Done"
-                    executor_info = {
-                        "executor_plan": "agent.done()",
-                        "plan_code": "agent.done()",
-                        "reflection": "agent.done()",
-                    }
-                    actions = ["DONE"]
-                    break
-
                 self.current_subtask = self.subtasks.pop(0)
                 logger.info(f"NEXT SUBTASK: {self.current_subtask}")
                 self.needs_next_subtask = False
@@ -257,14 +208,11 @@ class GraphSearchAgent(UIAgent):
 
             # set the should_send_action flag to True if the executor returns an action
             self.should_send_action = True
-
-            # replan on failure
             if "FAIL" in actions:
                 self.requires_replan = True
+                # set the failure feedback to the evaluator feedback
+                self.failure_feedback = f"Completed subtasks: {self.completed_tasks}. The subtask {self.current_subtask} cannot be completed. Please try another approach. {executor_info['plan_code']}. Please replan."
                 self.needs_next_subtask = True
-
-                # assign the failed subtask
-                self.failure_subtask = self.current_subtask
 
                 # reset the step count, executor, and evaluator
                 self.reset_executor_state()
@@ -273,23 +221,17 @@ class GraphSearchAgent(UIAgent):
                 if self.subtasks:
                     self.should_send_action = False
 
-            # replan on subtask completion
             elif "DONE" in actions:
-                self.requires_replan = True
-                self.needs_next_subtask = True
-                self.failure_subtask = None
+                self.requires_replan = False
                 self.completed_tasks.append(self.current_subtask)
-
-                # reset the step count, executor, and evaluator
-                self.reset_executor_state()
-
-                # if more subtasks are remaining, we don't want to send DONE to the environment but move on to the next subtask
+                self.needs_next_subtask = True
                 if self.subtasks:
                     self.should_send_action = False
                 self.subtask_status = "Done"
 
-            self.turn_count += 1
+                self.reset_executor_state()
 
+            self.turn_count += 1
         # reset the should_send_action flag for next iteration
         self.should_send_action = False
 
@@ -318,7 +260,9 @@ class GraphSearchAgent(UIAgent):
             trajectory: String containing task execution trajectory
         """
         try:
-            reflection_path = os.path.join(self.local_kb_path, "narrative_memory.json")
+            reflection_path = os.path.join(
+                working_dir, "../kb", self.platform, "narrative_memory.json"
+            )
             try:
                 reflections = json.load(open(reflection_path))
             except:
@@ -357,7 +301,7 @@ class GraphSearchAgent(UIAgent):
                 )[0]
                 try:
                     subtask_path = os.path.join(
-                        self.local_kb_path, "episodic_memory.json"
+                        working_dir, "../kb", self.platform, "episodic_memory.json"
                     )
                     kb = json.load(open(subtask_path))
                 except:

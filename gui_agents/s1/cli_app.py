@@ -11,15 +11,17 @@ import pyautogui
 
 if platform.system() == "Darwin":
     current_platform = "macos"
-elif platform.system() == "Linux":
-    current_platform = "ubuntu"
+    from gui_agents.s1.aci.MacOSACI import MacOSACI, UIElement
 elif platform.system() == "Windows":
     current_platform = "windows"
+    from gui_agents.s1.aci.WindowsOSACI import WindowsACI, UIElement
+elif platform.system() == "Linux":
+    current_platform = "ubuntu"
+    from gui_agents.s1.aci.LinuxOSACI import LinuxACI, UIElement
 else:
     raise ValueError("Unsupported platform")
 
-from gui_agents.v2.core.grounding import OSWorldACI
-from gui_agents.v2.core.agent_s import GraphSearchAgent
+from gui_agents.s1.core.AgentS import GraphSearchAgent, UIAgent
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -79,11 +81,13 @@ def show_permission_dialog(code: str, action_description: str):
     return False
 
 
-def run_agent(agent, instruction: str):
+def run_agent(agent: UIAgent, instruction: str):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
     for _ in range(15):
+        obs["accessibility_tree"] = UIElement.systemWideElement()
+
         # Get screen shot using pyautogui.
         # Take a screenshot
         screenshot = pyautogui.screenshot()
@@ -150,7 +154,14 @@ def main():
     )
     args = parser.parse_args()
 
-    grounding_agent = OSWorldACI()
+    if platform.system() == "Darwin":
+        grounding_agent = MacOSACI()
+    elif platform.system() == "Windows":
+        grounding_agent = WindowsACI()
+    elif platform.system() == "Linux":
+        grounding_agent = LinuxACI()
+    else:
+        raise ValueError("Unsupported platform")
 
     while True:
         query = input("Query: ")

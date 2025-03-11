@@ -4,13 +4,13 @@ import os
 import re
 from typing import Dict, List, Tuple
 
-from gui_agents.v1.aci.ACI import ACI
-from gui_agents.v1.core.BaseModule import BaseModule
-from gui_agents.v1.core.Knowledge import KnowledgeBase
-from gui_agents.v1.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.v1.mllm.MultimodalEngine import OpenAIEmbeddingEngine
-from gui_agents.v1.utils import common_utils
-from gui_agents.v1.utils.common_utils import Node, calculate_tokens, call_llm_safe
+from gui_agents.s1.aci.ACI import ACI
+from gui_agents.s1.core.BaseModule import BaseModule
+from gui_agents.s1.core.Knowledge import KnowledgeBase
+from gui_agents.s1.core.ProceduralMemory import PROCEDURAL_MEMORY
+from gui_agents.s1.mllm.MultimodalEngine import OpenAIEmbeddingEngine
+from gui_agents.s1.utils import common_utils
+from gui_agents.s1.utils.common_utils import Node, calculate_tokens, call_llm_safe
 
 logger = logging.getLogger("desktopenv.agent")
 working_dir = os.path.dirname(os.path.abspath(__file__))

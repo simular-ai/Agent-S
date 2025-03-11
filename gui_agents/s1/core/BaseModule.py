@@ -1,6 +1,6 @@
 from typing import Dict, Optional
 
-from gui_agents.v1.mllm.MultimodalAgent import LMMAgent
+from gui_agents.s1.mllm.MultimodalAgent import LMMAgent
 
 
 class BaseModule:

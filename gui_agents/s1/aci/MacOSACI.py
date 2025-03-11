@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Tuple
 import numpy as np
 import requests
 import platform
-from gui_agents.v1.utils.common_utils import box_iou
+from gui_agents.s1.utils.common_utils import box_iou
 
 if platform.system() == "Darwin":
     from AppKit import *
@@ -15,7 +15,7 @@ if platform.system() == "Darwin":
         AXUIElementCreateSystemWide,
     )
 
-from gui_agents.v1.aci.ACI import ACI, agent_action
+from gui_agents.s1.aci.ACI import ACI, agent_action
 
 
 def _normalize_key(key: str) -> str:

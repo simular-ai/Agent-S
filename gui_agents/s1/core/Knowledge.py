@@ -5,15 +5,15 @@ from typing import Dict, Tuple
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from gui_agents.v1.core.BaseModule import BaseModule
-from gui_agents.v1.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.v1.mllm.MultimodalEngine import OpenAIEmbeddingEngine
-from gui_agents.v1.utils.common_utils import (
+from gui_agents.s1.core.BaseModule import BaseModule
+from gui_agents.s1.core.ProceduralMemory import PROCEDURAL_MEMORY
+from gui_agents.s1.mllm.MultimodalEngine import OpenAIEmbeddingEngine
+from gui_agents.s1.utils.common_utils import (
     load_embeddings,
     load_knowledge_base,
     save_embeddings,
 )
-from gui_agents.v1.utils.query_perplexica import query_to_perplexica
+from gui_agents.s1.utils.query_perplexica import query_to_perplexica
 
 working_dir = os.path.dirname(os.path.abspath(__file__))
 

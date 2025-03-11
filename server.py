@@ -4,7 +4,7 @@ import platform
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from gui_agents.v1.core.AgentS import GraphSearchAgent
+from gui_agents.s1.core.AgentS import GraphSearchAgent
 import io
 import pyautogui
 import time
@@ -13,15 +13,15 @@ from threading import Event, Lock
 # Determine the operating system and select appropriate ACI
 os_name = platform.system().lower()
 if os_name == "linux":
-    from gui_agents.v1.aci.LinuxOSACI import LinuxACI, UIElement
+    from gui_agents.s1.aci.LinuxOSACI import LinuxACI, UIElement
     grounding_agent = LinuxACI()
     platform_name = "ubuntu"
 elif os_name == "darwin":
-    from gui_agents.v1.aci.MacOSACI import MacOSACI, UIElement
+    from gui_agents.s1.aci.MacOSACI import MacOSACI, UIElement
     grounding_agent = MacOSACI()
     platform_name = "macos"
 elif os_name == "windows":
-    from gui_agents.v1.aci.WindowsOSACI import WindowsACI, UIElement
+    from gui_agents.s1.aci.WindowsOSACI import WindowsACI, UIElement
     grounding_agent = WindowsACI()
     platform_name = "windows"
 else:

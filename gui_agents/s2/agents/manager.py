@@ -1,13 +1,13 @@
 import logging
-import os
+import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
-from gui_agents.v1.aci.ACI import ACI
-from gui_agents.v1.core.BaseModule import BaseModule
-from gui_agents.v1.core.Knowledge import KnowledgeBase
-from gui_agents.v1.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.v1.utils.common_utils import (
+from gui_agents.s2.agents.grounding import ACI
+from gui_agents.s2.core.module import BaseModule
+from gui_agents.s2.core.knowledge import KnowledgeBase
+from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.s2.utils.common_utils import (
     Dag,
     Node,
     calculate_tokens,
@@ -17,9 +17,6 @@ from gui_agents.v1.utils.common_utils import (
 
 logger = logging.getLogger("desktopenv.agent")
 
-# Get the directory of the current script
-working_dir = os.path.dirname(os.path.abspath(__file__))
-
 NUM_IMAGE_TOKEN = 1105  # Value set of screen of size 1920x1080 for openai vision
 
 
@@ -28,9 +25,11 @@ class Manager(BaseModule):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
+        local_kb_path: str,
         search_engine: Optional[str] = None,
         multi_round: bool = False,
         platform: str = "macos",
+        domain: str = "all",
     ):
         # TODO: move the prompt to Procedural Memory
         super().__init__(engine_params, platform)
@@ -38,8 +37,12 @@ class Manager(BaseModule):
         # Initialize the ACI
         self.grounding_agent = grounding_agent
 
-        # Initialize the submodules of the Manager
-        self.generator_agent = self._create_agent(PROCEDURAL_MEMORY.MANAGER_PROMPT)
+        # Initialize the planner
+        sys_prompt = PROCEDURAL_MEMORY.COMBINED_MANAGER_PROMPT
+
+        self.generator_agent = self._create_agent(sys_prompt)
+
+        # Initialize the remaining modules
         self.dag_translator_agent = self._create_agent(
             PROCEDURAL_MEMORY.DAG_TRANSLATOR_PROMPT
         )
@@ -49,9 +52,14 @@ class Manager(BaseModule):
         self.episode_summarization_agent = self._create_agent(
             PROCEDURAL_MEMORY.SUBTASK_SUMMARIZATION_PROMPT
         )
-        self.rag_agent = self._create_agent(PROCEDURAL_MEMORY.RAG_AGENT)
 
-        self.knowldge_base = KnowledgeBase(platform, engine_params)
+        self.local_kb_path = local_kb_path
+
+        self.knowledge_base = KnowledgeBase(
+            self.local_kb_path,
+            platform,
+            engine_params,
+        )
 
         self.planner_history = []
 
@@ -59,6 +67,7 @@ class Manager(BaseModule):
         self.search_engine = search_engine
         self.multi_round = multi_round
         self.platform = platform
+        self.domain = domain
 
     def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection
@@ -67,9 +76,11 @@ class Manager(BaseModule):
         """
 
         # Create Reflection on whole trajectories for next round trial, keep earlier messages as exemplars
-        self.episode_summarization_agent.add_message(trajectory)
+        self.episode_summarization_agent.add_message(trajectory, role="user")
         subtask_summarization = call_llm_safe(self.episode_summarization_agent)
-        self.episode_summarization_agent.add_message(subtask_summarization)
+        self.episode_summarization_agent.add_message(
+            subtask_summarization, role="assistant"
+        )
 
         return subtask_summarization
 
@@ -79,33 +90,45 @@ class Manager(BaseModule):
             trajectory: str: The narrative experience to be summarized
         """
         # Create Reflection on whole trajectories for next round trial
-        self.narrative_summarization_agent.add_message(trajectory)
+        self.narrative_summarization_agent.add_message(trajectory, role="user")
         lifelong_learning_reflection = call_llm_safe(self.narrative_summarization_agent)
 
         return lifelong_learning_reflection
 
     def _generate_step_by_step_plan(
-        self, observation: Dict, instruction: str, failure_feedback: str = ""
+        self,
+        observation: Dict,
+        instruction: str,
+        failed_subtask: Optional[Node] = None,
+        completed_subtasks_list: List[Node] = [],
+        remaining_subtasks_list: List[Node] = [],
     ) -> Tuple[Dict, str]:
         agent = self.grounding_agent
 
-        self.active_apps = agent.get_active_apps(observation)
-
-        tree_input = agent.linearize_and_annotate_tree(observation)
-        observation["linearized_accessibility_tree"] = tree_input
+        # Converts a list of DAG Nodes into a natural langauge list
+        def format_subtask_list(subtasks: List[Node]) -> str:
+            res = ""
+            for idx, node in enumerate(subtasks):
+                res += f"{idx+1}. **{node.name}**:\n"
+                bullets = re.split(r"(?<=[.!?;]) +", node.info)
+                for bullet in bullets:
+                    res += f"   - {bullet}\n"
+                res += "\n"
+            return res
 
         # Perform Retrieval only at the first planning step
         if self.turn_count == 0:
 
-            self.search_query = self.knowldge_base.formulate_query(
+            self.search_query = self.knowledge_base.formulate_query(
                 instruction, observation
             )
 
+            most_similar_task = ""
             retrieved_experience = ""
             integrated_knowledge = ""
             # Retrieve most similar narrative (task) experience
             most_similar_task, retrieved_experience = (
-                self.knowldge_base.retrieve_narrative_experience(instruction)
+                self.knowledge_base.retrieve_narrative_experience(instruction)
             )
             logger.info(
                 "SIMILAR TASK EXPERIENCE: %s",
@@ -114,7 +137,7 @@ class Manager(BaseModule):
 
             # Retrieve knowledge from the web if search_engine is provided
             if self.search_engine is not None:
-                retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
+                retrieved_knowledge = self.knowledge_base.retrieve_knowledge(
                     instruction=instruction,
                     search_query=self.search_query,
                     search_engine=self.search_engine,
@@ -123,7 +146,7 @@ class Manager(BaseModule):
 
                 if retrieved_knowledge is not None:
                     # Fuse the retrieved knowledge and experience
-                    integrated_knowledge = self.knowldge_base.knowledge_fusion(
+                    integrated_knowledge = self.knowledge_base.knowledge_fusion(
                         observation=observation,
                         instruction=instruction,
                         web_knowledge=retrieved_knowledge,
@@ -144,39 +167,50 @@ class Manager(BaseModule):
                 )
             )
 
-        generator_message = (
-            f"Accessibility Tree: {tree_input}\n"
-            f"The clipboard contains: {agent.clipboard}."
-            f"The current open applications are {agent.get_active_apps(observation)}"
-            + (
-                f" Previous plan failed at step: {failure_feedback}"
-                if failure_feedback
-                else ""
+        # Re-plan on failure case
+        if failed_subtask:
+            generator_message = (
+                f"The subtask {failed_subtask} cannot be completed. Please generate a new plan for the remainder of the trajectory.\n\n"
+                f"Successfully Completed Subtasks:\n{format_subtask_list(completed_subtasks_list)}\n"
+                f"The clipboard contains: {agent.clipboard}.\n"
             )
-        )
+        # Re-plan on subtask completion case
+        elif len(completed_subtasks_list) + len(remaining_subtasks_list) > 0:
+            generator_message = (
+                "The current trajectory and desktop state is provided. Please revise the plan for the following trajectory.\n\n"
+                f"Successfully Completed Subtasks:\n{format_subtask_list(completed_subtasks_list)}\n"
+                f"Future Remaining Subtasks:\n{format_subtask_list(remaining_subtasks_list)}\n"
+                f"The clipboard contains: {agent.clipboard}\n"
+            )
+        # Initial plan case
+        else:
+            generator_message = (
+                "Please generate the initial plan for the task.\n"
+                f"The clipboard contains: {agent.clipboard}.\n"
+            )
+
+        print("GENERATOR MESSAGE:\n", generator_message)
 
         self.generator_agent.add_message(
-            generator_message, image_content=observation.get("screenshot", None)
+            generator_message,
+            image_content=observation.get("screenshot", None),
+            role="user",
         )
 
         logger.info("GENERATING HIGH LEVEL PLAN")
 
         plan = call_llm_safe(self.generator_agent)
-
         if plan == "":
             raise Exception("Plan Generation Failed - Fix the Prompt")
 
         logger.info("HIGH LEVEL STEP BY STEP PLAN: %s", plan)
 
-        self.generator_agent.add_message(plan)
-
+        self.generator_agent.add_message(plan, role="assistant")
         self.planner_history.append(plan)
-
         self.turn_count += 1
 
-        input_tokens, output_tokens = calculate_tokens(self.generator_agent.messages)
-
         # Set Cost based on GPT-4o
+        input_tokens, output_tokens = calculate_tokens(self.generator_agent.messages)
         cost = input_tokens * (0.0050 / 1000) + output_tokens * (0.0150 / 1000)
 
         planner_info = {
@@ -192,9 +226,12 @@ class Manager(BaseModule):
         return planner_info, plan
 
     def _generate_dag(self, instruction: str, plan: str) -> Tuple[Dict, Dag]:
+        # For the re-planning case, remove the prior input since this should only translate the new plan
+        self.dag_translator_agent.reset()
+
         # Add initial instruction and plan to the agent's message history
         self.dag_translator_agent.add_message(
-            f"Instruction: {instruction}\nPlan: {plan}"
+            f"Instruction: {instruction}\nPlan: {plan}", role="user"
         )
 
         logger.info("GENERATING DAG")
@@ -206,7 +243,7 @@ class Manager(BaseModule):
 
         logger.info("Generated DAG: %s", dag_raw)
 
-        self.dag_translator_agent.add_message(dag_raw)
+        self.dag_translator_agent.add_message(dag_raw, role="assistant")
 
         input_tokens, output_tokens = calculate_tokens(
             self.dag_translator_agent.messages
@@ -260,14 +297,20 @@ class Manager(BaseModule):
         self,
         instruction: str,
         observation: Dict,
-        failure_feedback: str = None,
+        failed_subtask: Optional[Node] = None,
+        completed_subtasks_list: List[Node] = [],
+        remaining_subtasks_list: List[Node] = [],
     ):
         """Generate the action list based on the instruction
         instruction:str: Instruction for the task
         """
-        # Generate the high level plan
+
         planner_info, plan = self._generate_step_by_step_plan(
-            observation, instruction, failure_feedback
+            observation,
+            instruction,
+            failed_subtask,
+            completed_subtasks_list,
+            remaining_subtasks_list,
         )
 
         # Generate the DAG

@@ -1,8 +1,11 @@
+# Author: Saaket Agashe
+# Date: 2021-09-15
+# License: MIT
+
 import base64
+import re
 
-import numpy as np
-
-from gui_agents.v2.mllm.engine import (
+from gui_agents.s1.mllm.MultimodalEngine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineOpenAI,
@@ -123,7 +126,7 @@ class LMMAgent:
                 "content": [{"type": "text", "text": text_content}],
             }
 
-            if isinstance(image_content, np.ndarray) or image_content:
+            if image_content:
                 # Check if image_content is a list or a single image
                 if isinstance(image_content, list):
                     # If image_content is a list of images, loop through each image

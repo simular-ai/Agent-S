@@ -15,9 +15,9 @@ from openai import OpenAI
 from PIL import Image
 from pytesseract import Output
 
-from gui_agents.v2.core.procedural_memory import PROCEDURAL_MEMORY
-from gui_agents.v2.mllm.mllm import LMMAgent
-from gui_agents.v2.utils.common_utils import (
+from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.s2.core.mllm import LMMAgent
+from gui_agents.s2.utils.common_utils import (
     call_llm_safe,
     parse_single_code_from_string,
 )

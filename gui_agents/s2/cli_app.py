@@ -11,17 +11,15 @@ import pyautogui
 
 if platform.system() == "Darwin":
     current_platform = "macos"
-    from gui_agents.v1.aci.MacOSACI import MacOSACI, UIElement
-elif platform.system() == "Windows":
-    current_platform = "windows"
-    from gui_agents.v1.aci.WindowsOSACI import WindowsACI, UIElement
 elif platform.system() == "Linux":
     current_platform = "ubuntu"
-    from gui_agents.v1.aci.LinuxOSACI import LinuxACI, UIElement
+elif platform.system() == "Windows":
+    current_platform = "windows"
 else:
     raise ValueError("Unsupported platform")
 
-from gui_agents.v1.core.AgentS import GraphSearchAgent, UIAgent
+from gui_agents.s2.agents.grounding import OSWorldACI
+from gui_agents.s2.agents.agent_s import GraphSearchAgent
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -81,13 +79,11 @@ def show_permission_dialog(code: str, action_description: str):
     return False
 
 
-def run_agent(agent: UIAgent, instruction: str):
+def run_agent(agent, instruction: str):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
     for _ in range(15):
-        obs["accessibility_tree"] = UIElement.systemWideElement()
-
         # Get screen shot using pyautogui.
         # Take a screenshot
         screenshot = pyautogui.screenshot()
@@ -152,16 +148,24 @@ def main():
         default="gpt-4o-mini",
         help="Specify the model to use (e.g., gpt-4o)",
     )
+    parser.add_argument(
+        "--endpoint_provider",
+        type=str,
+        default="huggingface",
+        help="Specify the endpoint provider (e.g., huggingface)",
+    )
+    parser.add_argument(
+        "--endpoint_url",
+        type=str,
+        default="",
+        help="Specify the endpoint URL to your HuggingFace Inference Endpoint.",
+    )
     args = parser.parse_args()
 
-    if platform.system() == "Darwin":
-        grounding_agent = MacOSACI()
-    elif platform.system() == "Windows":
-        grounding_agent = WindowsACI()
-    elif platform.system() == "Linux":
-        grounding_agent = LinuxACI()
-    else:
-        raise ValueError("Unsupported platform")
+    grounding_agent = OSWorldACI(
+        endpoint_provider=args.endpoint_provider,
+        endpoint_url=args.endpoint_url
+    )
 
     while True:
         query = input("Query: ")

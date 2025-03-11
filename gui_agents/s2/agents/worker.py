@@ -3,12 +3,12 @@ import re
 import textwrap
 from typing import Dict, List, Tuple
 
-from gui_agents.v2.core.grounding import ACI
-from gui_agents.v2.core.base_module import BaseModule
-from gui_agents.v2.core.knowledge import KnowledgeBase
-from gui_agents.v2.core.procedural_memory import PROCEDURAL_MEMORY
-from gui_agents.v2.utils import common_utils
-from gui_agents.v2.utils.common_utils import Node, calculate_tokens, call_llm_safe
+from gui_agents.s2.agents.grounding import ACI
+from gui_agents.s2.core.module import BaseModule
+from gui_agents.s2.core.knowledge import KnowledgeBase
+from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.s2.utils import common_utils
+from gui_agents.s2.utils.common_utils import Node, calculate_tokens, call_llm_safe
 
 logger = logging.getLogger("desktopenv.agent")
 
