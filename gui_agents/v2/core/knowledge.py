@@ -5,16 +5,16 @@ from typing import Dict, Tuple
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
-from agent_s.core.base_module import BaseModule
-from agent_s.core.procedural_memory import PROCEDURAL_MEMORY
-from agent_s.mllm.engine import OpenAIEmbeddingEngine
-from agent_s.utils.common_utils import (
+from gui_agents.v2.core.base_module import BaseModule
+from gui_agents.v2.core.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.v2.mllm.engine import OpenAIEmbeddingEngine
+from gui_agents.v2.utils.common_utils import (
     call_llm_safe,
     load_embeddings,
     load_knowledge_base,
     save_embeddings,
 )
-from agent_s.utils.query_perplexica import query_to_perplexica
+from gui_agents.v2.utils.query_perplexica import query_to_perplexica
 
 
 class KnowledgeBase(BaseModule):

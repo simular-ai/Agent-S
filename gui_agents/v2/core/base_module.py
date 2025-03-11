@@ -1,5 +1,5 @@
 from typing import Dict, Optional
-from agent_s.mllm.mllm import LMMAgent
+from gui_agents.v2.mllm.mllm import LMMAgent
 
 
 class BaseModule:

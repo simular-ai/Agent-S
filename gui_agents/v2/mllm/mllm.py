@@ -2,7 +2,7 @@ import base64
 
 import numpy as np
 
-from agent_s.mllm.engine import (
+from gui_agents.v2.mllm.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineOpenAI,
