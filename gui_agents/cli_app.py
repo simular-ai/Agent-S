@@ -11,17 +11,17 @@ import pyautogui
 
 if platform.system() == "Darwin":
     current_platform = "macos"
-    from gui_agents.aci.MacOSACI import MacOSACI, UIElement
+    from gui_agents.v1.aci.MacOSACI import MacOSACI, UIElement
 elif platform.system() == "Windows":
     current_platform = "windows"
-    from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
+    from gui_agents.v1.aci.WindowsOSACI import WindowsACI, UIElement
 elif platform.system() == "Linux":
     current_platform = "ubuntu"
-    from gui_agents.aci.LinuxOSACI import LinuxACI, UIElement
+    from gui_agents.v1.aci.LinuxOSACI import LinuxACI, UIElement
 else:
     raise ValueError("Unsupported platform")
 
-from gui_agents.core.AgentS import GraphSearchAgent, UIAgent
+from gui_agents.v1.core.AgentS import GraphSearchAgent, UIAgent
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)

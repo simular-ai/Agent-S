@@ -3,7 +3,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from gui_agents.aci.MacOSACI import UIElement
+from gui_agents.v1.aci.MacOSACI import UIElement
 
 
 @pytest.fixture

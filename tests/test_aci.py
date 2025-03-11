@@ -2,7 +2,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from gui_agents.aci.ACI import ACI, _normalize_key
+from gui_agents.v1.aci.ACI import ACI, _normalize_key
 
 
 @pytest.fixture

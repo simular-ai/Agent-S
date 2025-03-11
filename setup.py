@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name='gui-agents',
-    version='0.1.3',
+    version='0.2.0',
     description='A library for creating general purpose GUI agents using multimodal LLMs.',
     long_description=open('README.md', encoding='utf-8').read(),
     long_description_content_type='text/markdown',
@@ -27,6 +27,7 @@ setup(
         'scikit-learn',
         'websockets',
         'tiktoken',
+        'selenium',
         'pyobjc; platform_system == "Darwin"',
         'pyautogui',
         'toml',
