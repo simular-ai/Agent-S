@@ -172,7 +172,6 @@ class Manager(BaseModule):
             generator_message = (
                 f"The subtask {failed_subtask} cannot be completed. Please generate a new plan for the remainder of the trajectory.\n\n"
                 f"Successfully Completed Subtasks:\n{format_subtask_list(completed_subtasks_list)}\n"
-                f"The clipboard contains: {agent.clipboard}.\n"
             )
         # Re-plan on subtask completion case
         elif len(completed_subtasks_list) + len(remaining_subtasks_list) > 0:
@@ -180,13 +179,11 @@ class Manager(BaseModule):
                 "The current trajectory and desktop state is provided. Please revise the plan for the following trajectory.\n\n"
                 f"Successfully Completed Subtasks:\n{format_subtask_list(completed_subtasks_list)}\n"
                 f"Future Remaining Subtasks:\n{format_subtask_list(remaining_subtasks_list)}\n"
-                f"The clipboard contains: {agent.clipboard}\n"
             )
         # Initial plan case
         else:
             generator_message = (
                 "Please generate the initial plan for the task.\n"
-                f"The clipboard contains: {agent.clipboard}.\n"
             )
 
         print("GENERATOR MESSAGE:\n", generator_message)

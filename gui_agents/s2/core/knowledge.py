@@ -95,9 +95,8 @@ class KnowledgeBase(BaseModule):
 
         self.query_formulator.add_message(
             f"The task is: {instruction}\n"
-            f"Accessibility tree of the current desktop UI state: {observation['linearized_accessibility_tree']}\n"
             "To use google search to get some useful information, first carefully analyze "
-            "the accessibility tree of the current desktop UI state, then given the task "
+            "the screenshot of the current desktop UI state, then given the task "
             "instruction, formulate a question that can be used to search on the Internet "
             "for information in helping with the task execution.\n"
             "The question should not be too general or too specific. Please ONLY provide "
@@ -241,7 +240,6 @@ class KnowledgeBase(BaseModule):
 
         self.knowledge_fusion_agent.add_message(
             f"Task: {instruction}\n"
-            f"Accessibility tree of the current desktop UI state: {observation['linearized_accessibility_tree'] if 'linearized_accessibility_tree' in observation else ''}\n"
             f"**Web search result**:\n{web_knowledge}\n\n"
             f"**Retrieved similar task experience**:\n"
             f"Similar task:{similar_task}\n{experience}\n\n"

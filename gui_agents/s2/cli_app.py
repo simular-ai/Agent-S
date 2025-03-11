@@ -152,13 +152,13 @@ def main():
         "--endpoint_provider",
         type=str,
         default="huggingface",
-        help="Specify the endpoint provider (e.g., huggingface)",
+        help="Specify the endpoint provider (e.g., huggingface, sagemaker)",
     )
     parser.add_argument(
         "--endpoint_url",
         type=str,
         default="",
-        help="Specify the endpoint URL to your HuggingFace Inference Endpoint.",
+        help="Specify the endpoint URL to your HuggingFace Inference Endpoint URL or SageMaker Endpoint URL.",
     )
     args = parser.parse_args()
 
