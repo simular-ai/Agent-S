@@ -2,7 +2,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from gui_agents.s2.agents.grounding import ACI
 from gui_agents.s2.agents.worker import Worker
@@ -180,9 +180,7 @@ class GraphSearchAgent(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(
-        self, instruction: str, observation: Dict
-    ) -> Tuple[Dict, List[str]]:
+    def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
         # Initialize the three info dictionaries
         planner_info = {}
         executor_info = {}

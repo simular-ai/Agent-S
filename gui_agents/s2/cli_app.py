@@ -163,8 +163,7 @@ def main():
     args = parser.parse_args()
 
     grounding_agent = OSWorldACI(
-        endpoint_provider=args.endpoint_provider,
-        endpoint_url=args.endpoint_url
+        endpoint_provider=args.endpoint_provider, endpoint_url=args.endpoint_url
     )
 
     while True:
