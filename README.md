@@ -47,11 +47,11 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 <p align="center">
     <img src="./images/agent_s2_osworld_result.png" width="600">
     <br>
-    Results of Agent S2's Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image input only.
+    Results of Agent S2's Successful Rate (%) on the OSWorld full test set using Screenshot input only.
 </p>
 
 <div align="center">
-  <table border="1" cellspacing="0" cellpadding="5">
+  <table border="0" cellspacing="0" cellpadding="5">
     <tr>
       <th>Benchmark</th>
       <th>Agent S2</th>
