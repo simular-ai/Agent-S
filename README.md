@@ -27,7 +27,7 @@
 
 1. [💡 Introduction](#-introduction)
 2. [🎯 Current Results](#-current-results)
-3. [🛠️ Installation](#%EF%B8%8F-installation) 
+3. [🛠️ Installation](#-installation) 
 4. [🚀 Usage](#-usage)
 5. [🤝 Acknowledgements](#-acknowledgements)
 6. [💬 Citation](#-citation)
@@ -50,11 +50,35 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
     Results of Agent S2's Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image input.
 </p>
 
-| Benchmark | Agent S2 | Previous SOTA | Δ improve |
-|-----------|----------|--------------|-----------|
-| OSWorld (15 step) | 27.0% | 22.7% (ByteDance UI-TARS) | +4.3% |
-| OSWorld (50 step) | 34.5% | 32.6% (OpenAI CUA) | +1.9% |
-| AndroidWorld | 60.0% | 46.8% (ByteDance UI-TARS) | +13.2% |
+<div align="center">
+  <table border="1" cellspacing="0" cellpadding="5">
+    <tr>
+      <th>Benchmark</th>
+      <th>Agent S2</th>
+      <th>Previous SOTA</th>
+      <th>Δ improve</th>
+    </tr>
+    <tr>
+      <td>OSWorld (15 step)</td>
+      <td>27.0%</td>
+      <td>22.7% (ByteDance UI-TARS)</td>
+      <td>+4.3%</td>
+    </tr>
+    <tr>
+      <td>OSWorld (50 step)</td>
+      <td>34.5%</td>
+      <td>32.6% (OpenAI CUA)</td>
+      <td>+1.9%</td>
+    </tr>
+    <tr>
+      <td>AndroidWorld</td>
+      <td>60.0%</td>
+      <td>46.8% (ByteDance UI-TARS)</td>
+      <td>+13.2%</td>
+    </tr>
+  </table>
+</div>
+
 
 ## 🛠️ Installation & Setup
 
