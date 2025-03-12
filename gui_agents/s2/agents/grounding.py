@@ -33,7 +33,27 @@ def agent_action(func):
     return func
 
 
-set_cell_values_cmd = """import uno
+UBUNTU_APP_SETUP = f"""import subprocess;
+import difflib;
+import pyautogui;
+pyautogui.press('escape');
+time.sleep(0.5);
+output = subprocess.check_output(['wmctrl', '-lx']);
+output = output.decode('utf-8').splitlines();
+window_titles = [line.split(None, 4)[2] for line in output];
+closest_matches = difflib.get_close_matches('APP_NAME', window_titles, n=1, cutoff=0.1);
+if closest_matches:
+    closest_match = closest_matches[0];
+    for line in output:
+        if closest_match in line:
+            window_id = line.split()[0]
+            break;
+subprocess.run(['wmctrl', '-ia', window_id])
+subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_horz'])
+"""
+
+
+SET_CELL_VALUES_CMD = """import uno
 import subprocess
 
 def identify_document_type(component):
@@ -146,35 +166,22 @@ set_cell_values(new_cell_values={cell_values}, app_name="{app_name}", sheet_name
 class OSWorldACI(ACI):
     def __init__(
         self,
+        platform: str,
         endpoint_url: str,
         endpoint_provider: str = "huggingface",
         height: int = 1080,
         width: int = 1920,
     ):
+        self.platform = (
+            platform  # Dictates how the switch_applications agent action works.
+        )
+
         # Configure scaling
         self.width = width
         self.height = height
 
         self.x_scale = self.width / 1366
         self.y_scale = self.height / 768
-        self.app_setup_code = f"""import subprocess;
-import difflib;
-import pyautogui;
-pyautogui.press('escape');
-time.sleep(0.5);
-output = subprocess.check_output(['wmctrl', '-lx']);
-output = output.decode('utf-8').splitlines();
-window_titles = [line.split(None, 4)[2] for line in output];
-closest_matches = difflib.get_close_matches('APP_NAME', window_titles, n=1, cutoff=0.1);
-if closest_matches:
-    closest_match = closest_matches[0];
-    for line in output:
-        if closest_match in line:
-            window_id = line.split()[0]
-            break;
-subprocess.run(['wmctrl', '-ia', window_id])
-subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_horz'])
-"""
 
         self.notes = []
 
@@ -449,7 +456,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         Args:
             app_code:str the code name of the application to switch to from the provided list of open applications
         """
-        return self.app_setup_code.replace("APP_NAME", app_code)
+        if self.platform == "mac":
+            return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"
+        elif self.platform == "ubuntu":
+            return UBUNTU_APP_SETUP.replace("APP_NAME", app_code)
 
     @agent_action
     def open(self, app_or_filename: str):
@@ -574,7 +584,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             app_name: str, The name of the spreadsheet application.
             sheet_name: str, The name of the sheet in the spreadsheet.
         """
-        return set_cell_values_cmd.format(
+        return SET_CELL_VALUES_CMD.format(
             cell_values=cell_values, app_name=app_name, sheet_name=sheet_name
         )
 
