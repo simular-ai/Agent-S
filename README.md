@@ -12,12 +12,12 @@
 
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/agent-s">[S1 blog]</a>&nbsp;
-    🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
   📄 <a href="https://arxiv.org/abs/2410.08164">[S1 Paper]</a>&nbsp;
+  🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
 </p>
 
 ## 🥳 Updates
-- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art on OSWorld, outperforming OpenAI's CUA and Anthropic's Claude 3.7 Sonnet!
+- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use, outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
 - [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
@@ -47,13 +47,13 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 <p align="center">
     <img src="./images/agent_s2_osworld_result.png" width="600">
     <br>
-    Results of Agent S2's Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image input.
+    Results of Agent S2's Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image input only.
 </p>
 
 | Benchmark | Agent S2 | Previous SOTA | Δ improve |
 |-----------|----------|--------------|-----------|
 | OSWorld (15 step) | 27.0% | 22.7% (ByteDance UI-TARS) | +4.3% |
-| OSWorld (50 step) | 34.5% | 32.6% (OpenAI CUA) | +1.9% |
+| OSWorld (50 step) | 34.5% | 32.6% (OpenAI CUA / Operator) | +1.9% |
 | AndroidWorld | 60.0% | 46.8% (ByteDance UI-TARS) | +13.2% |
 
 ## 🛠️ Installation & Setup
@@ -186,7 +186,7 @@ To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWo
 
 ## 🤝 Acknowledgements
 
-We extend our sincere thanks to Tianbao Xie for developing OSWorld. We also appreciate the engaging discussions with Tianbao Xie, Yujia Qin, and Shihao Liang regarding UI-TARS. Their insights and collaborative spirit helped us navigate challenges and refine our work!
+We extend our sincere thanks to Tianbao Xie for developing and discussing OSWorld. We also appreciate the engaging discussions with Yujia Qin and Shihao Liang regarding UI-TARS.
 
 ## 💬 Citation
 ```
