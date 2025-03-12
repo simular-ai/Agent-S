@@ -239,7 +239,7 @@ class LMMEnginevLLM(LMMEngine):
             extra_body={"repetition_penalty": repetition_penalty},
         )
         return completion.choices[0].message.content
-    
+
 
 class LMMEngineHuggingFace(LMMEngine):
     def __init__(self, api_key=None, endpoint_url=None, rate_limit=-1, **kwargs):
@@ -268,8 +268,8 @@ class LMMEngineHuggingFace(LMMEngine):
                 messages=messages,
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
                 temperature=temperature,
-                **kwargs
+                **kwargs,
             )
-            .choices[0].
-            message.content
+            .choices[0]
+            .message.content
         )

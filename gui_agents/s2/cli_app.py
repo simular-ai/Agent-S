@@ -164,7 +164,7 @@ def main():
         "--grounding_model",
         type=str,
         default="",
-        help="Specify the grounding model to use (e.g., claude-3-7-sonnet)"
+        help="Specify the grounding model to use (e.g., claude-3-7-sonnet)",
     )
 
     # Grounding model config option 2: Self-hosted endpoint based
@@ -182,7 +182,9 @@ def main():
     )
 
     args = parser.parse_args()
-    assert args.grounding_model or args.endpoint_url, "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
+    assert (
+        args.grounding_model or args.endpoint_url
+    ), "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
 
     # Load the general engine params
     if args.model.startswith("claude"):
@@ -190,17 +192,30 @@ def main():
     elif args.model.startswith("gpt"):
         engine_params = {"engine_type": "openai", "model": args.model}
     else:
-        raise ValueError("Invalid model specficiation. Please provide a supported model type")
+        raise ValueError(
+            "Invalid model specficiation. Please provide a supported model type"
+        )
 
     # Load the grounding model engine params
     if args.endpoint_url:
-        engine_params_for_grounding = {"engine_type": args.endpoint_provider, "endpoint_url": args.endpoint_url}
+        engine_params_for_grounding = {
+            "engine_type": args.endpoint_provider,
+            "endpoint_url": args.endpoint_url,
+        }
     elif args.grounding_model.startswith("claude"):
-        engine_params_for_grounding = {"engine_type": "anthropic", "model": args.grounding_model}
+        engine_params_for_grounding = {
+            "engine_type": "anthropic",
+            "model": args.grounding_model,
+        }
     elif args.grounding_model.startswith("gpt"):
-        engine_params_for_grounding = {"engine_type": "openai", "model": args.grounding_model}
+        engine_params_for_grounding = {
+            "engine_type": "openai",
+            "model": args.grounding_model,
+        }
     else:
-        raise ValueError("Invalid grounding model specficiation. Please provide a supported model type")
+        raise ValueError(
+            "Invalid grounding model specficiation. Please provide a supported model type"
+        )
 
     # Re-scales screenshot size to ensure it fits in UI-TARS context limit
     screen_width, screen_height = pyautogui.size()
@@ -211,7 +226,7 @@ def main():
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,
         width=safe_width,
-        height=safe_height
+        height=safe_height,
     )
 
     agent = GraphSearchAgent(
@@ -226,7 +241,7 @@ def main():
 
     while True:
         query = input("Query: ")
-        
+
         agent.reset()
 
         # Run the agent on your own device

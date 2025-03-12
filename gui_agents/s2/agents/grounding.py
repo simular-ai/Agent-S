@@ -205,9 +205,7 @@ class OSWorldACI(ACI):
         # Configure the context, UI-TARS demo does not use system prompt
         prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
         self.grounding_model.add_message(
-            text_content=prompt,
-            image_content=obs["screenshot"],
-            put_text_last=True
+            text_content=prompt, image_content=obs["screenshot"], put_text_last=True
         )
 
         # Generate and parse coordinates

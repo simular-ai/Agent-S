@@ -106,12 +106,19 @@ class LMMAgent:
                 )
 
     def add_message(
-        self, text_content, image_content=None, role=None, image_detail="high", put_text_last=False
+        self,
+        text_content,
+        image_content=None,
+        role=None,
+        image_detail="high",
+        put_text_last=False,
     ):
         """Add a new message to the list of messages"""
 
         # API-style inference from OpenAI and AzureOpenAI
-        if isinstance(self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI, LMMEngineHuggingFace)):
+        if isinstance(
+            self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI, LMMEngineHuggingFace)
+        ):
             # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
@@ -153,7 +160,7 @@ class LMMAgent:
                             },
                         }
                     )
-            
+
             # Rotate text to be the last message if desired
             if put_text_last:
                 text_content = message["content"].pop(0)
