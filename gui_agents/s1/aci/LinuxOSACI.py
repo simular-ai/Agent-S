@@ -94,8 +94,6 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             component_ns = "https://accessibility.ubuntu.example.org/ns/component"
             value_ns = "https://accessibility.ubuntu.example.org/ns/value"
 
-        self._existing_bash_session = False
-
     def get_active_apps(self, obs: Dict) -> List[str]:
         tree = ET.ElementTree(ET.fromstring(obs["accessibility_tree"]))
         apps = []
@@ -458,76 +456,6 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                 command += "pyautogui.press('enter'); "
 
         return command
-
-        # if overwrite:
-        #     return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.hotkey("ctrl", "a"); pyautogui.press("backspace"); pyautogui.typewrite({repr(text)})"""
-        # else:
-        #     return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.hotkey("ctrl", "a"); pyautogui.press("backspace"); pyautogui.typewrite("{text}")"""
-
-    # @agent_action
-    # def type_and_enter(self, element_id:int, text:str, overwrite: bool = True):
-    #     '''Type text into the element and press enter
-    #     Args:
-    #         element_id:int ID of the element to type into
-    #         text:str the text to type into the element
-    #     '''
-    #     try:
-    #         node = self.find_element(element_id)
-    #     except:
-    #         node = self.find_element(0)
-    #     # print(node.attrib)
-    #     coordinates = eval(
-    #         node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)"))
-    #     sizes = eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
-
-    #     # Calculate the center of the element
-    #     x = coordinates[0] + sizes[0] // 2
-    #     y = coordinates[1] + sizes[1] // 2
-
-    #     # Return pyautoguicode to type into the element
-    #     if overwrite:
-    #         return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.hotkey("ctrl", "a"); pyautogui.press("backspace"); pyautogui.typewrite({repr(text)}); pyautogui.press("enter")"""
-    #     else:
-    #         return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.typewrite({repr(text)}); pyautogui.press("enter")"""
-
-    # @agent_action
-    # def copy_text(self, element_id:int):
-    #     '''Copy the selected text, use instead of ctrl+c
-    #     Args:
-    #         element_id:int ID of the element to copy text from
-    #     '''
-    #     try:
-    #         node = self.find_element(element_id)
-    #     except:
-    #         node = self.find_element(0)
-
-    #     self.clipboard = node.text
-
-    # @agent_action
-    # def paste_text(self, element_id:int, overwrite: bool = True):
-    #     '''Paste text from the clipboard into the element, use instead of ctrl+v
-    #     Args:
-    #         element_id:int ID of the element to copy text from
-    #         overwrite:bool a boolean value to determine if the text should be pasted over the existing text or appended to it
-    #     '''
-    #     try:
-    #         node = self.find_element(element_id)
-    #     except:
-    #         node = self.find_element(0)
-
-    #     coordinates = eval(
-    #         node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)"))
-    #     sizes = eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
-
-    #     # Calculate the center of the element
-    #     x = coordinates[0] + sizes[0] // 2
-    #     y = coordinates[1] + sizes[1] // 2
-
-    #     # Return pyautoguicode to paste into the element
-    #     if overwrite:
-    #         return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.typewrite("{self.clipboard}");"""
-    #     else:
-    #         return f"""import pyautogui; pyautogui.click({x}, {y}); pyautogui.hotkey("ctrl", "a"); pyautogui.press("backspace"); pyautogui.typewrite("{self.clipboard}");"""
 
     @agent_action
     def save_to_knowledge(self, text: List[str]):
