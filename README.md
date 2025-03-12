@@ -84,7 +84,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 > ❗**Warning**❗: If you are on a Linux machine, creating a `conda` environment will interfere with `pyatspi`. As of now, there's no clean solution for this issue. Proceed through the installation without using `conda` or any virtual environment.
 
-> ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, on Hugging Face Inference Endpoints, or SageMaker. Our code supports Hugging Face Inference Endpoints and SageMaker. Fortunately, running Agent S2 does not require this model. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint.
+> ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, or on Hugging Face Inference Endpoints. Our code supports Hugging Face Inference Endpoints. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint. However, running Agent S2 does not require this model, and you can use alternative API based models for visual grounding, such as Claude.
 
 Clone the repository:
 ```
@@ -100,6 +100,8 @@ Set your LLM API Keys and other environment variables. You can do this by adding
 
 ```
 export OPENAI_API_KEY=<YOUR_API_KEY>
+export ANTHROPIC_API_KEY=<YOUR_ANTHROPIC_API_KEY>
+export HF_TOKEN=<YOUR_HF_TOKEN>
 ```
 
 Alternatively, you can set the environment variable in your Python script:
