@@ -74,7 +74,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
       <td>AndroidWorld</td>
       <td>50.0%</td>
       <td>46.8% (ByteDance UI-TARS)</td>
-      <td>+13.2%</td>
+      <td>+3.2%</td>
     </tr>
   </table>
 </div>
