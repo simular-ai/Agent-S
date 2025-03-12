@@ -1,16 +1,10 @@
 import ast
-import base64
-import json
-import os
 import re
-import requests
-import time
 from collections import defaultdict
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytesseract
-from openai import OpenAI
 from PIL import Image
 from pytesseract import Output
 

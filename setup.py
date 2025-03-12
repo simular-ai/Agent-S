@@ -31,6 +31,7 @@ setup(
         'pyobjc; platform_system == "Darwin"',
         'pyautogui',
         'toml',
+        'pytesseract',
         'pywinauto; platform_system == "Windows"',  # Only for Windows
         'pywin32; platform_system == "Windows"',  # Only for Windows
     ],

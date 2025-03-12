@@ -150,44 +150,118 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 
 ## 🚀 Usage
 
+
 ### CLI
 
-Run agent_s on your computer using:  
+Run Agent S2 with a specific model (default is `gpt-4o`):
+
+```bash
+agent_s --model gpt-4o --grounding_model claude-3-7-sonnet-20250219
 ```
-agent_s2 --model gpt-4o
+
+Or use a custom endpoint:
+
+```bash
+agent_s --model gpt-4o --endpoint_provider "huggingface" --endpoint_url "<endpoint_url>/v1/"
 ```
+
+#### Main Model Settings
+- **`--model`** 
+  - Purpose: Specifies the main generation model
+  - Example: `gpt-4o`
+  - Default: `gpt-4o`
+
+#### Grounding Configuration Options
+
+You can use either Configuration 1 or Configuration 2:
+
+##### **Configuration 1: API-Based Models**
+- **`--grounding_model`**
+  - Purpose: Specifies the model for visual understanding
+  - Supports: 
+    - Anthropic Claude models (e.g., `claude-3-7-sonnet`)
+    - OpenAI GPT models (e.g., `gpt-4-vision`)
+  - Default: None
+
+##### **Configuration 2: Custom Endpoint**
+- **`--endpoint_provider`**
+  - Purpose: Specifies the endpoint provider
+  - Currently supports: HuggingFace TGI
+  - Default: `huggingface`
+
+- **`--endpoint_url`**
+  - Purpose: The URL for your custom endpoint
+  - Default: None
+
 This will show a user query prompt where you can enter your query and interact with Agent S2. You can use any model from the list of supported models in [models.md](models.md).
 
 ### `gui_agents` SDK
 
+First, we import the necessary modules. `GraphSearchAgent` is the main agent class for Agent S2. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
 ```
 import pyautogui
 import io
 from gui_agents.s2.agents.agent_s import GraphSearchAgent
-import platform
+from gui_agents.s2.agents.grounding import OSWorldACI
+
+# Load in your API keys.
+from dotenv import load_dotenv
+load_dotenv()
 
 current_platform = "ubuntu"  # "macos"
+```
 
-grounding_agent = OSWorldACI(
-    platform=current_platform,
-    endpoint_provider="huggingface",
-    endpoint_url="<endpoint_url>/v1/",  # Check this for more help: https://huggingface.co/docs/inference-endpoints/guides/test_endpoint
-)
+Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
+
+```
+engine_type_for_grounding = "huggingface"
 
 engine_params = {
     "engine_type": "openai",
     "model": "gpt-4o",
 }
 
+if engine_type_for_grounding == "huggingface":
+  engine_params_for_grounding = {
+      "engine_type": "huggingface",
+      "endpoint_url": "<endpoint_url>/v1/",
+  }
+elif engine_type_for_grounding == "claude":
+  engine_params_for_grounding = {
+      "engine_type": "claude",
+      "model": "claude-3-7-sonnet-20250219",
+  }
+elif engine_type_for_grounding == "gpt":
+  engine_params_for_grounding = {
+    "engine_type": "gpt",
+    "model": "gpt-4o",
+  }
+else:
+  raise ValueError("Invalid engine type for grounding")
+```
+
+Then, we define our grounding agent and Agent S2.
+
+```
+grounding_agent = OSWorldACI(
+    platform=current_platform,
+    engine_params_for_generation=engine_params,
+    engine_params_for_grounding=engine_params_for_grounding
+)
+
 agent = GraphSearchAgent(
   engine_params,
   grounding_agent,
-  platform="ubuntu",  # "macos"
+  platform=current_platform,
   action_space="pyautogui",
   observation_type="mixed",
-  search_engine="Perplexica"
+  search_engine="Perplexica"  # Assuming you have set up Perplexica.
 )
+```
 
+Finally, let's query the agent!
+
+```
 # Get screenshot.
 screenshot = pyautogui.screenshot()
 buffered = io.BytesIO() 

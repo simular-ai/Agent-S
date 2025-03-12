@@ -14,6 +14,7 @@ tiktoken
 pyautogui
 toml
 black
+pytesseract
 
 # Platform-specific dependencies
 pyobjc; platform_system == "Darwin"

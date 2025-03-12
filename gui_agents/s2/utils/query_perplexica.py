@@ -3,7 +3,7 @@ import toml
 import os
 
 current_path = os.path.dirname(os.path.abspath(__file__))
-parent_path = os.path.dirname(current_path)
+parent_path = os.path.dirname(os.path.dirname(os.path.dirname(current_path)))
 
 
 def query_to_perplexica(query):

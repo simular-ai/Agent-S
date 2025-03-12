@@ -182,8 +182,6 @@ class Manager(BaseModule):
         else:
             generator_message = "Please generate the initial plan for the task.\n"
 
-        print("GENERATOR MESSAGE:\n", generator_message)
-
         self.generator_agent.add_message(
             generator_message,
             image_content=observation.get("screenshot", None),
