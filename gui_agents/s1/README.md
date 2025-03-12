@@ -1,5 +1,5 @@
 <h1 align="center">
-  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
+  <img src="../../images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
   <small>Using Computers Like a Human</small>
 </h1>
 
@@ -11,7 +11,6 @@
 </p>
 
 ## 🥳 Updates
-- [x] **2025/03/11**: Released Agent S V2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art on OSWorld, outperforming OpenAI's CUA and Anthropic's Claude 3.7 Sonnet!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
 - [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
@@ -29,7 +28,7 @@
 ## 💡 Introduction
 
 <p align="center">
-    <img src="./images/teaser.png" width="800">
+    <img src="../../images/teaser.png" width="800">
 </p>
 
 Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through Agent-Computer Interface. Our mission is to build intelligent GUI agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
@@ -39,7 +38,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 ## 🎯 Current Results
 
 <p align="center">
-    <img src="./images/results.png" width="600">
+    <img src="../../images/results.png" width="600">
     <br>
     Results of Successful Rate (%) on the OSWorld full test set of all 369 test examples using Image + Accessibility Tree input.
 </p>
