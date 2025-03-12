@@ -23,7 +23,7 @@ We suggest creating a separate conda environment for each repository to avoid de
 
 ## Step 2: Modifying OSWorld `run.py`
 
-After completing the setup instructions, import the GraphSearchAgent into the run.py file in OSWorld. The GraphSearchAgent is the parent agent used in the Agent S framework. To understand the architecture of this GraphSearchAgent, refer to [Agent S Architecture](images/agent_s_architecture.pdf).
+After completing the setup instructions, import the GraphSearchAgent into the run.py file in OSWorld. The GraphSearchAgent is the parent agent used in the Agent S framework. To understand the architecture of this GraphSearchAgent, refer to [Agent S Architecture](../../images/agent_s_architecture.pdf).
 
 ```
 from gui_agents.s1.aci.LinuxOSACI import LinuxACI
@@ -59,7 +59,7 @@ agent = GraphSearchAgent(
   search_engine="Perplexica"
 )
 ```
-We support all multimodal models from OpenAI, Anthropic, and vLLM. For more information, refer to [models.md](models.md).
+We support all multimodal models from OpenAI, Anthropic, and vLLM. For more information, refer to [models.md](../../models.md).
 
 We have set the latest Agent S to use the latest Ubuntu VM image from OSWorld. However, our experiments are based on the older version of the VM. To reproduce the results, set the vm_version argument to 'old' while instantiating the agent.
 

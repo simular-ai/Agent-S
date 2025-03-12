@@ -71,7 +71,7 @@ import os
 os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 ```
 
-We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [models.md](models.md).
+We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [../../models.md](models.md).
 
 ### Setup Retrieval from Web using Perplexica
 Agent S works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
@@ -121,7 +121,7 @@ cd Agent-S
 python gui_agents/utils/ocr_server.py
 ```
 
-You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file.
+You can change the server address by editing the address in [gui_agents/s1/utils/ocr_server.py](utils/ocr_server.py) file.
 
 
 > ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
@@ -132,9 +132,9 @@ You can change the server address by editing the address in [agent_s/utils/ocr_s
 
 Run agent_s on your computer using:  
 ```
-agent_s --model gpt-4o
+agent_s1 --model gpt-4o
 ```
-This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](models.md).
+This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](../../models.md).
 
 ### `gui_agents` SDK
 

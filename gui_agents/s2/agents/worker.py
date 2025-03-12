@@ -23,7 +23,6 @@ class Worker(BaseModule):
         search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
-        domain: str = "all",
     ):
         """
         Worker receives a subtask list and active subtask and generates the next action for the to execute.
@@ -42,8 +41,6 @@ class Worker(BaseModule):
                 Whether to enable reflection
             use_subtask_experience: bool
                 Whether to use subtask experience
-            domain:
-                OSWorld evaluation domain
         """
         self.engine_params = engine_params
         self.grounding_agent = grounding_agent
@@ -52,7 +49,6 @@ class Worker(BaseModule):
         self.search_engine = search_engine
         self.enable_reflection = enable_reflection
         self.use_subtask_experience = use_subtask_experience
-        self.domain = domain
         self.reset()
 
     def reset(self):

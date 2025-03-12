@@ -29,7 +29,6 @@ class Manager(BaseModule):
         search_engine: Optional[str] = None,
         multi_round: bool = False,
         platform: str = "macos",
-        domain: str = "all",
     ):
         # TODO: move the prompt to Procedural Memory
         super().__init__(engine_params, platform)
@@ -67,7 +66,6 @@ class Manager(BaseModule):
         self.search_engine = search_engine
         self.multi_round = multi_round
         self.platform = platform
-        self.domain = domain
 
     def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection

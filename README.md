@@ -107,24 +107,6 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
 
 For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git).
 
-### Setup Paddle-OCR Server
-
-Switch to a new terminal where you will run Agent S. Set the OCR_SERVER_ADDRESS environment variable as shown below. For a better experience, add the following line directly to your .bashrc (Linux), or .zshrc (MacOS) file.
-
-```
-export OCR_SERVER_ADDRESS=http://localhost:8000/ocr/
-```
-
-Run the ocr_server.py file code to use OCR-based bounding boxes.
-
-```
-cd Agent-S
-python gui_agents/utils/ocr_server.py
-```
-
-You can change the server address by editing the address in [agent_s/utils/ocr_server.py](agent_s/utils/ocr_server.py) file.
-
-
 > ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
 
 ## 🚀 Usage
@@ -133,31 +115,27 @@ You can change the server address by editing the address in [agent_s/utils/ocr_s
 
 Run agent_s on your computer using:  
 ```
-agent_s --model gpt-4o
+agent_s2 --model gpt-4o
 ```
-This will show a user query prompt where you can enter your query and interact with Agent S. You can use any model from the list of supported models in [models.md](models.md).
+This will show a user query prompt where you can enter your query and interact with Agent S V2. You can use any model from the list of supported models in [models.md](models.md).
 
 ### `gui_agents` SDK
 
-To deploy Agent S on MacOS or Windows:
+To deploy Agent S V2:
 
 ```
 import pyautogui
 import io
-from gui_agents.core.AgentS import GraphSearchAgent
+from gui_agents.s2.agents.agent_s import GraphSearchAgent
 import platform
 
-if platform.system() == "Darwin":
-  from gui_agents.aci.MacOSACI import MacOSACI, UIElement
-  grounding_agent = MacOSACI()
-elif platform.system() == "Windows":
-  from gui_agents.aci.WindowsOSACI import WindowsACI, UIElement
-  grounding_agent = WindowsACI()
-elif platform.system() == "Linux":
-  from gui_agents.aci.LinuxOSACI import LinuxACI, UIElement
-  grounding_agent = LinuxACI()
-else:
-  raise ValueError("Unsupported platform")
+current_platform = "ubuntu"  # "macos"
+
+grounding_agent = OSWorldACI(
+    platform=current_platform,
+    endpoint_provider=args.endpoint_provider,
+    endpoint_url=args.endpoint_url,
+)
 
 engine_params = {
     "engine_type": "openai",
@@ -179,12 +157,8 @@ buffered = io.BytesIO()
 screenshot.save(buffered, format="PNG")
 screenshot_bytes = buffered.getvalue()
 
-# Get accessibility tree.
-acc_tree = UIElement.systemWideElement()
-
 obs = {
   "screenshot": screenshot_bytes,
-  "accessibility_tree": acc_tree,
 }
 
 instruction = "Close VS Code"
@@ -193,19 +167,15 @@ info, action = agent.predict(instruction=instruction, observation=obs)
 exec(action[0])
 ```
 
-Refer to `cli_app.py` for more details on how the inference loop works.
+Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
 
 ### OSWorld
 
-To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
-
-### WindowsAgentArena
-
-To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment instructions](WindowsAgentArena.md).
+To deploy Agent S V2 in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
 
 ## 🙌 Contributors
 
-We’re grateful to all the [amazing people](https://github.com/simular-ai/Agent-S/graphs/contributors) who have contributed to this project. Thank you! 🙏  
+We’re grateful to all the [amazing people](https://github.com/simular-ai/Agent-S/graphs/contributors) who have contributed to this project. Additionally, we'd like to thank OSWorld author Tianbao Xie and UI-TARS authors Yujia Qin and Shihao Liang for collaborating and discussing our challenges with us. Thank you! 🙏  
 
 ## 💬 Citation
 ```

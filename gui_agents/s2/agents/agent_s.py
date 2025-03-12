@@ -24,7 +24,6 @@ class UIAgent:
         action_space: str = "pyautogui",
         observation_type: str = "a11y_tree",
         search_engine: str = "perplexica",
-        domain: str = "all",
     ):
         """Initialize UIAgent
 
@@ -42,7 +41,6 @@ class UIAgent:
         self.action_space = action_space
         self.observation_type = observation_type
         self.engine = search_engine
-        self.domain = domain
 
     def reset(self) -> None:
         """Reset agent state"""
@@ -92,7 +90,6 @@ class GraphSearchAgent(UIAgent):
         action_space: str = "pyautogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
-        domain: Optional[str] = None,
         memory_root_path: str = os.getcwd(),
         memory_folder_name: str = "kb",
     ):
@@ -105,7 +102,6 @@ class GraphSearchAgent(UIAgent):
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
-            domain: Domain to use for planning (all, web, desktop)
             memory_root_path: Path to memory directory. Defaults to current working directory.
             memory_folder_name: Name of memory folder. Defaults to "kb".
         """
@@ -116,7 +112,6 @@ class GraphSearchAgent(UIAgent):
             action_space,
             observation_type,
             search_engine,
-            domain,
         )
 
         self.memory_root_path = memory_root_path
@@ -150,14 +145,12 @@ class GraphSearchAgent(UIAgent):
             self.grounding_agent,
             platform=self.platform,
             search_engine=self.engine,
-            domain=self.domain,
             local_kb_path=self.local_kb_path,
         )
         self.executor = Worker(
             self.engine_params,
             self.grounding_agent,
             platform=self.platform,
-            domain=self.domain,
             use_subtask_experience=True,
             local_kb_path=self.local_kb_path,
         )

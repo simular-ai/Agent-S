@@ -185,6 +185,7 @@ def main():
             platform=current_platform,
             action_space="pyautogui",
             observation_type="mixed",
+            search_engine="Perplexica"
         )
 
         agent.reset()
