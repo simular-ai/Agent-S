@@ -7,8 +7,7 @@ import requests
 import time
 from collections import defaultdict
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, Union, TypedDict
-from enum import Enum
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import pytesseract
 from openai import OpenAI

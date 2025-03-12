@@ -182,9 +182,7 @@ class Manager(BaseModule):
             )
         # Initial plan case
         else:
-            generator_message = (
-                "Please generate the initial plan for the task.\n"
-            )
+            generator_message = "Please generate the initial plan for the task.\n"
 
         print("GENERATOR MESSAGE:\n", generator_message)
 
