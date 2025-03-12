@@ -4,10 +4,11 @@ import io
 import logging
 import os
 import platform
+import pyautogui
 import sys
 import time
 
-import pyautogui
+from PIL import Image
 
 if platform.system() == "Darwin":
     current_platform = "macos"
@@ -79,7 +80,15 @@ def show_permission_dialog(code: str, action_description: str):
     return False
 
 
-def run_agent(agent, instruction: str):
+def scale_screen_dimensions(width: int, height: int):
+    MAX_DIMENSION_SIZE = 2400
+    scale_factor = min(MAX_DIMENSION_SIZE / width, MAX_DIMENSION_SIZE / height, 1)
+    safe_width = int(width * scale_factor)
+    safe_height = int(height * scale_factor)
+    return safe_width, safe_height
+
+
+def run_agent(agent, instruction: str, safe_width: int, safe_height: int):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
@@ -87,6 +96,7 @@ def run_agent(agent, instruction: str):
         # Get screen shot using pyautogui.
         # Take a screenshot
         screenshot = pyautogui.screenshot()
+        screenshot = screenshot.resize((safe_width, safe_height), Image.LANCZOS)
 
         # Save the screenshot to a BytesIO object
         buffered = io.BytesIO()
@@ -145,53 +155,82 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o-mini",
+        default="gpt-4o",
         help="Specify the model to use (e.g., gpt-4o)",
     )
+
+    # Grounding model config option 1: API based
+    parser.add_argument(
+        "--grounding_model",
+        type=str,
+        default="",
+        help="Specify the grounding model to use (e.g., claude-3-7-sonnet)"
+    )
+
+    # Grounding model config option 2: Self-hosted endpoint based
     parser.add_argument(
         "--endpoint_provider",
         type=str,
         default="huggingface",
-        help="Specify the endpoint provider (e.g., huggingface, sagemaker)",
+        help="Specify the endpoint provider for your grounding model, only HuggingFace TGI support for now",
     )
     parser.add_argument(
         "--endpoint_url",
         type=str,
         default="",
-        help="Specify the endpoint URL to your HuggingFace Inference Endpoint URL or SageMaker Endpoint URL.",
+        help="Specify the endpoint URL for your grounding model",
     )
+
     args = parser.parse_args()
+    assert args.grounding_model or args.endpoint_url, "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
+
+    # Load the general engine params
+    if args.model.startswith("claude"):
+        engine_params = {"engine_type": "anthropic", "model": args.model}
+    elif args.model.startswith("gpt"):
+        engine_params = {"engine_type": "openai", "model": args.model}
+    else:
+        raise ValueError("Invalid model specficiation. Please provide a supported model type")
+
+    # Load the grounding model engine params
+    if args.endpoint_url:
+        engine_params_for_grounding = {"engine_type": args.endpoint_provider, "endpoint_url": args.endpoint_url}
+    elif args.grounding_model.startswith("claude"):
+        engine_params_for_grounding = {"engine_type": "anthropic", "model": args.grounding_model}
+    elif args.grounding_model.startswith("gpt"):
+        engine_params_for_grounding = {"engine_type": "openai", "model": args.grounding_model}
+    else:
+        raise ValueError("Invalid grounding model specficiation. Please provide a supported model type")
+
+    # Re-scales screenshot size to ensure it fits in UI-TARS context limit
+    screen_width, screen_height = pyautogui.size()
+    safe_width, safe_height = scale_screen_dimensions(screen_width, screen_height)
 
     grounding_agent = OSWorldACI(
         platform=current_platform,
-        endpoint_provider=args.endpoint_provider,
-        endpoint_url=args.endpoint_url,
+        engine_params_for_generation=engine_params,
+        engine_params_for_grounding=engine_params_for_grounding,
+        width=safe_width,
+        height=safe_height
+    )
+
+    agent = GraphSearchAgent(
+        engine_params,
+        grounding_agent,
+        platform=current_platform,
+        action_space="pyautogui",
+        observation_type="mixed",
+        search_engine=None,
+        # search_engine="Perplexica",
     )
 
     while True:
         query = input("Query: ")
-        if "gpt" in args.model:
-            engine_type = "openai"
-        elif "claude" in args.model:
-            engine_type = "anthropic"
-        engine_params = {
-            "engine_type": engine_type,
-            "model": args.model,
-        }
-
-        agent = GraphSearchAgent(
-            engine_params,
-            grounding_agent,
-            platform=current_platform,
-            action_space="pyautogui",
-            observation_type="mixed",
-            search_engine="Perplexica",
-        )
-
+        
         agent.reset()
 
         # Run the agent on your own device
-        run_agent(agent, query)
+        run_agent(agent, query, safe_width, safe_height)
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":

@@ -64,26 +64,7 @@ class PROCEDURAL_MEMORY:
 
         return procedural_memory.strip()
 
-    # TODO: exploring this prompt
-    MANAGER_PROMPT = """You are a planning agent for solving GUI navigation tasks. You will be provided the initial configuration of a system including accessibility, screenshot and other information. You need to solve the following task: TASK_DESCRIPTION. You will describe in as much detail as possible the steps required to complete the task by a GUI agent. Please do not include any verification steps in your plan that is not your responsibility. IMPORTANT: Your plan should be as concise as possible and should not include any unnecessary steps. Do not fine-tune, or embellish anything or cause any side effects. Generate the plan that can be accomplished in the shortest time. Please take the current state into account when generating the plan. Please provide the plan in a step-by-step format and make sure you do not include anything that's already done in the GUI in your plan. You don't need to arrange the steps in order just list out everything that needs to be done. You may follow a dependency structure. Note that the execution agent that will complete your plan can't actually see everything thats visible to you."""
-
-    # Experimental prompt for manager that replans after every subtask completion
-    REPLANNING_MANAGER_PROMPT = textwrap.dedent(
-        """
-    You are a replanning agent and an expert at computer use. You need to solve the following main task: TASK_DESCRIPTION.
-    You are provided the current trajectory plan in the form of two lists: the first list contains successfully completed subtasks, and the second list contains future remaining subtasks that have yet to be completed. You are also provided with the current state of the desktop, which includes a screenshot and other useful info.
-    Your task is to reflect on the current trajectory and generate a new plan for the remainder of the main task. Carefully observe the current state of the computer using the screenshot, and determine if any adjustments need to be made. Finally, replan and generate a new plan for completing the remainder of the main task.
-    
-    Below are important considerations when generating a new plan:
-    1. Please provide the plan in a step-by-step format with detailed descriptions for each subtask.
-    2. Do not repeat subtasks that have already been successfully completed. Only replan for the remainder of the main task.
-    3. Do not include verification steps in your planning. Confirmation and verification steps are not needed.
-    4. If you feel the trajectory and future subtasks seem correct based on the current state of the desktop, you may re-use future subtasks.
-    5. If you feel some future subtasks are not detailed enough, use your observations from the desktop screenshot to update these subtasks to be more detailed.
-    6. If you feel some future subtasks are incorrect or unnecessary, feel free to modify or even remove them.
-    """
-    )
-
+    # Manager prompt that generalizes to initial planning, re-planning after subtask completion, and re-planning after failure
     COMBINED_MANAGER_PROMPT = textwrap.dedent(
         """
     You are an expert planning agent for solving GUI navigation tasks. You need to generate a plan for solving the following task: TASK_DESCRIPTION.
@@ -259,77 +240,6 @@ Analyze the given plan and provide the output in this JSON format within the <js
     Judgment: Yes/No
     Only say Yes or No in the Judgment section. Do not provide any other information in the Judgment section.
     """
-
-    # TODO: Add examples? It is zero shot right now
-    VWA_WORKER_PROMPT = textwrap.dedent(
-        """    You are an autonomous intelligent agent tasked with navigating a web browser. You will be given a web-based subtask, that is part of a larger objective. This subtask will be accomplished through the use of specific actions you can issue. You will only complete your assigned subtask, and will not complete future subtasks.
-    
-    You are responsible for executing the current subtask: `SUBTASK_DESCRIPTION`.
-    This is part of the larger objective: `TASK_DESCRIPTION`.
-    List of completed subtasks: ['DONE_TASKS'] have already been done.
-    List of future subtasks: ['FUTURE_TASKS'] will be completed in the future. Do not try and complete future subtasks.
-
-    Here's the information you'll have:
-    The user's objective: This is the task you're trying to complete.
-    The current web page's accessibility tree: This is a simplified representation of the webpage, providing key information.
-    The current web page's URL: This is the page you're currently navigating.
-    The open tabs: These are the tabs you have open.
-    The previous action: This is the action you just performed. It may be helpful to track your progress.
-
-    The grounded actions you can perform fall into several categories:
-
-    Page Operation Actions:
-    ```click [id]```: This action clicks on an element with a specific id on the webpage.
-    ```type [id] [content]```: Use this to type the content into the field with id. By default, the "Enter" key is pressed after typing. If you do NOT want the "Enter" key to be pressed, set the additional press_enter_after argument to 0, i.e., ```type [id] [content] [0]```.
-    ```hover [id]```: Hover over an element with id.
-    ```press [key_comb]```:  Simulates the pressing of a key combination on the keyboard (e.g., Ctrl+v).
-    ```scroll [down]``` or ```scroll [up]```: Scroll the page up or down.
-                                        
-    Tab Management Actions:
-    ```new_tab```: Open a new, empty browser tab.
-    ```tab_focus [tab_index]```: Switch the browser's focus to a specific tab using its index.
-    ```close_tab```: Close the currently active tab.
-
-    URL Navigation Actions:
-    ```go_back```: Navigate to the previously viewed page.
-    ```go_forward```: Navigate to the next page (if a previous 'go_back' action was performed).
-
-    Completion Actions:
-    ```stop [answer]```: Issue this action when you believe the larger objective is complete. If the objective is to find a text-based answer, provide the answer in the bracket.
-    ```done```: Issue this action when you believe the subtask is complete.
-    ```fail```: Issue this action when you believe the subtask cannot be completed.
-
-    Homepage:
-    If you want to visit other websites, check out the homepage at http://homepage.com. It has a list of websites you can visit.
-    http://homepage.com/password.html lists all the account name and password for the websites. You can use them to log in to the websites.
-
-    Your response should be formatted like this:
-    (Previous action verification)
-    Carefully analyze based on the screenshot and the accessibility tree if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
-
-    (Screenshot Analysis)
-    Closely examine and describe the current state of the desktop along with the currently open applications.
-
-    (Next Action)
-    Based on the current screenshot, the accessibility tree, and the history of your previous interaction with the UI, decide on the next action in natural language to accomplish the given task.
-
-    (Grounded Action)
-    Translate the next action into code using the provided API methods. Format the code like this:
-    ```python
-    click [123]
-    ```
-
-    To be successful, it is very important to follow all these rules:
-    1. You must follow the response format exactly.
-    2. You must put brackets [] around each argument of a grounded action.
-    3. You must generate exactly one action within your (Next Action) and (Grounded Action).
-    4. Your 'Grounded Action' should be the 'stop' action when you have finished the entire larger objective.
-    5. Your 'Grounded Action' should be the 'done' action when you have finished the subtask. If the future subtasks are an empty list, use the 'stop' action appropriately.
-    6. Your 'Grounded Action' should be the 'fail' action if you think the subtask cannot be completed.
-    7. If you think your 'Grounded Action' should be 'done', but there are no more future subtasks, use the 'stop' action appropriately.
-    8. For larger objectives that want you to find something, make sure you visit that specific page before using the 'stop' action. 
-    """
-    )
 
     PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent(
         """

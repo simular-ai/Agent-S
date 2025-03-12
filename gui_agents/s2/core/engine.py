@@ -239,3 +239,37 @@ class LMMEnginevLLM(LMMEngine):
             extra_body={"repetition_penalty": repetition_penalty},
         )
         return completion.choices[0].message.content
+    
+
+class LMMEngineHuggingFace(LMMEngine):
+    def __init__(self, api_key=None, endpoint_url=None, rate_limit=-1, **kwargs):
+        assert endpoint_url is not None, "HuggingFace endpoint must be provided"
+        self.endpoint_url = endpoint_url
+
+        api_key = api_key or os.getenv("HF_TOKEN")
+        if api_key is None:
+            raise ValueError(
+                "A HuggingFace token needs to be provided in either the api_key parameter or as an environment variable named HF_TOKEN"
+            )
+
+        self.api_key = api_key
+        self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
+
+        self.llm_client = OpenAI(base_url=self.endpoint_url, api_key=self.api_key)
+
+    @backoff.on_exception(
+        backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
+    )
+    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+        """Generate the next message based on previous messages"""
+        return (
+            self.llm_client.chat.completions.create(
+                model="tgi",
+                messages=messages,
+                max_tokens=max_new_tokens if max_new_tokens else 4096,
+                temperature=temperature,
+                **kwargs
+            )
+            .choices[0].
+            message.content
+        )
