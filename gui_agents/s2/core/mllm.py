@@ -5,6 +5,7 @@ import numpy as np
 from gui_agents.s2.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
+    LMMEngineHuggingFace,
     LMMEngineOpenAI,
     LMMEnginevLLM,
 )
@@ -28,8 +29,10 @@ class LMMAgent:
                     self.engine = LMMEngineAzureOpenAI(**engine_params)
                 elif engine_type == "vllm":
                     self.engine = LMMEnginevLLM(**engine_params)
+                elif engine_type == "huggingface":
+                    self.engine = LMMEngineHuggingFace(**engine_params)
                 else:
-                    raise ValueError("engine_type must be either 'openai' or 'azure'")
+                    raise ValueError("engine_type is not supported")
             else:
                 raise ValueError("engine_params must be provided")
         else:
@@ -103,12 +106,12 @@ class LMMAgent:
                 )
 
     def add_message(
-        self, text_content, image_content=None, role=None, image_detail="high"
+        self, text_content, image_content=None, role=None, image_detail="high", put_text_last=False
     ):
         """Add a new message to the list of messages"""
 
         # API-style inference from OpenAI and AzureOpenAI
-        if isinstance(self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI)):
+        if isinstance(self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI, LMMEngineHuggingFace)):
             # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
@@ -150,6 +153,12 @@ class LMMAgent:
                             },
                         }
                     )
+            
+            # Rotate text to be the last message if desired
+            if put_text_last:
+                text_content = message["content"].pop(0)
+                message["content"].append(text_content)
+
             self.messages.append(message)
 
         # For API-style inference from Anthropic

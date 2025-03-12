@@ -162,13 +162,12 @@ set_cell_values(new_cell_values={cell_values}, app_name="{app_name}", sheet_name
 
 
 # ACI primitives are parameterized by description, and coordinate generation uses a pretrained grounding model
-# Assumes this pretrained grounding model is hosted on a HF endpoint
 class OSWorldACI(ACI):
     def __init__(
         self,
         platform: str,
-        endpoint_url: str,
-        endpoint_provider: str = "huggingface",
+        engine_params_for_generation: Dict,
+        engine_params_for_grounding: Dict,
         height: int = 1080,
         width: int = 1920,
     ):
@@ -180,93 +179,40 @@ class OSWorldACI(ACI):
         self.width = width
         self.height = height
 
-        self.x_scale = self.width / 1366
-        self.y_scale = self.height / 768
-
+        # Maintain state for save_to_knowledge
         self.notes = []
-
-        # Configure endpoint that hosts the grounding VLM
-        self.endpoint = endpoint_url
-        self.endpoint_provider = endpoint_provider
-        if endpoint_provider == "huggingface":
-            self.client = OpenAI(base_url=endpoint_url, api_key=os.getenv("HF_TOKEN"))
 
         # Coordinates used during ACI execution
         self.coords1 = None
         self.coords2 = None
 
+        # Configure the visual grounding model responsible for coordinate generation
+        self.grounding_model = LMMAgent(engine_params_for_grounding)
+
         # Configure text grounding agent
         self.text_span_agent = LMMAgent(
-            engine_params={"engine_type": "openai", "model": "gpt-4o"},
+            # Swap out with your desired engine type
+            engine_params=engine_params_for_generation,
             system_prompt=PROCEDURAL_MEMORY.PHRASE_TO_WORD_COORDS_PROMPT,
         )
 
-    # Given the state and worker's referring expression, use a hosted grounding VLM to generate (x,y)
+    # Given the state and worker's referring expression, use the grounding model to generate (x,y)
     def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
 
-        # Configure the context
-        base64_image = base64.b64encode(obs["screenshot"]).decode("utf-8")
+        # Reset the grounding model state
+        self.grounding_model.reset()
+
+        # Configure the context, UI-TARS demo does not use system prompt
         prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
-        context = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{base64_image}"},
-                    },
-                    {"type": "text", "text": prompt},
-                ],
-            }
-        ]
+        self.grounding_model.add_message(
+            text_content=prompt,
+            image_content=obs["screenshot"],
+            put_text_last=True
+        )
 
-        max_retries = 3
-        response = None
-
-        # Using HF TGI endpoint
-        if self.endpoint_provider == "huggingface":
-            for attempt in range(max_retries):
-                try:
-                    full_response = self.client.chat.completions.create(
-                        model="tgi", messages=context, temperature=0, max_tokens=128
-                    )
-                    response = full_response.choices[0].message.content
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        print(f"Attempt {attempt + 1} failed: {e}")
-                        time.sleep(2)
-                    else:
-                        raise
-
-        # Using AWS Sagemaker endpoint
-        elif self.endpoint_provider == "sagemaker":
-            for attempt in range(max_retries):
-                try:
-                    input_data = json.dumps(
-                        {"messages": context, "temperature": 0.0, "max_tokens": 128}
-                    )
-                    full_response = requests.post(
-                        self.endpoint,
-                        data=input_data,
-                        headers={"content-type": "application/json", "x-api-key": ""},
-                    )
-                    output_data = json.loads(full_response.text)
-                    response = output_data["choices"][0]["message"]["content"]
-                    break
-                except Exception as e:
-                    if attempt < max_retries - 1:
-                        print(f"Attempt {attempt + 1} failed: {e}")
-                        time.sleep(2)
-                    else:
-                        raise
-
-        # Invalid endpoint provider
-        else:
-            raise ValueError("Invalid endpoint provider for grounding model")
-
-        # Parse and return coordinates
-        print("ORIGINAL UI-TARS RESPONSE:", response)
+        # Generate and parse coordinates
+        response = call_llm_safe(self.grounding_model)
+        print("RAW GROUNDING MODEL RESPONSE:", response)
         numericals = re.findall(r"\d+", response)
         assert len(numericals) >= 2
         return [int(numericals[0]), int(numericals[1])]
@@ -324,9 +270,8 @@ class OSWorldACI(ACI):
         # Load LLM prompt
         self.text_span_agent.reset()
         self.text_span_agent.add_message(
-            alignment_prompt + "Phrase: " + phrase, role="user"
+            alignment_prompt + "Phrase: " + phrase + "\n" + ocr_table, role="user"
         )
-        self.text_span_agent.add_message(ocr_table, role="user")
         self.text_span_agent.add_message(
             "Screenshot:\n", image_content=obs["screenshot"], role="user"
         )
