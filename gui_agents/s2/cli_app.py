@@ -80,23 +80,21 @@ def show_permission_dialog(code: str, action_description: str):
     return False
 
 
-def scale_screen_dimensions(width: int, height: int):
-    MAX_DIMENSION_SIZE = 2400
-    scale_factor = min(MAX_DIMENSION_SIZE / width, MAX_DIMENSION_SIZE / height, 1)
+def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
+    scale_factor = min(max_dim_size / width, max_dim_size / height, 1)
     safe_width = int(width * scale_factor)
     safe_height = int(height * scale_factor)
     return safe_width, safe_height
 
 
-def run_agent(agent, instruction: str, safe_width: int, safe_height: int):
+def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
     for _ in range(15):
-        # Get screen shot using pyautogui.
-        # Take a screenshot
+        # Get screen shot using pyautogui
         screenshot = pyautogui.screenshot()
-        screenshot = screenshot.resize((safe_width, safe_height), Image.LANCZOS)
+        screenshot = screenshot.resize((scaled_width, scaled_height), Image.LANCZOS)
 
         # Save the screenshot to a BytesIO object
         buffered = io.BytesIO()
@@ -164,7 +162,7 @@ def main():
         "--grounding_model",
         type=str,
         default="",
-        help="Specify the grounding model to use (e.g., claude-3-7-sonnet)",
+        help="Specify the grounding model to use (e.g., claude-3-5-sonnet-20241022)",
     )
 
     # Grounding model config option 2: Self-hosted endpoint based
@@ -186,6 +184,12 @@ def main():
         args.grounding_model or args.endpoint_url
     ), "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
 
+    # Re-scales screenshot size to ensure it fits in UI-TARS context limit
+    screen_width, screen_height = pyautogui.size()
+    scaled_width, scaled_height = scale_screen_dimensions(
+        screen_width, screen_height, max_dim_size=2400
+    )
+
     # Load the general engine params
     if args.model.startswith("claude"):
         engine_params = {"engine_type": "anthropic", "model": args.model}
@@ -203,30 +207,30 @@ def main():
             "endpoint_url": args.endpoint_url,
         }
     elif args.grounding_model.startswith("claude"):
+        CLAUDE_3_5_MAX_WIDTH = 1366
         engine_params_for_grounding = {
             "engine_type": "anthropic",
             "model": args.grounding_model,
+            "grounding_width": CLAUDE_3_5_MAX_WIDTH,
+            "grounding_height": screen_height * CLAUDE_3_5_MAX_WIDTH / screen_width,
         }
     elif args.grounding_model.startswith("gpt"):
         engine_params_for_grounding = {
             "engine_type": "openai",
             "model": args.grounding_model,
+            # TODO: set your image scaling for gpt here
         }
     else:
         raise ValueError(
             "Invalid grounding model specficiation. Please provide a supported model type"
         )
 
-    # Re-scales screenshot size to ensure it fits in UI-TARS context limit
-    screen_width, screen_height = pyautogui.size()
-    safe_width, safe_height = scale_screen_dimensions(screen_width, screen_height)
-
     grounding_agent = OSWorldACI(
         platform=current_platform,
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,
-        width=safe_width,
-        height=safe_height,
+        width=screen_width,
+        height=screen_height,
     )
 
     agent = GraphSearchAgent(
@@ -245,7 +249,7 @@ def main():
         agent.reset()
 
         # Run the agent on your own device
-        run_agent(agent, query, safe_width, safe_height)
+        run_agent(agent, query, scaled_width, scaled_height)
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":
