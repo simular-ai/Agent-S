@@ -162,8 +162,8 @@ class OSWorldACI(ACI):
         platform: str,
         engine_params_for_generation: Dict,
         engine_params_for_grounding: Dict,
-        height: int = 1080,
         width: int = 1920,
+        height: int = 1080,
     ):
         self.platform = (
             platform  # Dictates how the switch_applications agent action works.
@@ -182,10 +182,10 @@ class OSWorldACI(ACI):
 
         # Configure the visual grounding model responsible for coordinate generation
         self.grounding_model = LMMAgent(engine_params_for_grounding)
+        self.engine_params_for_grounding = engine_params_for_grounding
 
         # Configure text grounding agent
         self.text_span_agent = LMMAgent(
-            # Swap out with your desired engine type
             engine_params=engine_params_for_generation,
             system_prompt=PROCEDURAL_MEMORY.PHRASE_TO_WORD_COORDS_PROMPT,
         )
@@ -311,26 +311,32 @@ class OSWorldACI(ACI):
             and len(args) >= 1
             and args[0] != None
         ):
-            print(f"DESCRIPTION 1: {args[0]}")
             self.coords1 = self.generate_coords(args[0], obs)
         # arg0 and arg1 are descriptions
         elif function_name == "agent.drag_and_drop" and len(args) >= 2:
-            print(f"DESCRIPTION 1: {args[0]}")
-            print(f"DESCRIPTION 2: {args[1]}")
             self.coords1 = self.generate_coords(args[0], obs)
             self.coords2 = self.generate_coords(args[1], obs)
         # arg0 and arg1 are text phrases
         elif function_name == "agent.highlight_text_span" and len(args) >= 2:
-            print(f"PHRASE 1: {args[0]}")
-            print(f"PHRASE 2: {args[1]}")
             self.coords1 = self.generate_text_coords(args[0], obs, alignment="start")
             self.coords2 = self.generate_text_coords(args[1], obs, alignment="end")
 
-    # Resize from HF model dim (1000 x 1000) into OSWorld dim (1920 * 1080)
+    # Resize from grounding model dim into OSWorld dim (1920 * 1080)
     def resize_coordinates(self, coordinates: List[int]) -> List[int]:
+        # User explicitly passes the grounding model dimensions
+        if {"grounding_width", "grounding_height"}.issubset(
+            self.engine_params_for_grounding
+        ):
+            grounding_width = self.engine_params_for_grounding["grounding_width"]
+            grounding_height = self.engine_params_for_grounding["grounding_height"]
+        # Default to (1000, 1000), which is UI-TARS resizing
+        else:
+            grounding_width = 1000
+            grounding_height = 1000
+
         return [
-            round(coordinates[0] * self.width / 1000),
-            round(coordinates[1] * self.height / 1000),
+            round(coordinates[0] * self.width / grounding_width),
+            round(coordinates[1] * self.height / grounding_height),
         ]
 
     # Given a generated ACI function, returns a list of argument values, where descriptions are at the front of the list
