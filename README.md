@@ -11,7 +11,7 @@
 </p>
 
 ## 🥳 Updates
-- [x] **2025/03/11**: Released Agent S V2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art on OSWorld, outperforming OpenAI's CUA and Anthropic's Claude 3.7 Sonnet!
+- [x] **2025/03/11**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art on OSWorld, outperforming OpenAI's CUA and Anthropic's Claude 3.7 Sonnet!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
 - [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
@@ -48,6 +48,8 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 ## 🛠️ Installation & Setup
 
 > ❗**Warning**❗: If you are on a Linux machine, creating a `conda` environment will interfere with `pyatspi`. As of now, there's no clean solution for this issue. Proceed through the installation without using `conda` or any virtual environment.
+
+> ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, on Hugging Face Inference Endpoints, or SageMaker. Our code supports Hugging Face Inference Endpoints and SageMaker. Fortunately, running Agent S2 does not require this model. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint.
 
 Clone the repository:
 ```
@@ -117,11 +119,9 @@ Run agent_s on your computer using:
 ```
 agent_s2 --model gpt-4o
 ```
-This will show a user query prompt where you can enter your query and interact with Agent S V2. You can use any model from the list of supported models in [models.md](models.md).
+This will show a user query prompt where you can enter your query and interact with Agent S2. You can use any model from the list of supported models in [models.md](models.md).
 
 ### `gui_agents` SDK
-
-To deploy Agent S V2:
 
 ```
 import pyautogui
@@ -133,8 +133,8 @@ current_platform = "ubuntu"  # "macos"
 
 grounding_agent = OSWorldACI(
     platform=current_platform,
-    endpoint_provider=args.endpoint_provider,
-    endpoint_url=args.endpoint_url,
+    endpoint_provider="huggingface",
+    endpoint_url="<endpoint_url>/v1/",  # Check this for more help: https://huggingface.co/docs/inference-endpoints/guides/test_endpoint
 )
 
 engine_params = {
@@ -145,7 +145,7 @@ engine_params = {
 agent = GraphSearchAgent(
   engine_params,
   grounding_agent,
-  platform="ubuntu",  # "macos", "windows"
+  platform="ubuntu",  # "macos"
   action_space="pyautogui",
   observation_type="mixed",
   search_engine="Perplexica"
@@ -171,7 +171,7 @@ Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop w
 
 ### OSWorld
 
-To deploy Agent S V2 in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
+To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
 
 ## 🙌 Contributors
 
