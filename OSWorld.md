@@ -49,16 +49,29 @@ engine_params = {
   "model": args.model,
 }
 
-grounding_agent = OSWorldACI(vm_version=args.vm_version)
+engine_params_for_grounding = {
+    "engine_type": "huggingface",
+    "endpoint_url": "<endpoint_url>/v1/",
+}
+
+current_platform = "ubuntu"
+
+grounding_agent = OSWorldACI(
+    platform=current_platform,
+    engine_params_for_generation=engine_params,
+    engine_params_for_grounding=engine_params_for_grounding
+)
+
 agent = GraphSearchAgent(
   engine_params,
   grounding_agent,
-  platform='ubuntu',
+  platform=current_platform,
   action_space="pyautogui",
   observation_type="mixed",
   search_engine="Perplexica"
 )
 ```
+
 We support all multimodal models from OpenAI, Anthropic, and vLLM. For more information, refer to [models.md](models.md).
 
 We have set the latest Agent S2 to use the latest Ubuntu VM image from OSWorld. However, our experiments are based on the older version of the VM. To reproduce the results, set the vm_version argument to 'old' while instantiating the agent.
