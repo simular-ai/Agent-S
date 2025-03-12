@@ -210,7 +210,7 @@ To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWo
 
 ## 🤝 Acknowledgements
 
-We extend our sincere thanks to Tianbao Xie for developing and discussing OSWorld. We also appreciate the engaging discussions with Yujia Qin and Shihao Liang regarding UI-TARS.
+We extend our sincere thanks to Tianbao Xie for developing OSWorld and discussing computer use challenges. We also appreciate the engaging discussions with Yujia Qin and Shihao Liang regarding UI-TARS.
 
 ## 💬 Citation
 ```
