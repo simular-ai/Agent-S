@@ -12,7 +12,7 @@
 
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/agent-s">[S1 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2410.08164">[S1 Paper]</a>&nbsp;
+  📄 <a href="https://arxiv.org/abs/2410.08164">[S1 Paper (ICLR 2025)]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
 </p>
 
@@ -288,16 +288,17 @@ To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWo
 
 We extend our sincere thanks to Tianbao Xie for developing OSWorld and discussing computer use challenges. We also appreciate the engaging discussions with Yujia Qin and Shihao Liang regarding UI-TARS.
 
-## 💬 Citation
+## 💬 Citations
+
+If you find this codebase useful, please cite 
+
 ```
-@misc{agashe2024agentsopenagentic,
-      title={Agent S: An Open Agentic Framework that Uses Computers Like a Human}, 
-      author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
-      year={2024},
-      eprint={2410.08164},
-      archivePrefix={arXiv},
-      primaryClass={cs.AI},
-      url={https://arxiv.org/abs/2410.08164}, 
+@inproceedings{agashe2025agents,
+    title={{Agent S: An Open Agentic Framework that Uses Computers Like a Human}},
+    author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
+    booktitle={International Conference on Learning Representations (ICLR)},
+    year={2025},
+    url={https://arxiv.org/abs/2410.08164}
 }
 ```
 
