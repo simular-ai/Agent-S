@@ -5,7 +5,7 @@ import textwrap
 class PROCEDURAL_MEMORY:
 
     @staticmethod
-    def construct_worker_procedural_memory(agent_class):
+    def construct_worker_procedural_memory(agent_class, skipped_actions):
         procedural_memory = textwrap.dedent(
             f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the current subtask: `SUBTASK_DESCRIPTION` of the larger goal: `TASK_DESCRIPTION`.
@@ -20,6 +20,9 @@ class PROCEDURAL_MEMORY:
         )
 
         for attr_name in dir(agent_class):
+            if attr_name in skipped_actions:
+                continue
+            
             attr = getattr(agent_class, attr_name)
             if callable(attr) and hasattr(attr, "is_agent_action"):
                 # Use inspect to get the full function signature

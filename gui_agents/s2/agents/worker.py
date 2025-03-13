@@ -52,8 +52,13 @@ class Worker(BaseModule):
         self.reset()
 
     def reset(self):
+        if self.platform != "ubuntu":
+            skipped_actions = ["set_cell_values"]
+        else:
+            skipped_actions = []
+
         sys_prompt = PROCEDURAL_MEMORY.construct_worker_procedural_memory(
-            type(self.grounding_agent)
+            type(self.grounding_agent), skipped_actions=skipped_actions
         ).replace("CURRENT_OS", self.platform)
 
         self.generator_agent = self._create_agent(sys_prompt)

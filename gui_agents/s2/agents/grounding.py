@@ -403,6 +403,8 @@ class OSWorldACI(ACI):
             return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"
         elif self.platform == "ubuntu":
             return UBUNTU_APP_SETUP.replace("APP_NAME", app_code)
+        elif self.platform == "windows":
+            return f"import pyautogui; import time; pyautogui.hotkey('win', 'd', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"
 
     @agent_action
     def open(self, app_or_filename: str):
