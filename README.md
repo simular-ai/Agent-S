@@ -27,7 +27,7 @@
 
 1. [💡 Introduction](#-introduction)
 2. [🎯 Current Results](#-current-results)
-3. [🛠️ Installation](#-installation) 
+3. [🛠️ Installation](#%EF%B8%8F-installation--setup) 
 4. [🚀 Usage](#-usage)
 5. [🤝 Acknowledgements](#-acknowledgements)
 6. [💬 Citation](#-citation)
