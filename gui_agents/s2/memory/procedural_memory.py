@@ -22,7 +22,7 @@ class PROCEDURAL_MEMORY:
         for attr_name in dir(agent_class):
             if attr_name in skipped_actions:
                 continue
-            
+
             attr = getattr(agent_class, attr_name)
             if callable(attr) and hasattr(attr, "is_agent_action"):
                 # Use inspect to get the full function signature
