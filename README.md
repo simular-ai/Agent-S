@@ -156,13 +156,13 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 Run Agent S2 with a specific model (default is `gpt-4o`):
 
 ```bash
-agent_s --model claude-3-7-sonnet-20250219 --grounding_model claude-3-7-sonnet-20250219
+agent_s2 --model claude-3-7-sonnet-20250219 --grounding_model claude-3-7-sonnet-20250219
 ```
 
 Or use a custom endpoint:
 
 ```bash
-agent_s --model claude-3-7-sonnet-20250219 --endpoint_provider "huggingface" --endpoint_url "<endpoint_url>/v1/"
+agent_s2 --model claude-3-7-sonnet-20250219 --endpoint_provider "huggingface" --endpoint_url "<endpoint_url>/v1/"
 ```
 
 #### Main Model Settings
