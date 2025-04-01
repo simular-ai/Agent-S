@@ -7,7 +7,7 @@
   🌐 <a href="https://www.simular.ai/agent-s2">[S2 blog]</a>&nbsp;
   📄 [S2 Paper] (Coming Soon)&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
-  🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>&nbsp;
+<!--   🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>&nbsp; -->
 </p>
 
 <p align="center">&nbsp;
@@ -20,8 +20,15 @@
 <a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </p>
 
-[![](https://dcbadge.limes.pink/api/server/https://discord.gg/E2XfsK9fPV?style=flat)](https://discord.gg/E2XfsK9fPV)
-[![PyPI Downloads](https://static.pepy.tech/badge/gui-agents)](https://pepy.tech/projects/gui-agents)
+<p align="center">
+  <a href="https://discord.gg/E2XfsK9fPV">
+    <img src="https://dcbadge.limes.pink/api/server/https://discord.gg/E2XfsK9fPV?style=flat" alt="Discord">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://pepy.tech/projects/gui-agents">
+    <img src="https://static.pepy.tech/badge/gui-agents" alt="PyPI Downloads">
+  </a>
+</p>
 
 ## 🥳 Updates
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
