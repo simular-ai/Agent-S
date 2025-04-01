@@ -15,14 +15,18 @@ from gui_agents.s1.utils.common_utils import (
 )
 from gui_agents.s1.utils.query_perplexica import query_to_perplexica
 
-working_dir = os.path.dirname(os.path.abspath(__file__))
-
 
 class KnowledgeBase(BaseModule):
     def __init__(
-        self, platform: str, engine_params: Dict, use_image_for_search: bool = False
+        self,
+        local_kb_path: str,
+        platform: str,
+        engine_params: Dict,
+        use_image_for_search: bool = False,
     ):
         super().__init__(engine_params, platform)
+
+        self.local_kb_path = local_kb_path
 
         # initialize embedding engine
         # TODO: Support other embedding engines
@@ -32,6 +36,17 @@ class KnowledgeBase(BaseModule):
                 if "api_key" in engine_params
                 else os.getenv("OPENAI_API_KEY")
             )
+        )
+
+        # Initialize paths for different memory types
+        self.episodic_memory_path = os.path.join(
+            self.local_kb_path, self.platform, "episodic_memory.json"
+        )
+        self.narrative_memory_path = os.path.join(
+            self.local_kb_path, self.platform, "narrative_memory.json"
+        )
+        self.embeddings_path = os.path.join(
+            self.local_kb_path, self.platform, "embeddings.pkl"
         )
 
         self.rag_module_system_prompt = PROCEDURAL_MEMORY.RAG_AGENT.replace(
@@ -62,7 +77,7 @@ class KnowledgeBase(BaseModule):
     def formulate_query(self, instruction: str, observation: Dict) -> str:
         """Formulate search query based on instruction and current state"""
         query_path = os.path.join(
-            working_dir, "../kb", self.platform, "formulate_query.json"
+            self.local_kb_path, self.platform, "formulate_query.json"
         )
         try:
             with open(query_path, "r") as f:
@@ -102,7 +117,7 @@ class KnowledgeBase(BaseModule):
 
         # Default to perplexica rag knowledge to see if the query exists
         file = os.path.join(
-            working_dir, "../kb", self.platform, f"{search_engine}_rag_knowledge.json"
+            self.local_kb_path, self.platform, f"{search_engine}_rag_knowledge.json"
         )
 
         try:
@@ -126,8 +141,7 @@ class KnowledgeBase(BaseModule):
         exist_search_results[instruction] = search_results.strip()
         with open(
             os.path.join(
-                working_dir,
-                "../kb",
+                self.local_kb_path,
                 self.platform,
                 f"{search_engine}_rag_knowledge.json",
             ),
@@ -139,18 +153,11 @@ class KnowledgeBase(BaseModule):
 
     def retrieve_narrative_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve narrative experience using embeddings"""
-        kb_path = os.path.join(
-            working_dir, "../kb", self.platform, "narrative_memory.json"
-        )
-        embeddings_path = os.path.join(
-            working_dir, "../kb", self.platform, "embeddings.pkl"
-        )
-
-        knowledge_base = load_knowledge_base(kb_path)
+        knowledge_base = load_knowledge_base(self.narrative_memory_path)
         if not knowledge_base:
             return "None", "None"
 
-        embeddings = load_embeddings(embeddings_path)
+        embeddings = load_embeddings(self.embeddings_path)
 
         # Get or create instruction embedding
         instruction_embedding = embeddings.get(instruction)
@@ -169,7 +176,7 @@ class KnowledgeBase(BaseModule):
 
             candidate_embeddings.append(candidate_embedding)
 
-        save_embeddings(embeddings_path, embeddings)
+        save_embeddings(self.embeddings_path, embeddings)
 
         similarities = cosine_similarity(
             instruction_embedding, np.vstack(candidate_embeddings)
@@ -182,18 +189,11 @@ class KnowledgeBase(BaseModule):
 
     def retrieve_episodic_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve similar task experience using embeddings"""
-        kb_path = os.path.join(
-            working_dir, "../kb", self.platform, "episodic_memory.json"
-        )
-        embeddings_path = os.path.join(
-            working_dir, "../kb", self.platform, "embeddings.pkl"
-        )
-
-        knowledge_base = load_knowledge_base(kb_path)
+        knowledge_base = load_knowledge_base(self.episodic_memory_path)
         if not knowledge_base:
             return "None", "None"
 
-        embeddings = load_embeddings(embeddings_path)
+        embeddings = load_embeddings(self.embeddings_path)
 
         # Get or create instruction embedding
         instruction_embedding = embeddings.get(instruction)
@@ -212,7 +212,7 @@ class KnowledgeBase(BaseModule):
 
             candidate_embeddings.append(candidate_embedding)
 
-        save_embeddings(embeddings_path, embeddings)
+        save_embeddings(self.embeddings_path, embeddings)
 
         similarities = cosine_similarity(
             instruction_embedding, np.vstack(candidate_embeddings)

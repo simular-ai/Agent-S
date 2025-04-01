@@ -1,19 +1,17 @@
-import ast
 import logging
 import os
 import re
 from typing import Dict, List, Tuple
+import platform
 
 from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.BaseModule import BaseModule
 from gui_agents.s1.core.Knowledge import KnowledgeBase
 from gui_agents.s1.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.s1.mllm.MultimodalEngine import OpenAIEmbeddingEngine
 from gui_agents.s1.utils import common_utils
 from gui_agents.s1.utils.common_utils import Node, calculate_tokens, call_llm_safe
 
 logger = logging.getLogger("desktopenv.agent")
-working_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 class Worker(BaseModule):
@@ -21,7 +19,8 @@ class Worker(BaseModule):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        local_kb_path: str,
+        platform: str = platform.system().lower(),
         search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
@@ -33,6 +32,8 @@ class Worker(BaseModule):
                 Parameters for the multimodal engine
             grounding_agent: Agent
                 The grounding agent to use
+            local_kb_path: str
+                Path to knowledge base
             search_engine: str
                 The search engine to use
             enable_reflection: bool
@@ -40,10 +41,11 @@ class Worker(BaseModule):
             use_subtask_experience: bool
                 Whether to use subtask experience
         """
+        super().__init__(engine_params, platform)
+
         self.grounding_agent = grounding_agent
-        self.platform = platform
+        self.local_kb_path = local_kb_path
         self.enable_reflection = enable_reflection
-        self.engine_params = engine_params
         self.search_engine = search_engine
         self.use_subtask_experience = use_subtask_experience
         self.reset()
@@ -67,7 +69,9 @@ class Worker(BaseModule):
         )
 
         self.knowledge_base = KnowledgeBase(
-            platform=self.platform, engine_params=self.engine_params
+            local_kb_path=self.local_kb_path,
+            platform=self.platform,
+            engine_params=self.engine_params,
         )
 
         self.turn_count = 0

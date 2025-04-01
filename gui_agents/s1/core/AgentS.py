@@ -2,6 +2,7 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Tuple
+import platform
 
 from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.Manager import Manager
@@ -19,7 +20,7 @@ class UIAgent:
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyautogui",
         observation_type: str = "a11y_tree",
         search_engine: str = "perplexica",
@@ -85,7 +86,7 @@ class GraphSearchAgent(UIAgent):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyatuogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
@@ -146,7 +147,6 @@ class GraphSearchAgent(UIAgent):
                 "Note, the knowledge is continually updated during inference. Deleting the knowledge base will wipe out all experience gained since the last knowledge base download."
             )
 
-
         self.reset()
 
     def reset(self) -> None:
@@ -160,8 +160,8 @@ class GraphSearchAgent(UIAgent):
             local_kb_path=self.local_kb_path,
         )
         self.executor = Worker(
-            self.engine_params, 
-            self.grounding_agent, 
+            self.engine_params,
+            self.grounding_agent,
             platform=self.platform,
             local_kb_path=self.local_kb_path,
         )
@@ -301,7 +301,7 @@ class GraphSearchAgent(UIAgent):
         """
         try:
             reflection_path = os.path.join(
-                working_dir, "../kb", self.platform, "narrative_memory.json"
+                self.local_kb_path, self.platform, "narrative_memory.json"
             )
             try:
                 reflections = json.load(open(reflection_path))
@@ -341,7 +341,7 @@ class GraphSearchAgent(UIAgent):
                 )[0]
                 try:
                     subtask_path = os.path.join(
-                        working_dir, "../kb", self.platform, "episodic_memory.json"
+                        self.local_kb_path, self.platform, "episodic_memory.json"
                     )
                     kb = json.load(open(subtask_path))
                 except:

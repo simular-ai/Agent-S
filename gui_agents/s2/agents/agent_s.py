@@ -320,7 +320,9 @@ class GraphSearchAgent(UIAgent):
             trajectory: String containing task execution trajectory
         """
         try:
-            reflection_path = os.path.join(self.local_kb_path, self.platform, "narrative_memory.json")
+            reflection_path = os.path.join(
+                self.local_kb_path, self.platform, "narrative_memory.json"
+            )
             try:
                 reflections = json.load(open(reflection_path))
             except:
