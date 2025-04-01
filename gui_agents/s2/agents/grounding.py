@@ -399,9 +399,9 @@ class OSWorldACI(ACI):
         Args:
             app_code:str the code name of the application to switch to from the provided list of open applications
         """
-        if self.platform == "mac":
+        if self.platform == "darwin":
             return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"
-        elif self.platform == "ubuntu":
+        elif self.platform == "linux":
             return UBUNTU_APP_SETUP.replace("APP_NAME", app_code)
         elif self.platform == "windows":
             return f"import pyautogui; import time; pyautogui.hotkey('win', 'd', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"

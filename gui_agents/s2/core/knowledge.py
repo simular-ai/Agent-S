@@ -35,12 +35,14 @@ class KnowledgeBase(BaseModule):
 
         # Initialize paths for different memory types
         self.episodic_memory_path = os.path.join(
-            self.local_kb_path, "episodic_memory.json"
+            self.local_kb_path, self.platform, "episodic_memory.json"
         )
         self.narrative_memory_path = os.path.join(
-            self.local_kb_path, "narrative_memory.json"
+            self.local_kb_path, self.platform, "narrative_memory.json"
         )
-        self.embeddings_path = os.path.join(self.local_kb_path, "embeddings.pkl")
+        self.embeddings_path = os.path.join(
+            self.local_kb_path, self.platform, "embeddings.pkl"
+        )
 
         # Initialize trajectory tracking
         self.task_trajectory = ""
@@ -81,7 +83,9 @@ class KnowledgeBase(BaseModule):
 
     def formulate_query(self, instruction: str, observation: Dict) -> str:
         """Formulate search query based on instruction and current state"""
-        query_path = os.path.join(self.local_kb_path, "formulate_query.json")
+        query_path = os.path.join(
+            self.local_kb_path, self.platform, "formulate_query.json"
+        )
         try:
             with open(query_path, "r") as f:
                 formulate_query = json.load(f)
@@ -119,7 +123,9 @@ class KnowledgeBase(BaseModule):
         """Execute search using specified engine"""
 
         # Default to perplexica rag knowledge to see if the query exists
-        file = os.path.join(self.local_kb_path, f"{search_engine}_rag_knowledge.json")
+        file = os.path.join(
+            self.local_kb_path, self.platform, f"{search_engine}_rag_knowledge.json"
+        )
 
         try:
             with open(file, "r") as f:
@@ -144,6 +150,7 @@ class KnowledgeBase(BaseModule):
         with open(
             os.path.join(
                 self.local_kb_path,
+                self.platform,
                 f"{search_engine}_rag_knowledge.json",
             ),
             "w",

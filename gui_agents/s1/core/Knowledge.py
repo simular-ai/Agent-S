@@ -223,24 +223,6 @@ class KnowledgeBase(BaseModule):
         idx = 1 if keys[sorted_indices[0]] == instruction else 0
         return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
 
-    # def retrieve_lifelong_learning_reflection(self, instruction):
-
-    #     try:
-    #         lifelong_learning_reflection_dicts = json.load(
-    #             open(
-    #                 os.path.join(
-    #                     working_dir, "kb", self.platform, "lifelong_learning_knowledge_base.json"
-    #                 )
-    #             )
-    #         )
-    #         lifelong_learning_reflection = lifelong_learning_reflection_dicts[
-    #             instruction
-    #         ]
-    #     except:
-    #         lifelong_learning_reflection = "None"
-
-    #     return instruction, lifelong_learning_reflection
-
     def knowledge_fusion(
         self,
         observation: Dict,

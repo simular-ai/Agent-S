@@ -208,7 +208,7 @@ from gui_agents.s2.agents.grounding import OSWorldACI
 from dotenv import load_dotenv
 load_dotenv()
 
-current_platform = "ubuntu"  # "macos"
+current_platform = "linux"  # "darwin", "windows"
 ```
 
 Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
@@ -279,6 +279,21 @@ exec(action[0])
 ```
 
 Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
+
+#### Downloading the Knowledege Base
+
+Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `GraphSearchAgent`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `GraphSearchAgent` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
+
+```
+download_kb_data(
+    version="s2",
+    release_tag="v0.2.2",
+    download_dir="kb_data",
+    platform="linux"  # "darwin", "windows"
+)
+```
+
+This will download Agent S2's knowledge base for Linux from release tag `v0.2.2` to the `kb_data` directory. Refer to our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases) or release tags that include the knowledge bases.
 
 ### OSWorld
 

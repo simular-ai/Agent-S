@@ -6,20 +6,21 @@ import zipfile
 import io
 import os
 
+
 def download_kb_data(
     version="s2",
     release_tag="v0.2.2",
     download_dir="kb_data",
-    platform=platform.system().lower()
+    platform=platform.system().lower(),
 ):
     """Download and extract the appropriate KB ZIP file for the current OS.
-    
+
     Args:
         version (str): Prefix in the asset name (e.g., "s1" or "s2")
         release_tag (str): Tag of the release that has the assets (e.g., "v0.2.2")
         download_dir (str): Where to extract the downloaded files
         platform (str): OS (e.g., "windows", "darwin", "linux")
-    """    
+    """
     # Detect OS
     if platform not in ["windows", "darwin", "linux"]:
         raise RuntimeError(f"Unsupported OS: {platform}")
@@ -27,8 +28,6 @@ def download_kb_data(
     # Build asset filename, e.g. "s1_windows.zip" or "s1_darwin.zip"
     asset_name = f"{version}_{platform}.zip"
 
-    # Construct download URL:
-    # https://github.com/<owner>/<repo>/releases/download/<tag>/<asset_name>
     download_url = f"https://github.com/simular-ai/Agent-S/releases/download/{release_tag}/{asset_name}"
 
     # Make sure our output directory exists
