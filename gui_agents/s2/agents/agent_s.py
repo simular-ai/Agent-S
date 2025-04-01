@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import platform
 import shutil
 from typing import Dict, List, Optional, Tuple
 
@@ -20,7 +21,7 @@ class UIAgent:
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyautogui",
         observation_type: str = "a11y_tree",
         search_engine: str = "perplexica",
@@ -86,7 +87,7 @@ class GraphSearchAgent(UIAgent):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyautogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
@@ -98,7 +99,7 @@ class GraphSearchAgent(UIAgent):
         Args:
             engine_params: Configuration parameters for the LLM engine
             grounding_agent: Instance of ACI class for UI interaction
-            platform: Operating system platform (macos, ubuntu)
+            platform: Operating system platform (darwin, linux, windows)
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
