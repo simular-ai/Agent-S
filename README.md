@@ -16,6 +16,13 @@
   🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
 </p>
 
+<p align="center">&nbsp;
+<a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</p>
+
+[![](https://dcbadge.limes.pink/api/server/https://discord.gg/E2XfsK9fPV?style=flat)](https://discord.gg/E2XfsK9fPV)
+[![PyPI Downloads](https://static.pepy.tech/badge/gui-agents)](https://pepy.tech/projects/gui-agents)
+
 ## 🥳 Updates
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
