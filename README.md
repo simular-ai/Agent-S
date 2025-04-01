@@ -141,9 +141,13 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
    ```bash
    docker compose up -d
    ```
+5. Next, export your environment variables. The `PERPLEXICA_URL` is optional. The default value is `http://localhost:{port}/api/search` where the default `port` is `3001` from the `config.toml` if you're using the default port. If you aren't using the default port or need to change the URL, you may use `PERPLEXICA_URL` to specify the URL.
 
-5. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
-
+   ```bash
+   export PERPLEXICA_CONFIG_PATH=/absolute/path/to/your/config.toml
+   export PERPLEXICA_URL=http://localhost:{port}/api/search
+   ```
+6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md).
 For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git).
 
 > ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.

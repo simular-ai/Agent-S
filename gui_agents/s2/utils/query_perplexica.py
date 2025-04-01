@@ -2,18 +2,28 @@ import requests
 import toml
 import os
 
-current_path = os.path.dirname(os.path.abspath(__file__))
-parent_path = os.path.dirname(os.path.dirname(os.path.dirname(current_path)))
-
 
 def query_to_perplexica(query):
+    config_path = os.getenv("PERPLEXICA_CONFIG_PATH")
+    if not config_path:
+        raise ValueError(
+            "Environment variable PERPLEXICA_CONFIG_PATH is not set. Please set it to the path of your config.toml."
+        )
+
     # Load Your Port From the configuration file of Perplexica
-    with open(os.path.join(parent_path, "Perplexica", "config.toml"), "r") as f:
+    with open(config_path, "r") as f:
         data = toml.load(f)
     port = data["GENERAL"]["PORT"]
     assert port, "You should set valid port in the config.toml"
-    # Set the URL
-    url = f"http://localhost:{port}/api/search"
+
+    # Retrieve the URL from an environment variable
+    url = os.getenv("PERPLEXICA_URL")
+    if not url:
+        url = f"http://localhost:{port}/api/search"
+        print(
+            f"PERPLEXICA_URL not set, using default URL: http://localhost:{port}/api/search"
+        )
+
     # Request Message
     message = {"focusMode": "webSearch", "query": query, "history": [["human", query]]}
 
