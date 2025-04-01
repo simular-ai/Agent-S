@@ -11,24 +11,21 @@ import time
 from threading import Event, Lock
 
 # Determine the operating system and select appropriate ACI
-os_name = platform.system().lower()
-if os_name == "linux":
+current_platform = platform.system().lower()
+if current_platform == "linux":
     from gui_agents.s1.aci.LinuxOSACI import LinuxACI, UIElement
 
     grounding_agent = LinuxACI()
-    platform_name = "ubuntu"
-elif os_name == "darwin":
+elif current_platform == "darwin":
     from gui_agents.s1.aci.MacOSACI import MacOSACI, UIElement
 
     grounding_agent = MacOSACI()
-    platform_name = "macos"
-elif os_name == "windows":
+elif current_platform == "windows":
     from gui_agents.s1.aci.WindowsOSACI import WindowsACI, UIElement
 
     grounding_agent = WindowsACI()
-    platform_name = "windows"
 else:
-    raise ValueError(f"Unsupported operating system: {os_name}")
+    raise ValueError(f"Unsupported operating system: {current_platform}")
 
 app = FastAPI()
 
@@ -167,7 +164,7 @@ async def run(request: RunRequest):
         agent = GraphSearchAgent(
             engine_params,
             grounding_agent,
-            platform=platform_name,
+            platform=current_platform,
             action_space="pyautogui",
             observation_type="mixed",
         )
@@ -210,7 +207,7 @@ async def execute_command_stream(cmd: CommandRequest):
     agent = GraphSearchAgent(
         engine_params,
         grounding_agent,
-        platform=platform_name,
+        platform=current_platform,
         action_space="pyautogui",
         observation_type="mixed",
     )

@@ -10,17 +10,10 @@ import time
 
 from PIL import Image
 
-if platform.system() == "Darwin":
-    current_platform = "macos"
-elif platform.system() == "Linux":
-    current_platform = "ubuntu"
-elif platform.system() == "Windows":
-    current_platform = "windows"
-else:
-    raise ValueError("Unsupported platform")
-
 from gui_agents.s2.agents.grounding import OSWorldACI
 from gui_agents.s2.agents.agent_s import GraphSearchAgent
+
+current_platform = platform.system().lower()
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
