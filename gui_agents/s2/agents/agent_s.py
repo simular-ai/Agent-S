@@ -11,7 +11,6 @@ from gui_agents.s2.utils.common_utils import Node
 from gui_agents.utils import download_kb_data
 
 logger = logging.getLogger("desktopenv.agent")
-working_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 class UIAgent:
@@ -164,7 +163,6 @@ class GraphSearchAgent(UIAgent):
             self.engine_params,
             self.grounding_agent,
             platform=self.platform,
-            use_subtask_experience=True,
             local_kb_path=self.local_kb_path,
         )
 
@@ -322,7 +320,7 @@ class GraphSearchAgent(UIAgent):
             trajectory: String containing task execution trajectory
         """
         try:
-            reflection_path = os.path.join(self.local_kb_path, "narrative_memory.json")
+            reflection_path = os.path.join(self.local_kb_path, self.platform, "narrative_memory.json")
             try:
                 reflections = json.load(open(reflection_path))
             except:
@@ -361,7 +359,7 @@ class GraphSearchAgent(UIAgent):
                 )[0]
                 try:
                     subtask_path = os.path.join(
-                        self.local_kb_path, "episodic_memory.json"
+                        self.local_kb_path, self.platform, "episodic_memory.json"
                     )
                     kb = json.load(open(subtask_path))
                 except:
