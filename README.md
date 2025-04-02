@@ -6,10 +6,9 @@
 </h1>
 
 <p align="center">&nbsp;
-  🌐 <a href="https://www.simular.ai/agent-s2">[S2 blog]</a>&nbsp;
+  🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
-  🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>&nbsp;
 </p>
 
 <p align="center">&nbsp;
@@ -18,8 +17,22 @@
   🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
 </p>
 
+<p align="center">&nbsp;
+<a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/E2XfsK9fPV">
+    <img src="https://dcbadge.limes.pink/api/server/https://discord.gg/E2XfsK9fPV?style=flat" alt="Discord">
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://pepy.tech/projects/gui-agents">
+    <img src="https://static.pepy.tech/badge/gui-agents" alt="PyPI Downloads">
+  </a>
+</p>
+
 ## 🥳 Updates
-- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906), [technical overview](https://www.simular.ai/articles/agent-s2-technical-review), and v0.2.2 of [gui-agents](https://github.com/simular-ai/Agent-S)!
+- [x] **2025/04/01**: Released <a href="https://arxiv.org/abs/2504.00906">Agent S2 paper</a> with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
@@ -64,7 +77,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
     <tr>
       <td>OSWorld (15 step)</td>
       <td>27.0%</td>
-      <td>22.7% (ByteDance UI-TARS)</td>
+      <td>22.7% (UI-TARS)</td>
       <td>+4.3%</td>
     </tr>
     <tr>
@@ -74,10 +87,16 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
       <td>+1.9%</td>
     </tr>
     <tr>
+      <td>WindowsAgentArena</td>
+      <td>29.8%</td>
+      <td>19.5% (NAVI)</td>
+      <td>+10.3%</td>
+    </tr>
+    <tr>
       <td>AndroidWorld</td>
-      <td>50.0%</td>
-      <td>46.8% (ByteDance UI-TARS)</td>
-      <td>+3.2%</td>
+      <td>54.3%</td>
+      <td>46.8% (UI-TARS)</td>
+      <td>+7.5%</td>
     </tr>
   </table>
 </div>
@@ -309,7 +328,19 @@ We extend our sincere thanks to Tianbao Xie for developing OSWorld and discussin
 If you find this codebase useful, please cite 
 
 ```
-@inproceedings{agashe2025agents,
+@misc{Agent-S2,
+      title={Agent S2: A Compositional Generalist-Specialist Framework for Computer Use Agents}, 
+      author={Saaket Agashe and Kyle Wong and Vincent Tu and Jiachen Yang and Ang Li and Xin Eric Wang},
+      year={2025},
+      eprint={2504.00906},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2504.00906}, 
+}
+```
+
+```
+@inproceedings{Agent-S,
     title={{Agent S: An Open Agentic Framework that Uses Computers Like a Human}},
     author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
     booktitle={International Conference on Learning Representations (ICLR)},
