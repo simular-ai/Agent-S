@@ -2,35 +2,18 @@
 
 ## Step 1: Environment Setup
 
-Assuming you've followed the guide in the [README.md](README.md), your repository structure should look like:
-
-```
-parent/
-  └── Agent-S/
-```
-
-The next step is to follow the set up instructions for OSWorld: https://github.com/xlang-ai/OSWorld.git.
-
-To easily run Agent-S on OSWorld locally, We recommend moving your OSWorld local repository to the parent directory of Agent-S.
-
-```
-parent/
-  ├── Agent-S/
-  └── OSWorld/
-```
-
-We suggest creating a separate conda environment for each repository to avoid dependency conflicts. 
+Follow the setup instructions in the [README.md](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md).
 
 ## Step 2: Modifying OSWorld `run.py`
 
-After completing the setup instructions, import the GraphSearchAgent into the run.py file in OSWorld. The GraphSearchAgent is the parent agent used in the Agent S framework. To understand the architecture of this GraphSearchAgent, refer to [Agent S Architecture](../../images/agent_s_architecture.pdf).
+After completing the setup instructions, import the `GraphSearchAgent` into the run.py file in OSWorld. The `GraphSearchAgent` is the parent agent used in the Agent S framework. To understand the architecture of this `GraphSearchAgent`, refer to [Agent S Architecture](../../images/agent_s_architecture.pdf).
 
 ```
 from gui_agents.s1.aci.LinuxOSACI import LinuxACI
 from gui_agents.s1.core.AgentS import GraphSearchAgent
 ```
 
-Replace the PromptAgent on line 138 in the test() method with the Graph Search Agent. Specify engine params and instantiate the agent as shown:
+Replace the `PromptAgent` on line 138 in the test() method with the `GraphSearchAgent`. Specify engine params and instantiate the agent as shown:
 
 ```
 parser.add_argument("--vm_version", type=str, default="new")

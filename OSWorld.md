@@ -2,18 +2,18 @@
 
 ## Step 1: Environment Setup
 
-First, follow the [README.md](https://github.com/simular-ai/Agent-S/blob/main/README.md) instructions to set up the Agent S2.
+First, follow the [README.md](https://github.com/simular-ai/Agent-S/blob/main/README.md) instructions to set up Agent S2.
 
 ## Step 2: Modifying OSWorld `run.py`
 
-After completing the setup instructions, import the GraphSearchAgent into the run.py file in OSWorld. The GraphSearchAgent is the parent agent used in the Agent S2 framework. 
+After completing the setup instructions, import the `GraphSearchAgent` into the run.py file in OSWorld. The `GraphSearchAgent` is the parent agent used in the Agent S2 framework. 
 
 ```
 from gui_agents.s2.agents.grounding import OSWorldACI
 from gui_agents.s2.agents.agent_s import GraphSearchAgent
 ```
 
-Replace the PromptAgent on line 138 in the test() method with the Graph Search Agent. Specify engine params and instantiate the agent as shown:
+Replace the `PromptAgent` on line 138 in the test() method with the `GraphSearchAgent`. Specify engine params and instantiate the agent as shown:
 
 ```
 parser.add_argument("--vm_version", type=str, default="new")
@@ -62,7 +62,7 @@ We have set the latest Agent S2 to use the latest Ubuntu VM image from OSWorld. 
 
 # Step 3: Best Practices
 
-At this point, you will have set up the Agent-S and OSWorld environments and the VMWare Workstation Pro application. Below, we'll list some best practices, and common problems and their fixes.
+At this point, you will have set up the Agent S and OSWorld environments and the VMWare Workstation Pro application. Below, we'll list some best practices, and common problems and their fixes.
 
 ---
 
@@ -111,7 +111,6 @@ You should then see:
 
 ```
 parent/
-  Agent-S/
   OSWorld/
     vmware_vm_data/
       Ubuntu0/
@@ -138,7 +137,6 @@ Pass the absolute path to your VM's (Ubuntu0) `.vmx` file. This file is located 
 
 ```
 parent/
-  Agent-S/
   OSWorld/
     vmware_vm_data/
       Ubuntu0/
