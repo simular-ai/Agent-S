@@ -4,10 +4,9 @@
 </h1>
 
 <p align="center">&nbsp;
-  🌐 <a href="https://www.simular.ai/agent-s2">[S2 blog]</a>&nbsp;
-  📄 [S2 Paper] (Coming Soon)&nbsp;
+  🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
+  📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
-<!--   🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>&nbsp; -->
 </p>
 
 <p align="center">&nbsp;
@@ -31,6 +30,7 @@
 </p>
 
 ## 🥳 Updates
+- [x] **2025/04/01**: Released <a href="https://arxiv.org/abs/2504.00906">Agent S2 paper</a> with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
@@ -313,7 +313,19 @@ We extend our sincere thanks to Tianbao Xie for developing OSWorld and discussin
 If you find this codebase useful, please cite 
 
 ```
-@inproceedings{agashe2025agents,
+@misc{Agent-S2,
+      title={Agent S2: A Compositional Generalist-Specialist Framework for Computer Use Agents}, 
+      author={Saaket Agashe and Kyle Wong and Vincent Tu and Jiachen Yang and Ang Li and Xin Eric Wang},
+      year={2025},
+      eprint={2504.00906},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2504.00906}, 
+}
+```
+
+```
+@inproceedings{Agent-S,
     title={{Agent S: An Open Agentic Framework that Uses Computers Like a Human}},
     author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
     booktitle={International Conference on Learning Representations (ICLR)},
