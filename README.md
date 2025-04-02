@@ -75,7 +75,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
     <tr>
       <td>OSWorld (15 step)</td>
       <td>27.0%</td>
-      <td>22.7% (ByteDance UI-TARS)</td>
+      <td>22.7% (UI-TARS)</td>
       <td>+4.3%</td>
     </tr>
     <tr>
@@ -85,10 +85,16 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
       <td>+1.9%</td>
     </tr>
     <tr>
+      <td>WindowsAgentArena</td>
+      <td>29.8%</td>
+      <td>19.5% (NAVI)</td>
+      <td>+10.3%</td>
+    </tr>
+    <tr>
       <td>AndroidWorld</td>
-      <td>50.0%</td>
-      <td>46.8% (ByteDance UI-TARS)</td>
-      <td>+3.2%</td>
+      <td>54.3%</td>
+      <td>46.8% (UI-TARS)</td>
+      <td>+7.5%</td>
     </tr>
   </table>
 </div>
