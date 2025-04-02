@@ -1,11 +1,13 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S2:
-  <small>An Open, Modular, and Scalable Framework for Computer Use Agents</small>
+  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents
+
+ Agents</small>
 </h1>
 
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/agent-s2">[S2 blog]</a>&nbsp;
-  📄 [S2 Paper] (Coming Soon)&nbsp;
+  📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
   🗨️ <a href="https://discord.gg/E2XfsK9fPV">[Discord]</a>&nbsp;
 </p>
@@ -17,11 +19,12 @@
 </p>
 
 ## 🥳 Updates
+- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906), [technical overview](https://www.simular.ai/articles/agent-s2-technical-review), and v0.2.2 of [gui-agents](https://github.com/simular-ai/Agent-S)!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
 - [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
-- [x] **2024/10/10**: Released [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
+- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
 
 ## Table of Contents
 
@@ -86,12 +89,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 > ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, or on Hugging Face Inference Endpoints. Our code supports Hugging Face Inference Endpoints. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint. However, running Agent S2 does not require this model, and you can use alternative API based models for visual grounding, such as Claude.
 
-Clone the repository:
-```
-git clone https://github.com/simular-ai/Agent-S.git
-```
-
-Install the gui-agents package:
+Install the package:
 ```
 pip install gui-agents
 ```
@@ -141,10 +139,9 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
    ```bash
    docker compose up -d
    ```
-5. Next, export your environment variables. The `PERPLEXICA_URL` is optional. The default value is `http://localhost:{port}/api/search` where the default `port` is `3001` from the `config.toml` if you're using the default port. If you aren't using the default port or need to change the URL, you may use `PERPLEXICA_URL` to specify the URL.
+5. Next, export your Perplexica URL. This URL is used to interact with the Perplexica API backend. The port is given by the `config.toml` in your Perplexica directory.
 
    ```bash
-   export PERPLEXICA_CONFIG_PATH=/absolute/path/to/your/config.toml
    export PERPLEXICA_URL=http://localhost:{port}/api/search
    ```
 6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md).

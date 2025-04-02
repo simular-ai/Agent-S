@@ -2,24 +2,7 @@
 
 ## Step 1: Environment Setup
 
-Assuming you've followed the guide in the [README.md](README.md), your repository structure should look like:
-
-```
-parent/
-  └── Agent-S/
-```
-
-The next step is to follow the set up instructions for OSWorld: https://github.com/xlang-ai/OSWorld.git.
-
-To easily run Agent-S on OSWorld locally, We recommend moving your OSWorld local repository to the parent directory of Agent-S.
-
-```
-parent/
-  ├── Agent-S/
-  └── OSWorld/
-```
-
-We suggest creating a separate conda environment for each repository to avoid dependency conflicts. 
+First, follow the [README.md](https://github.com/simular-ai/Agent-S/blob/main/README.md) instructions to set up the Agent S2.
 
 ## Step 2: Modifying OSWorld `run.py`
 

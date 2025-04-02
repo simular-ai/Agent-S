@@ -2,15 +2,13 @@ from setuptools import find_packages, setup
 
 setup(
     name="gui-agents",
-    version="0.2.1",
+    version="0.2.2",
     description="A library for creating general purpose GUI agents using multimodal LLMs.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
     author="Simular AI",
     author_email="eric@simular.ai",
     packages=find_packages(),
-    include_package_data=True,
-    package_data={"gui_agents": ["kb/*/*.json"]},
     install_requires=[
         "numpy",
         "backoff",
