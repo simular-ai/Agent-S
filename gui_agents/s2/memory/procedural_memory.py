@@ -53,15 +53,13 @@ class PROCEDURAL_MEMORY:
         1. Only perform one action at a time.
         2. Do not put anything other than python code in the block. You can only use one function call at a time. Do not put more than one function call in the block.
         3. You must use only the available methods provided above to interact with the UI, do not invent new methods.
-        3. Only return one code block every time. There must be a single line of code in the code block.
-        4. Please only use the available methods provided above to interact with the UI.
+        4. Only return one code block every time. There must be a single line of code in the code block.
         5. If you think the task is already completed, return `agent.done()` in the code block.
         6. If you think the task cannot be completed, return `agent.fail()` in the code block.
         7. Do not do anything other than the exact specified task. Return with `agent.done()` immediately after the task is completed or `agent.fail()` if it cannot be completed.
         8. Whenever possible, your grounded action should use hot-keys with the agent.hotkey() action instead of clicking or dragging.
         9. My computer's password is 'password', feel free to use it when you need sudo rights.
-        10. Remember, generate agent.fail() as your grounded action if you get stuck on a subtask.
-        11. Do not use the "command" + "tab" hotkey on MacOS.
+        10. Do not use the "command" + "tab" hotkey on MacOS.
         """
         )
 
@@ -89,7 +87,7 @@ class PROCEDURAL_MEMORY:
     3. Do not include verification steps in your planning. Steps that confirm or validate other subtasks should not be included.
     4. Do not include optional steps in your planning. Your plan must be as concise as possible.
     5. Do not include unnecessary steps in your planning. If you are unsure if a step is necessary, do not include it in your plan.
-    5. When revising an existing plan:
+    6. When revising an existing plan:
       - If you feel the trajectory and future subtasks seem correct based on the current state of the desktop, you may re-use future subtasks.
       - If you feel some future subtasks are not detailed enough, use your observations from the desktop screenshot to update these subtasks to be more detailed.
       - If you feel some future subtasks are incorrect or unnecessary, feel free to modify or even remove them.
