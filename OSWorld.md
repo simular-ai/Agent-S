@@ -106,7 +106,7 @@ obs = env.reset(task_config=example)
 obs, reward, done, info = env.step("pyautogui.rightClick()")
 ```
 
-The code above will boot up a VM and restart it. If, for whatever reason, running the starter code below leads to an infinitely long run time, cancel out of the VM.
+Note, this code is just for demonstrating how the OSWorld `DesktopEnv` is instantiated. If you're running OSWorld, this process is already part of their code base. The code above will boot up a VM and restart it. If, for whatever reason, running the starter code (or running OSWorld experiments) leads to an infinitely long run time, cancel out of the VM.
 You should then see:
 
 ```
@@ -122,7 +122,7 @@ parent/
 ```
 
 If you happen to have any `*.lck` folder in your VM's folder, be sure to delete them. Every time you are powering on the VM from creating a new `DesktopEnv` instance, you need to 
-delete the `*.lck` folders first. If your VM is already powered on, and your session (in a Jupyter Notebook, for example) crashes, you can keep the `*.lck` files and just re-instantiate the `DesktopEnv` instance. I'd also suggest using just a single VM (as a VM takes up a lot of space!). 
+delete the `*.lck` folders first. If your VM is already powered on, and your session (in a Jupyter Notebook, for example) crashes, you can keep the `*.lck` files and just re-instantiate the `DesktopEnv` instance. I'd also suggest using just a single VM (as a VM takes up a lot of space!). Also, be sure to shut down the VM when you've finished using it. Deleting the `*.lck` files should be done after every time you power off the VM (though it seems to not be an issue from testing).
 
 ---
 
@@ -161,5 +161,7 @@ def isShiftCharacter(character):
 ```
 
 📌 **Note**: If in case, your VM encounters an issue with "The root file system on <path> requires a manual fsck", reset the VM to the previous snapshot. 
+
+📌 **Note**: OSWorld scripts will create the `DesktopEnv` instance which will create a VM for you with a specific snapshot (`snapshot_name` parameter in `DesktopEnv`). If you wish to create a new snapshot of the VM and use that for your experiments, be sure to specify the name of this snapshot where `DesktopEnv` is instantiated.
 
 With these changes, you should be able to get up and running with VMWare, DesktopEnv, and OSWorld! 😊
