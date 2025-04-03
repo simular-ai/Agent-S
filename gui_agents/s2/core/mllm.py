@@ -77,32 +77,6 @@ class LMMAgent:
                 }
             )
 
-    def remove_message_at(self, index):
-        """Remove a message at a given index"""
-        if index < len(self.messages):
-            self.messages.pop(index)
-
-    def replace_message_at(
-        self, index, text_content, image_content=None, image_detail="high"
-    ):
-        """Replace a message at a given index"""
-        if index < len(self.messages):
-            self.messages[index] = {
-                "role": self.messages[index]["role"],
-                "content": [{"type": "text", "text": text_content}],
-            }
-            if image_content:
-                base64_image = self.encode_image(image_content)
-                self.messages[index]["content"].append(
-                    {
-                        "type": "image_url",
-                        "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
-                            "detail": image_detail,
-                        },
-                    }
-                )
-
     def add_message(
         self,
         text_content,
@@ -237,16 +211,17 @@ class LMMAgent:
                         base64_image = self.encode_image(image)
                         message["content"].append(
                             {
-                                "type": "image",
-                                "image": f"data:image;base64,{base64_image}",
+                                "type": "image_url",
+                                "image_url": {"url":f"data:image;base64,{base64_image}"},
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
                     base64_image = self.encode_image(image_content)
                     message["content"].append(
-                        {"type": "image", "image": f"data:image;base64,{base64_image}"}
+                        {"type": "image_url", "image_url": {"url":f"data:image;base64,{base64_image}"}}
                     )
+
             self.messages.append(message)
 
     def get_response(
