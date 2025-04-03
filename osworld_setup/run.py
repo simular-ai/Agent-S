@@ -11,6 +11,8 @@ import logging
 import os
 import sys
 
+from gui_agents.s2.agents.agent_s import AgentS2
+from gui_agents.s2.agents.grounding import OSWorldACI
 from tqdm import tqdm
 
 import lib_run_single
@@ -106,6 +108,11 @@ def config() -> argparse.Namespace:
 
     # logging related
     parser.add_argument("--result_dir", type=str, default="./results")
+
+    # NEW!
+    parser.add_argument("--huggingface_endpoint_url", type=str, required=True)
+    parser.add_argument("--kb_name", default="kb_s2", type=str)
+
     args = parser.parse_args()
 
     return args
@@ -136,14 +143,37 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         "result_dir": args.result_dir,
     }
 
-    agent = PromptAgent(
-        model=args.model,
-        max_tokens=args.max_tokens,
-        top_p=args.top_p,
-        temperature=args.temperature,
-        action_space=args.action_space,
-        observation_type=args.observation_type,
-        max_trajectory_length=args.max_trajectory_length,
+    # NEW!
+    if args.model.startswith("claude"):
+        engine_type = "anthropic"
+    elif args.model.startswith("gpt"):
+        engine_type = "openai"
+    else:
+        engine_type = "vllm"
+
+    engine_params = {"engine_type": engine_type, "model": args.model}
+
+    # NEW!
+    grounding_agent = OSWorldACI(
+        platform="linux",
+        engine_params_for_generation=engine_params,
+        engine_params_for_grounding={
+            "engine_type": "huggingface",
+            "endpoint_url": args.huggingface_endpoint_url,
+        },
+    )
+
+    # NEW!
+    agent = AgentS2(
+        engine_params,
+        grounding_agent,
+        platform="linux",
+        action_space="pyautogui",
+        observation_type="mixed",
+        search_engine="Perplexica",
+        memory_root_path=os.getcwd(),
+        memory_folder_name=args.kb_name,
+        kb_release_tag="v0.2.2",
     )
 
     env = DesktopEnv(
@@ -151,7 +181,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         action_space=agent.action_space,
         screen_size=(args.screen_width, args.screen_height),
         headless=args.headless,
-        os_type = "Ubuntu",
+        os_type="Ubuntu",
         require_a11y_tree=args.observation_type
         in ["a11y_tree", "screenshot_a11y_tree", "som"],
     )
