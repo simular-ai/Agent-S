@@ -2,6 +2,7 @@ import logging
 import re
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
+import platform
 
 from gui_agents.s2.agents.grounding import ACI
 from gui_agents.s2.core.module import BaseModule
@@ -28,7 +29,7 @@ class Manager(BaseModule):
         local_kb_path: str,
         search_engine: Optional[str] = None,
         multi_round: bool = False,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
     ):
         # TODO: move the prompt to Procedural Memory
         super().__init__(engine_params, platform)
@@ -65,7 +66,6 @@ class Manager(BaseModule):
         self.turn_count = 0
         self.search_engine = search_engine
         self.multi_round = multi_round
-        self.platform = platform
 
     def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection

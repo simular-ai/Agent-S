@@ -1,6 +1,6 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S2:
-  <small>An Open, Modular, and Scalable Framework for Computer Use Agents</small>
+  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents</small>
 </h1>
 
 <p align="center">&nbsp;
@@ -35,7 +35,7 @@
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
 - [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
 - [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
-- [x] **2024/10/10**: Released [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
+- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
 
 ## Table of Contents
 
@@ -106,12 +106,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 > ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, or on Hugging Face Inference Endpoints. Our code supports Hugging Face Inference Endpoints. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint. However, running Agent S2 does not require this model, and you can use alternative API based models for visual grounding, such as Claude.
 
-Clone the repository:
-```
-git clone https://github.com/simular-ai/Agent-S.git
-```
-
-Install the gui-agents package:
+Install the package:
 ```
 pip install gui-agents
 ```
@@ -161,9 +156,12 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
    ```bash
    docker compose up -d
    ```
+5. Next, export your Perplexica URL. This URL is used to interact with the Perplexica API backend. The port is given by the `config.toml` in your Perplexica directory.
 
-5. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md)
-
+   ```bash
+   export PERPLEXICA_URL=http://localhost:{port}/api/search
+   ```
+6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md).
 For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git).
 
 > ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
@@ -217,18 +215,18 @@ This will show a user query prompt where you can enter your query and interact w
 
 ### `gui_agents` SDK
 
-First, we import the necessary modules. `GraphSearchAgent` is the main agent class for Agent S2. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
+First, we import the necessary modules. `AgentS2` is the main agent class for Agent S2. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
 ```
 import pyautogui
 import io
-from gui_agents.s2.agents.agent_s import GraphSearchAgent
+from gui_agents.s2.agents.agent_s import AgentS2
 from gui_agents.s2.agents.grounding import OSWorldACI
 
 # Load in your API keys.
 from dotenv import load_dotenv
 load_dotenv()
 
-current_platform = "ubuntu"  # "macos"
+current_platform = "linux"  # "darwin", "windows"
 ```
 
 Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
@@ -269,7 +267,7 @@ grounding_agent = OSWorldACI(
     engine_params_for_grounding=engine_params_for_grounding
 )
 
-agent = GraphSearchAgent(
+agent = AgentS2(
   engine_params,
   grounding_agent,
   platform=current_platform,
@@ -299,6 +297,21 @@ exec(action[0])
 ```
 
 Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
+
+#### Downloading the Knowledege Base
+
+Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `AgentS2`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `AgentS2` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
+
+```
+download_kb_data(
+    version="s2",
+    release_tag="v0.2.2",
+    download_dir="kb_data",
+    platform="linux"  # "darwin", "windows"
+)
+```
+
+This will download Agent S2's knowledge base for Linux from release tag `v0.2.2` to the `kb_data` directory. Refer to our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases) or release tags that include the knowledge bases.
 
 ### OSWorld
 

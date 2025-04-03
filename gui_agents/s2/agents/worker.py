@@ -2,13 +2,20 @@ import logging
 import re
 import textwrap
 from typing import Dict, List, Tuple
+import platform
 
 from gui_agents.s2.agents.grounding import ACI
 from gui_agents.s2.core.module import BaseModule
 from gui_agents.s2.core.knowledge import KnowledgeBase
 from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
-from gui_agents.s2.utils import common_utils
-from gui_agents.s2.utils.common_utils import Node, calculate_tokens, call_llm_safe
+from gui_agents.s2.utils.common_utils import (
+    Node,
+    calculate_tokens,
+    call_llm_safe,
+    parse_single_code_from_string,
+    sanitize_code,
+    extract_first_agent_function,
+)
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -19,7 +26,7 @@ class Worker(BaseModule):
         engine_params: Dict,
         grounding_agent: ACI,
         local_kb_path: str,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
@@ -34,7 +41,7 @@ class Worker(BaseModule):
             local_kb_path: str
                 Path to knowledge base
             platform: str
-                OS platform the agent runs on
+                OS platform the agent runs on (darwin, linux, windows)
             search_engine: str
                 The search engine to use
             enable_reflection: bool
@@ -42,17 +49,17 @@ class Worker(BaseModule):
             use_subtask_experience: bool
                 Whether to use subtask experience
         """
-        self.engine_params = engine_params
+        super().__init__(engine_params, platform)
+
         self.grounding_agent = grounding_agent
         self.local_kb_path = local_kb_path
-        self.platform = platform
         self.search_engine = search_engine
         self.enable_reflection = enable_reflection
         self.use_subtask_experience = use_subtask_experience
         self.reset()
 
     def reset(self):
-        if self.platform != "ubuntu":
+        if self.platform != "linux":
             skipped_actions = ["set_cell_values"]
         else:
             skipped_actions = []
@@ -214,11 +221,9 @@ class Worker(BaseModule):
         # Use the DescriptionBasedACI to convert agent_action("desc") into agent_action([x, y])
         try:
             agent.assign_coordinates(plan, obs)
-            plan_code = common_utils.parse_single_code_from_string(
-                plan.split("Grounded Action")[-1]
-            )
-            plan_code = common_utils.sanitize_code(plan_code)
-            plan_code = common_utils.extract_first_agent_function(plan_code)
+            plan_code = parse_single_code_from_string(plan.split("Grounded Action")[-1])
+            plan_code = sanitize_code(plan_code)
+            plan_code = extract_first_agent_function(plan_code)
             exec_code = eval(plan_code)
         except Exception as e:
             logger.error("Error in parsing plan code: %s", e)
@@ -245,7 +250,7 @@ class Worker(BaseModule):
     def clean_worker_generation_for_reflection(self, worker_generation: str) -> str:
         # Remove the previous action verification
         res = worker_generation[worker_generation.find("(Screenshot Analysis)") :]
-        action = common_utils.extract_first_agent_function(worker_generation)
+        action = extract_first_agent_function(worker_generation)
         # Cut off extra grounded actions
         res = res[: res.find("(Grounded Action)")]
         res += f"(Grounded Action)\n```python\n{action}\n```\n"

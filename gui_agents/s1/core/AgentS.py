@@ -1,18 +1,16 @@
 import json
 import logging
 import os
+from typing import Dict, List, Optional, Tuple
 import platform
-import time
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
 
 from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.Manager import Manager
 from gui_agents.s1.core.Worker import Worker
 from gui_agents.s1.utils.common_utils import Node
+from gui_agents.utils import download_kb_data
 
 logger = logging.getLogger("desktopenv.agent")
-working_dir = os.path.dirname(os.path.abspath(__file__))
 
 
 class UIAgent:
@@ -22,7 +20,7 @@ class UIAgent:
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyautogui",
         observation_type: str = "a11y_tree",
         search_engine: str = "perplexica",
@@ -88,10 +86,13 @@ class GraphSearchAgent(UIAgent):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
         action_space: str = "pyatuogui",
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
+        memory_root_path: str = os.getcwd(),
+        memory_folder_name: str = "kb_s1",
+        kb_release_tag: str = "v0.2.2",
     ):
         """Initialize GraphSearchAgent
 
@@ -102,6 +103,9 @@ class GraphSearchAgent(UIAgent):
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
+            memory_root_path: Path to memory directory. Defaults to current working directory.
+            memory_folder_name: Name of memory folder. Defaults to "kb_s2".
+            kb_release_tag: Release tag for knowledge base. Defaults to "v0.2.2".
         """
         super().__init__(
             engine_params,
@@ -111,6 +115,38 @@ class GraphSearchAgent(UIAgent):
             observation_type,
             search_engine,
         )
+
+        self.memory_root_path = memory_root_path
+        self.memory_folder_name = memory_folder_name
+        self.kb_release_tag = kb_release_tag
+
+        # Initialize agent's knowledge base on user's current working directory.
+        print("Downloading knowledge base initial Agent-S knowledge...")
+        self.local_kb_path = os.path.join(
+            self.memory_root_path, self.memory_folder_name
+        )
+
+        if not os.path.exists(self.local_kb_path):
+            download_kb_data(
+                version="s1",
+                release_tag=kb_release_tag,
+                download_dir=self.local_kb_path,
+                platform=self.platform,
+            )
+            print(
+                f"Successfully completed download of knowledge base for version s1, tag {self.kb_release_tag}, platform {self.platform}."
+            )
+        else:
+            print(
+                f"Path local_kb_path {self.local_kb_path} already exists. Skipping download."
+            )
+            print(
+                f"If you'd like to re-download the initial knowledge base, please delete the existing knowledge base at {self.local_kb_path}."
+            )
+            print(
+                "Note, the knowledge is continually updated during inference. Deleting the knowledge base will wipe out all experience gained since the last knowledge base download."
+            )
+
         self.reset()
 
     def reset(self) -> None:
@@ -121,9 +157,13 @@ class GraphSearchAgent(UIAgent):
             self.grounding_agent,
             platform=self.platform,
             search_engine=self.engine,
+            local_kb_path=self.local_kb_path,
         )
         self.executor = Worker(
-            self.engine_params, self.grounding_agent, platform=self.platform
+            self.engine_params,
+            self.grounding_agent,
+            platform=self.platform,
+            local_kb_path=self.local_kb_path,
         )
 
         # Reset state variables
@@ -261,7 +301,7 @@ class GraphSearchAgent(UIAgent):
         """
         try:
             reflection_path = os.path.join(
-                working_dir, "../kb", self.platform, "narrative_memory.json"
+                self.local_kb_path, self.platform, "narrative_memory.json"
             )
             try:
                 reflections = json.load(open(reflection_path))
@@ -301,7 +341,7 @@ class GraphSearchAgent(UIAgent):
                 )[0]
                 try:
                     subtask_path = os.path.join(
-                        working_dir, "../kb", self.platform, "episodic_memory.json"
+                        self.local_kb_path, self.platform, "episodic_memory.json"
                     )
                     kb = json.load(open(subtask_path))
                 except:

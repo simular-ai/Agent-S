@@ -1,32 +1,21 @@
-import json
-import os
-
 import requests
 import toml
-
-current_path = os.path.dirname(os.path.abspath(__file__))
-parent_path = os.path.dirname(current_path)
+import os
 
 
 def query_to_perplexica(query):
-    # Load Your Port From the configuration file of Perplexica
-    with open(
-        os.path.join(os.path.dirname(parent_path), "Perplexica", "config.toml"), "r"
-    ) as f:
-        data = toml.load(f)
-    port = data["GENERAL"]["PORT"]
-    assert port, "You should set valid port in the config.toml"
-    # Set the URL
-    url = f"http://localhost:{port}/api/search"
+    # Retrieve the URL from an environment variable
+    url = os.getenv("PERPLEXICA_URL")
+    if not url:
+        raise ValueError(
+            "PERPLEXICA_URL environment variable not set. It may take the form: 'http://localhost:{port}/api/search'. The port number is set in the config.toml in the Perplexica directory."
+        )
+
     # Request Message
     message = {"focusMode": "webSearch", "query": query, "history": [["human", query]]}
 
-    try:
-        print("Sending Request to Perplexica...")
-        response = requests.post(url, json=message)
-    except requests.exceptions.RequestException as e:
-        print("Error: Cannot connect to Perplexica due to the following error:", e)
-        return ""
+    response = requests.post(url, json=message)
+
     if response.status_code == 200:
         return response.json()["message"]
     elif response.status_code == 400:

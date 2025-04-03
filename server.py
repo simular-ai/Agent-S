@@ -11,52 +11,53 @@ import time
 from threading import Event, Lock
 
 # Determine the operating system and select appropriate ACI
-os_name = platform.system().lower()
-if os_name == "linux":
+current_platform = platform.system().lower()
+if current_platform == "linux":
     from gui_agents.s1.aci.LinuxOSACI import LinuxACI, UIElement
+
     grounding_agent = LinuxACI()
-    platform_name = "ubuntu"
-elif os_name == "darwin":
+elif current_platform == "darwin":
     from gui_agents.s1.aci.MacOSACI import MacOSACI, UIElement
+
     grounding_agent = MacOSACI()
-    platform_name = "macos"
-elif os_name == "windows":
+elif current_platform == "windows":
     from gui_agents.s1.aci.WindowsOSACI import WindowsACI, UIElement
+
     grounding_agent = WindowsACI()
-    platform_name = "windows"
 else:
-    raise ValueError(f"Unsupported operating system: {os_name}")
+    raise ValueError(f"Unsupported operating system: {current_platform}")
 
 app = FastAPI()
 
 # Add global lock and status tracking
 agent_lock = Lock()
-agent_status = {
-    "is_running": False,
-    "current_instruction": None,
-    "start_time": None
-}
+agent_status = {"is_running": False, "current_instruction": None, "start_time": None}
 
 # Add a stop event
 stop_event = Event()
+
 
 class InstructionData(BaseModel):
     screenshot: str
     accessibility_tree: str
 
+
 class CommandRequest(BaseModel):
     obs: InstructionData
     instruction: str
+
 
 class RunRequest(BaseModel):
     model: str
     instruction: str
     api_key: str | None = None
 
+
 async def stream_code(code: str):
     for line in code.splitlines(keepends=True):
         yield line
         await asyncio.sleep(0.1)
+
 
 def run_agent(agent: GraphSearchAgent, instruction: str):
     global stop_event
@@ -127,25 +128,26 @@ def run_agent(agent: GraphSearchAgent, instruction: str):
             )
             subtask_traj = agent.update_episodic_memory(info, subtask_traj)
 
+
 @app.post("/run")
 async def run(request: RunRequest):
     global agent_status
-    
+
     # Check if agent is already running
     if not agent_lock.acquire(blocking=False):
         raise HTTPException(
-            status_code=409, 
-            detail="An agent is already running. Use /status to check current run or /stop to stop it."
+            status_code=409,
+            detail="An agent is already running. Use /status to check current run or /stop to stop it.",
         )
-    
+
     try:
         agent_status = {
             "is_running": True,
             "current_instruction": request.instruction,
             "start_time": time.time(),
-            "model": request.model
+            "model": request.model,
         }
-        
+
         if "gpt" in request.model:
             engine_type = "openai"
         elif "claude" in request.model:
@@ -162,7 +164,7 @@ async def run(request: RunRequest):
         agent = GraphSearchAgent(
             engine_params,
             grounding_agent,
-            platform=platform_name,
+            platform=current_platform,
             action_space="pyautogui",
             observation_type="mixed",
         )
@@ -170,16 +172,17 @@ async def run(request: RunRequest):
         agent.reset()
         print("start the agent")
         run_agent(agent, request.instruction)
-        
+
         return {"status": "completed"}
-    
+
     finally:
         agent_status = {
             "is_running": False,
             "current_instruction": None,
-            "start_time": None
+            "start_time": None,
         }
         agent_lock.release()
+
 
 @app.get("/status")
 async def get_status():
@@ -189,9 +192,10 @@ async def get_status():
             "status": "running",
             "instruction": agent_status["current_instruction"],
             "model": agent_status["model"],
-            "running_for_seconds": round(duration, 2)
+            "running_for_seconds": round(duration, 2),
         }
     return {"status": "idle"}
+
 
 @app.post("/execute")
 async def execute_command_stream(cmd: CommandRequest):
@@ -203,7 +207,7 @@ async def execute_command_stream(cmd: CommandRequest):
     agent = GraphSearchAgent(
         engine_params,
         grounding_agent,
-        platform=platform_name,
+        platform=current_platform,
         action_space="pyautogui",
         observation_type="mixed",
     )
@@ -217,17 +221,16 @@ async def execute_command_stream(cmd: CommandRequest):
 
     return StreamingResponse(stream_code(code), media_type="text/plain")
 
+
 @app.post("/stop")
 async def stop_agent():
     if not agent_status["is_running"]:
-        raise HTTPException(
-            status_code=404,
-            detail="No agent is currently running"
-        )
-    
+        raise HTTPException(status_code=404, detail="No agent is currently running")
+
     global stop_event
     stop_event.set()
     return {"status": "stop signal sent"}
+
 
 import uvicorn
 
@@ -235,6 +238,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "server:app",
         host="0.0.0.0",  # Allows external access
-        port=8000,       # Default port for FastAPI
-        reload=True      # Auto-reload on code changes
-    ) 
+        port=8000,  # Default port for FastAPI
+        reload=True,  # Auto-reload on code changes
+    )

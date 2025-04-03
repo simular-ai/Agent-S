@@ -1,7 +1,7 @@
 import logging
-import os
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
+import platform
 
 from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.BaseModule import BaseModule
@@ -17,9 +17,6 @@ from gui_agents.s1.utils.common_utils import (
 
 logger = logging.getLogger("desktopenv.agent")
 
-# Get the directory of the current script
-working_dir = os.path.dirname(os.path.abspath(__file__))
-
 NUM_IMAGE_TOKEN = 1105  # Value set of screen of size 1920x1080 for openai vision
 
 
@@ -28,9 +25,10 @@ class Manager(BaseModule):
         self,
         engine_params: Dict,
         grounding_agent: ACI,
+        local_kb_path: str,
         search_engine: Optional[str] = None,
         multi_round: bool = False,
-        platform: str = "macos",
+        platform: str = platform.system().lower(),
     ):
         # TODO: move the prompt to Procedural Memory
         super().__init__(engine_params, platform)
@@ -49,9 +47,10 @@ class Manager(BaseModule):
         self.episode_summarization_agent = self._create_agent(
             PROCEDURAL_MEMORY.SUBTASK_SUMMARIZATION_PROMPT
         )
-        self.rag_agent = self._create_agent(PROCEDURAL_MEMORY.RAG_AGENT)
 
-        self.knowldge_base = KnowledgeBase(platform, engine_params)
+        self.local_kb_path = local_kb_path
+
+        self.knowledge_base = KnowledgeBase(self.local_kb_path, platform, engine_params)
 
         self.planner_history = []
 
@@ -97,7 +96,7 @@ class Manager(BaseModule):
         # Perform Retrieval only at the first planning step
         if self.turn_count == 0:
 
-            self.search_query = self.knowldge_base.formulate_query(
+            self.search_query = self.knowledge_base.formulate_query(
                 instruction, observation
             )
 
@@ -105,7 +104,7 @@ class Manager(BaseModule):
             integrated_knowledge = ""
             # Retrieve most similar narrative (task) experience
             most_similar_task, retrieved_experience = (
-                self.knowldge_base.retrieve_narrative_experience(instruction)
+                self.knowledge_base.retrieve_narrative_experience(instruction)
             )
             logger.info(
                 "SIMILAR TASK EXPERIENCE: %s",
@@ -114,7 +113,7 @@ class Manager(BaseModule):
 
             # Retrieve knowledge from the web if search_engine is provided
             if self.search_engine is not None:
-                retrieved_knowledge = self.knowldge_base.retrieve_knowledge(
+                retrieved_knowledge = self.knowledge_base.retrieve_knowledge(
                     instruction=instruction,
                     search_query=self.search_query,
                     search_engine=self.search_engine,
@@ -123,7 +122,7 @@ class Manager(BaseModule):
 
                 if retrieved_knowledge is not None:
                     # Fuse the retrieved knowledge and experience
-                    integrated_knowledge = self.knowldge_base.knowledge_fusion(
+                    integrated_knowledge = self.knowledge_base.knowledge_fusion(
                         observation=observation,
                         instruction=instruction,
                         web_knowledge=retrieved_knowledge,
