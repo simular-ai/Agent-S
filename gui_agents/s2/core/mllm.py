@@ -8,12 +8,8 @@ from gui_agents.s2.core.engine import (
     LMMEngineHuggingFace,
     LMMEngineOpenAI,
     LMMEnginevLLM,
+    LMMEngineGemini,
 )
-
-data_type_map = {
-    "openai": {"image_url": "image_url"},
-    "anthropic": {"image_url": "image"},
-}
 
 
 class LMMAgent:
@@ -31,6 +27,8 @@ class LMMAgent:
                     self.engine = LMMEnginevLLM(**engine_params)
                 elif engine_type == "huggingface":
                     self.engine = LMMEngineHuggingFace(**engine_params)
+                elif engine_type == "gemini":
+                    self.engine = LMMEngineGemini(**engine_params)
                 else:
                     raise ValueError("engine_type is not supported")
             else:
