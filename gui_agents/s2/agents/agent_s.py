@@ -126,7 +126,7 @@ class AgentS2(UIAgent):
             self.memory_root_path, self.memory_folder_name
         )
 
-        if not os.path.exists(self.local_kb_path):
+        if not os.path.exists(os.path.join(self.local_kb_path, self.platform)):
             download_kb_data(
                 version="s2",
                 release_tag=kb_release_tag,
