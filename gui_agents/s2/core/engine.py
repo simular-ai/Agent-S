@@ -45,9 +45,10 @@ class LMMEngineOpenAI(LMMEngine):
 
 
 class LMMEngineAnthropic(LMMEngine):
-    def __init__(self, api_key=None, model=None, **kwargs):
+    def __init__(self, api_key=None, model=None, thinking=False, **kwargs):
         assert model is not None, "model must be provided"
         self.model = model
+        self.thinking = thinking
 
         api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if api_key is None:
@@ -64,6 +65,20 @@ class LMMEngineAnthropic(LMMEngine):
     )
     def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
+        if self.thinking:
+            full_response = self.llm_client.messages.create(
+                system=messages[0]["content"][0]["text"],
+                model=self.model,
+                messages=messages[1:],
+                max_tokens=8192,
+                thinking={"type": "enabled", "budget_tokens": 4096},
+                **kwargs,
+            )
+
+            thoughts = full_response.content[0].thinking
+            print("CLAUDE 3.7 THOUGHTS:", thoughts)
+            return full_response.content[1].text
+
         return (
             self.llm_client.messages.create(
                 system=messages[0]["content"][0]["text"],
@@ -77,28 +92,47 @@ class LMMEngineAnthropic(LMMEngine):
             .text
         )
 
+
+class LMMEngineGemini(LMMEngine):
+    def __init__(
+        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+    ):
+        assert model is not None, "model must be provided"
+        self.model = model
+
+        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named GEMINI_API_KEY"
+            )
+
+        self.base_url = base_url or os.getenv("GEMINI_ENDPOINT_URL")
+        if self.base_url is None:
+            raise ValueError(
+                "An endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named GEMINI_ENDPOINT_URL"
+            )
+
+        self.api_key = api_key
+        self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
+
+        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    # Compatible with Claude-3.7 Sonnet thinking mode
-    def generate_with_thinking(
-        self, messages, temperature=0.0, max_new_tokens=None, **kwargs
-    ):
+    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
-
-        full_response = self.llm_client.messages.create(
-            system=messages[0]["content"][0]["text"],
-            model=self.model,
-            messages=messages[1:],
-            max_tokens=8192,
-            thinking={"type": "enabled", "budget_tokens": 4096},
-            **kwargs,
+        return (
+            self.llm_client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                max_tokens=max_new_tokens if max_new_tokens else 4096,
+                temperature=temperature,
+                **kwargs,
+            )
+            .choices[0]
+            .message.content
         )
-
-        thoughts = full_response.content[0].thinking
-        print("CLAUDE 3.7 THOUGHTS:", thoughts)
-        final_response = full_response.content[1].text
-        return final_response
 
 
 class OpenAIEmbeddingEngine(LMMEngine):
@@ -169,10 +203,10 @@ class LMMEngineAzureOpenAI(LMMEngine):
 
         self.api_key = api_key
 
-        azure_endpoint = azure_endpoint or os.getenv("AZURE_OPENAI_API_BASE")
+        azure_endpoint = azure_endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
         if azure_endpoint is None:
             raise ValueError(
-                "An Azure API endpoint needs to be provided in either the azure_endpoint parameter or as an environment variable named AZURE_OPENAI_API_BASE"
+                "An Azure API endpoint needs to be provided in either the azure_endpoint parameter or as an environment variable named AZURE_OPENAI_ENDPOINT"
             )
 
         self.azure_endpoint = azure_endpoint
