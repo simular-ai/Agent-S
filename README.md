@@ -1,8 +1,6 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S2:
-  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents
-
- Agents</small>
+  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents</small>
 </h1>
 
 <p align="center">&nbsp;
