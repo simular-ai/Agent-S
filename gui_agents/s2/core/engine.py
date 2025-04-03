@@ -203,10 +203,10 @@ class LMMEngineAzureOpenAI(LMMEngine):
 
         self.api_key = api_key
 
-        azure_endpoint = azure_endpoint or os.getenv("AZURE_OPENAI_API_BASE")
+        azure_endpoint = azure_endpoint or os.getenv("AZURE_OPENAI_ENDPOINT")
         if azure_endpoint is None:
             raise ValueError(
-                "An Azure API endpoint needs to be provided in either the azure_endpoint parameter or as an environment variable named AZURE_OPENAI_API_BASE"
+                "An Azure API endpoint needs to be provided in either the azure_endpoint parameter or as an environment variable named AZURE_OPENAI_ENDPOINT"
             )
 
         self.azure_endpoint = azure_endpoint
