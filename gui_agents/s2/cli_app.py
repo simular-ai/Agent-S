@@ -11,7 +11,7 @@ import time
 from PIL import Image
 
 from gui_agents.s2.agents.grounding import OSWorldACI
-from gui_agents.s2.agents.agent_s import GraphSearchAgent
+from gui_agents.s2.agents.agent_s import AgentS2
 
 current_platform = platform.system().lower()
 
@@ -140,9 +140,7 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Run GraphSearchAgent with specified model."
-    )
+    parser = argparse.ArgumentParser(description="Run AgentS2 with specified model.")
     parser.add_argument(
         "--model",
         type=str,
@@ -226,7 +224,7 @@ def main():
         height=screen_height,
     )
 
-    agent = GraphSearchAgent(
+    agent = AgentS2(
         engine_params,
         grounding_agent,
         platform=current_platform,

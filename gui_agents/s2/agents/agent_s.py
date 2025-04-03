@@ -79,7 +79,7 @@ class UIAgent:
         pass
 
 
-class GraphSearchAgent(UIAgent):
+class AgentS2(UIAgent):
     """Agent that uses hierarchical planning and directed acyclic graph modeling for UI automation"""
 
     def __init__(
@@ -94,7 +94,7 @@ class GraphSearchAgent(UIAgent):
         memory_folder_name: str = "kb_s2",
         kb_release_tag: str = "v0.2.2",
     ):
-        """Initialize GraphSearchAgent
+        """Initialize AgentS2
 
         Args:
             engine_params: Configuration parameters for the LLM engine

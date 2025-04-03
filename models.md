@@ -28,13 +28,13 @@ export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
 Alternatively you can directly pass the API keys into the engine_params argument while instantating the agent.
 
 ```python
-from gui_agents.s2.agents.agent_s import GraphSearchAgent
+from gui_agents.s2.agents.agent_s import AgentS2
 
 engine_params = {
     "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
     "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
 }
-agent = GraphSearchAgent(
+agent = AgentS2(
     engine_params,
     grounding_agent,
     platform=current_platform,
@@ -58,4 +58,4 @@ agent = LMMAgent(
 )
 ```
 
-The `GraphSearchAgent` also utilizes this `LMMAgent` internally.
+The `AgentS2` also utilizes this `LMMAgent` internally.
