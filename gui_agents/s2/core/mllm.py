@@ -89,7 +89,13 @@ class LMMAgent:
 
         # API-style inference from OpenAI and AzureOpenAI
         if isinstance(
-            self.engine, (LMMEngineOpenAI, LMMEngineAzureOpenAI, LMMEngineHuggingFace)
+            self.engine,
+            (
+                LMMEngineOpenAI,
+                LMMEngineAzureOpenAI,
+                LMMEngineHuggingFace,
+                LMMEngineGemini,
+            ),
         ):
             # infer role from previous message
             if role != "user":
@@ -212,14 +218,19 @@ class LMMAgent:
                         message["content"].append(
                             {
                                 "type": "image_url",
-                                "image_url": {"url":f"data:image;base64,{base64_image}"},
+                                "image_url": {
+                                    "url": f"data:image;base64,{base64_image}"
+                                },
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
                     base64_image = self.encode_image(image_content)
                     message["content"].append(
-                        {"type": "image_url", "image_url": {"url":f"data:image;base64,{base64_image}"}}
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image;base64,{base64_image}"},
+                        }
                     )
 
             self.messages.append(message)
@@ -227,7 +238,6 @@ class LMMAgent:
     def get_response(
         self,
         user_message=None,
-        image=None,
         messages=None,
         temperature=0.0,
         max_new_tokens=None,
