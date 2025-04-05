@@ -1,48 +1,12 @@
 # Deplying Agent-S in OSWorld
 
-## Step 1: Environment Setup
+# Step 1: Set up Agent S
 
-Follow the setup instructions in the [README.md](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md).
+Follow the [README.md](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md) to set up Agent S.
 
-## Step 2: Modifying OSWorld `run.py`
+# Step 2: Copying Over Run Files
 
-After completing the setup instructions, import the `GraphSearchAgent` into the run.py file in OSWorld. The `GraphSearchAgent` is the parent agent used in the Agent S framework. To understand the architecture of this `GraphSearchAgent`, refer to [Agent S Architecture](../../images/agent_s_architecture.pdf).
-
-```
-from gui_agents.s1.aci.LinuxOSACI import LinuxACI
-from gui_agents.s1.core.AgentS import GraphSearchAgent
-```
-
-Replace the `PromptAgent` on line 138 in the test() method with the `GraphSearchAgent`. Specify engine params and instantiate the agent as shown:
-
-```
-parser.add_argument("--vm_version", type=str, default="new")
-
-...
-
-if args.model.startswith("claude"):
-  engine_type = "anthropic"
-elif args.model.startswith("gpt"):
-  engine_type = "openai"
-else:
-  engine_type = "vllm"
-
-engine_params = {
-  "engine_type": engine_type,
-  "model": args.model,
-}
-
-grounding_agent = LinuxACI(vm_version=args.vm_version)
-agent = GraphSearchAgent(
-  engine_params,
-  grounding_agent,
-  platform='ubuntu',
-  action_space="pyautogui",
-  observation_type="mixed",
-  search_engine="Perplexica"
-)
-```
-We support all multimodal models from OpenAI, Anthropic, and vLLM. For more information, refer to [models.md](../../models.md).
+If you haven't already, please follow the [OSWorld environment setup](https://github.com/xlang-ai/OSWorld/blob/main/README.md). We've provided the relevant OSWorld run files for evaluation in this `osworld_setup` folder. Please copy this over to your OSWorld folder.
 
 We have set the latest Agent S to use the latest Ubuntu VM image from OSWorld. However, our experiments are based on the older version of the VM. To reproduce the results, set the vm_version argument to 'old' while instantiating the agent.
 
