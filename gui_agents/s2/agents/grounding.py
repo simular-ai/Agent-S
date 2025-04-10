@@ -328,7 +328,7 @@ class OSWorldACI(ACI):
             and len(args) >= 1
             and args[0] != None
         ):
-            self.coords1 = self.mixture_generate_coords(args[0], obs) #use mixture fallback for both endpoints
+            self.coords1 = self.mixture_generate_coords(args[0], obs) # use mixture fallback for more reliable coordinate lookup
         # arg0 and arg1 are descriptions
         elif function_name == "agent.drag_and_drop" and len(args) >= 2:
             self.coords1 = self.mixture_generate_coords(args[0], obs) # use mixture fallback for both endpoints
