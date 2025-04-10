@@ -208,7 +208,24 @@ class OSWorldACI(ACI):
         numericals = re.findall(r"\d+", response)
         assert len(numericals) >= 2
         return [int(numericals[0]), int(numericals[1])]
-
+    
+    # --- UPDATED: fallback to OCR if grounding_model fails, to increase robustness ---
+    def mixture_generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
+        try:
+            # try primary LLM-based grounding
+            return self.generate_coords(ref_expr, obs)
+        except Exception:
+            # fallback: locate via OCR elements
+            print("Grounding model failed, falling back to OCR")
+            _, ocr_elements = self.get_ocr_elements(obs["screenshot"])
+            for elem in ocr_elements:
+                if ref_expr.lower() in elem["text"].lower():
+                    x = elem["left"] + elem["width"] // 2
+                    y = elem["top"] + elem["height"] // 2
+                    return [x, y]
+            raise RuntimeError(f"OCR fallback failed to locate '{ref_expr}'")
+        
+    
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:
         image = Image.open(BytesIO(b64_image_data))
@@ -311,15 +328,15 @@ class OSWorldACI(ACI):
             and len(args) >= 1
             and args[0] != None
         ):
-            self.coords1 = self.generate_coords(args[0], obs)
+            self.coords1 = self.mixture_generate_coords(args[0], obs) #use mixture fallback for both endpoints
         # arg0 and arg1 are descriptions
         elif function_name == "agent.drag_and_drop" and len(args) >= 2:
-            self.coords1 = self.generate_coords(args[0], obs)
-            self.coords2 = self.generate_coords(args[1], obs)
+            self.coords1 = self.mixture_generate_coords(args[0], obs) # use mixture fallback for both endpoints
+            self.coords2 = self.mixture_generate_coords(args[1], obs) # use mixture fallback for both endpoints
         # arg0 and arg1 are text phrases
         elif function_name == "agent.highlight_text_span" and len(args) >= 2:
-            self.coords1 = self.generate_text_coords(args[0], obs, alignment="start")
-            self.coords2 = self.generate_text_coords(args[1], obs, alignment="end")
+            self.coords1 = self.generate_text_coords(args[0], obs, alignment="start") # use mixture fallback for both endpoints
+            self.coords2 = self.generate_text_coords(args[1], obs, alignment="end") # use mixture fallback for both endpoints
 
     # Resize from grounding model dim into OSWorld dim (1920 * 1080)
     def resize_coordinates(self, coordinates: List[int]) -> List[int]:
