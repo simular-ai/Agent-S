@@ -335,8 +335,8 @@ class OSWorldACI(ACI):
             self.coords2 = self.mixture_generate_coords(args[1], obs) # use mixture fallback for both endpoints
         # arg0 and arg1 are text phrases
         elif function_name == "agent.highlight_text_span" and len(args) >= 2:
-            self.coords1 = self.generate_text_coords(args[0], obs, alignment="start") # use mixture fallback for both endpoints
-            self.coords2 = self.generate_text_coords(args[1], obs, alignment="end") # use mixture fallback for both endpoints
+            self.coords1 = self.generate_text_coords(args[0], obs, alignment="start")
+            self.coords2 = self.generate_text_coords(args[1], obs, alignment="end") 
 
     # Resize from grounding model dim into OSWorld dim (1920 * 1080)
     def resize_coordinates(self, coordinates: List[int]) -> List[int]:
