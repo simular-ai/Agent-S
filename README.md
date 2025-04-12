@@ -169,6 +169,8 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 ## 🚀 Usage
 
 
+> **Note**: Our best configuration uses Claude 3.7 with extended thinking and UI-TARS-72B-DPO. If you are unable to run UI-TARS-72B-DPO due to resource constraints, UI-TARS-7B-DPO can be used as a lighter alternative with minimal performance degradation.
+
 ### CLI
 
 Run Agent S2 with a specific model (default is `gpt-4o`):
