@@ -7,6 +7,7 @@ from gui_agents.s2.core.engine import (
     LMMEngineAzureOpenAI,
     LMMEngineHuggingFace,
     LMMEngineOpenAI,
+    LMMEngineOpenRouter,
     LMMEnginevLLM,
     LMMEngineGemini,
 )
@@ -29,6 +30,8 @@ class LMMAgent:
                     self.engine = LMMEngineHuggingFace(**engine_params)
                 elif engine_type == "gemini":
                     self.engine = LMMEngineGemini(**engine_params)
+                elif engine_type == "open_router":
+                    self.engine = LMMEngineOpenRouter(**engine_params)
                 else:
                     raise ValueError("engine_type is not supported")
             else:
