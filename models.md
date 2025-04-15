@@ -1,37 +1,51 @@
-We support the following APIs for MLLM inference: OpenAI, Anthropic, Azure OpenAI, and vLLM for Local Models. To use these APIs, you need to set the corresponding environment variables:
+We support the following APIs for MLLM inference: OpenAI, Anthropic, Gemini, Azure OpenAI, vLLM for local models, and Open Router. To use these APIs, you need to set the corresponding environment variables:
 
 1. OpenAI
 
-```python
+```
 export OPENAI_API_KEY=<YOUR_API_KEY>
 ```
 
 2. Anthropic
 
-```python
+```
 export ANTHROPIC_API_KEY=<YOUR_API_KEY>
 ```
 
-3. OpenAI on Azure
+3. Gemini
 
-```python
+```
+export GEMINI_API_KEY=<YOUR_API_KEY>
+export GEMINI_ENDPOINT_URL="https://generativelanguage.googleapis.com/v1beta/openai/"
+```
+
+4. OpenAI on Azure
+
+```
 export AZURE_OPENAI_API_BASE=<DEPLOYMENT_NAME>
 export AZURE_OPENAI_API_KEY=<YOUR_API_KEY>
 ```
 
-4. vLLM for Local Models
+5. vLLM for Local Models
 
-```python
+```
 export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
 ```
 
 Alternatively you can directly pass the API keys into the engine_params argument while instantating the agent.
 
+6. Open Router
+
+```
+export OPENROUTER_API_KEY=<YOUR_API_KEY>
+export OPEN_ROUTER_ENDPOINT_URL="https://openrouter.ai/api/v1"
+```
+
 ```python
 from gui_agents.s2.agents.agent_s import AgentS2
 
 engine_params = {
-    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
+    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
     "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
 }
 agent = AgentS2(
@@ -50,11 +64,11 @@ To use the underlying Multimodal Agent (LMMAgent) which wraps LLMs with message 
 from gui_agents.core.mllm import LMMAgent
 
 engine_params = {
-    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'azure_openai', 'vllm'
+    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
     "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
     }
 agent = LMMAgent(
-    engine_params = engine_params,
+    engine_params=engine_params,
 )
 ```
 

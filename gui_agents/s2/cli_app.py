@@ -142,13 +142,25 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 def main():
     parser = argparse.ArgumentParser(description="Run AgentS2 with specified model.")
     parser.add_argument(
+        "--provider",
+        type=str,
+        default="anthropic",
+        help="Specify the provider to use (e.g., openai, anthropic, etc.)",
+    )
+    parser.add_argument(
         "--model",
         type=str,
-        default="gpt-4o",
+        default="claude-3-7-sonnet-20250219",
         help="Specify the model to use (e.g., gpt-4o)",
     )
 
     # Grounding model config option 1: API based
+    parser.add_argument(
+        "--grounding_model_provider",
+        type=str,
+        default="",
+        help="Specify the provider to use for the grounding model (e.g., openai, anthropic, etc.)",
+    )
     parser.add_argument(
         "--grounding_model",
         type=str,
@@ -160,7 +172,7 @@ def main():
     parser.add_argument(
         "--endpoint_provider",
         type=str,
-        default="huggingface",
+        default="",
         help="Specify the endpoint provider for your grounding model, only HuggingFace TGI support for now",
     )
     parser.add_argument(
@@ -172,8 +184,8 @@ def main():
 
     args = parser.parse_args()
     assert (
-        args.grounding_model or args.endpoint_url
-    ), "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
+        args.grounding_model_provider and args.grounding_model
+    ) or args.endpoint_url, "Error: No grounding model was provided. Either provide an API based model, or a self-hosted HuggingFace endpoint"
 
     # Re-scales screenshot size to ensure it fits in UI-TARS context limit
     screen_width, screen_height = pyautogui.size()
@@ -182,14 +194,7 @@ def main():
     )
 
     # Load the general engine params
-    if args.model.startswith("claude"):
-        engine_params = {"engine_type": "anthropic", "model": args.model}
-    elif args.model.startswith("gpt"):
-        engine_params = {"engine_type": "openai", "model": args.model}
-    else:
-        raise ValueError(
-            "Invalid model specficiation. Please provide a supported model type"
-        )
+    engine_params = {"engine_type": args.provider, "model": args.model}
 
     # Load the grounding model engine params
     if args.endpoint_url:
@@ -197,24 +202,16 @@ def main():
             "engine_type": args.endpoint_provider,
             "endpoint_url": args.endpoint_url,
         }
-    elif args.grounding_model.startswith("claude"):
+    elif args.grounding_model_provider == "anthropic":
         CLAUDE_3_5_MAX_WIDTH = 1366
         engine_params_for_grounding = {
-            "engine_type": "anthropic",
+            "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
             "grounding_width": CLAUDE_3_5_MAX_WIDTH,
             "grounding_height": screen_height * CLAUDE_3_5_MAX_WIDTH / screen_width,
         }
-    elif args.grounding_model.startswith("gpt"):
-        engine_params_for_grounding = {
-            "engine_type": "openai",
-            "model": args.grounding_model,
-            # TODO: set your image scaling for gpt here
-        }
     else:
-        raise ValueError(
-            "Invalid grounding model specficiation. Please provide a supported model type"
-        )
+        raise ValueError("Unsupported grounding model provider")
 
     grounding_agent = OSWorldACI(
         platform=current_platform,

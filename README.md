@@ -126,7 +126,7 @@ import os
 os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 ```
 
-We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [models.md](models.md).
+We also support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. For more information refer to [models.md](models.md).
 
 ### Setup Retrieval from Web using Perplexica
 Agent S works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
@@ -175,39 +175,45 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 
 Run Agent S2 with a specific model (default is `gpt-4o`):
 
-```bash
-agent_s2 --model claude-3-7-sonnet-20250219 --grounding_model claude-3-7-sonnet-20250219
+```sh
+agent_s2 \
+  --provider "anthropic" \
+  --model "claude-3-7-sonnet-20250219" \
+  --grounding_model_provider "anthropic" \
+  --grounding_model "claude-3-7-sonnet-20250219" \
 ```
 
 Or use a custom endpoint:
 
 ```bash
-agent_s2 --model claude-3-7-sonnet-20250219 --endpoint_provider "huggingface" --endpoint_url "<endpoint_url>/v1/"
+agent_s2 \
+  --provider "anthropic" \
+  --model "claude-3-7-sonnet-20250219" \
+  --endpoint_provider "huggingface" \
+  --endpoint_url "<endpoint_url>/v1/"
 ```
 
 #### Main Model Settings
-- **`--model`** 
+- **`--provider`**, **`--model`** 
   - Purpose: Specifies the main generation model
-  - Example: `gpt-4o`
-  - Default: `gpt-4o`
+  - Supports: all model providers in [models.md](models.md)
+  - Default: `--provider "anthropic" --model "claude-3-7-sonnet-20250219"`
 
 #### Grounding Configuration Options
 
 You can use either Configuration 1 or Configuration 2:
 
 ##### **Configuration 1: API-Based Models**
-- **`--grounding_model`**
-  - Purpose: Specifies the model for visual understanding
-  - Supports: 
-    - Anthropic Claude models (e.g., `claude-3-7-sonnet`)
-    - OpenAI GPT models (e.g., `gpt-4-vision`)
+- **`--grounding_model_provider`**, **`--grounding_model`**
+  - Purpose: Specifies the model for visual grounding (coordinate prediction)
+  - Supports: Anthropic
   - Default: None
 
 ##### **Configuration 2: Custom Endpoint**
 - **`--endpoint_provider`**
   - Purpose: Specifies the endpoint provider
-  - Currently supports: HuggingFace TGI
-  - Default: `huggingface`
+  - Supports: HuggingFace TGI, vLLM, Open Router
+  - Default: None
 
 - **`--endpoint_url`**
   - Purpose: The URL for your custom endpoint
