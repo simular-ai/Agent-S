@@ -233,7 +233,6 @@ def main():
         action_space="pyautogui",
         observation_type="mixed",
         search_engine=None,
-        search_engine="Perplexica",
     )
 
     while True:
