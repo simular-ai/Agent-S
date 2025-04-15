@@ -211,7 +211,12 @@ def main():
             "grounding_height": screen_height * CLAUDE_3_5_MAX_WIDTH / screen_width,
         }
     else:
-        raise ValueError("Unsupported grounding model provider")
+        engine_params_for_grounding = {
+            "engine_type": args.grounding_model_provider,
+            "model": args.grounding_model,
+            "grounding_width": screen_width,
+            "grounding_height": screen_height,
+        }
 
     grounding_agent = OSWorldACI(
         platform=current_platform,
