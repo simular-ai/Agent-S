@@ -208,6 +208,10 @@ You can use either Configuration 1 or Configuration 2:
   - Purpose: Specifies the model for visual grounding (coordinate prediction)
   - Supports: Anthropic
   - Default: None
+- **`--grounding_model_resize_width`**❗**Important**❗
+  - Purpose:  Some API providers automatically rescale images. Therefore, the generated (x, y) will be relative to the rescaled image dimensions, instead of the original image dimensions.
+  - Supports: [Anthropic rescaling](https://docs.anthropic.com/en/docs/build-with-claude/vision#)
+  - Tips: If your grounding is inaccurate even for very simple queries, double check your rescaling width is correct for your machine's resolution.
 
 ##### **Configuration 2: Custom Endpoint**
 - **`--endpoint_provider`**

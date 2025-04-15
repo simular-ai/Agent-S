@@ -167,6 +167,12 @@ def main():
         default="",
         help="Specify the grounding model to use (e.g., claude-3-5-sonnet-20241022)",
     )
+    parser.add_argument(
+        "--grounding_model_resize_width",
+        type=int,
+        default=1366,
+        help="Width of screenshot image after processor rescaling",
+    )
 
     # Grounding model config option 2: Self-hosted endpoint based
     parser.add_argument(
@@ -202,20 +208,14 @@ def main():
             "engine_type": args.endpoint_provider,
             "endpoint_url": args.endpoint_url,
         }
-    elif args.grounding_model_provider == "anthropic":
-        CLAUDE_3_5_MAX_WIDTH = 1366
-        engine_params_for_grounding = {
-            "engine_type": args.grounding_model_provider,
-            "model": args.grounding_model,
-            "grounding_width": CLAUDE_3_5_MAX_WIDTH,
-            "grounding_height": screen_height * CLAUDE_3_5_MAX_WIDTH / screen_width,
-        }
     else:
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
-            "grounding_width": screen_width,
-            "grounding_height": screen_height,
+            "grounding_width": args.grounding_model_resize_width,
+            "grounding_height": screen_height
+            * args.grounding_model_resize_width
+            / screen_width,
         }
 
     grounding_agent = OSWorldACI(
