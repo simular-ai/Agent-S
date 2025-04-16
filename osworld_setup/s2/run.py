@@ -18,8 +18,6 @@ from tqdm import tqdm
 import lib_run_single
 from desktop_env.desktop_env import DesktopEnv
 
-# import wandb
-
 
 #  Logger Configs {{{ #
 logger = logging.getLogger()
@@ -94,6 +92,7 @@ def config() -> argparse.Namespace:
     )
 
     # lm config
+    parser.add_argument("--model_provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
@@ -110,7 +109,23 @@ def config() -> argparse.Namespace:
     parser.add_argument("--result_dir", type=str, default="./results")
 
     # NEW!
-    parser.add_argument("--huggingface_endpoint_url", type=str, required=True)
+
+    # Configuration 1
+    parser.add_argument("--grounding_model_provider", type=str, default="anthropic")
+    parser.add_argument(
+        "--grounding_model", type=str, default="claude-3-7-sonnet-20250219"
+    )
+    parser.add_argument(
+        "--grounding_model_resize_width",
+        type=int,
+        default=1366,
+        help="Width of screenshot image after processor rescaling",
+    )
+
+    # Configuration 2
+    parser.add_argument("--endpoint_provider", type=str, default="")
+    parser.add_argument("--endpoint_url", type=str, default="")
+
     parser.add_argument("--kb_name", default="kb_s2", type=str)
 
     args = parser.parse_args()
@@ -144,23 +159,30 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     }
 
     # NEW!
-    if args.model.startswith("claude"):
-        engine_type = "anthropic"
-    elif args.model.startswith("gpt"):
-        engine_type = "openai"
-    else:
-        engine_type = "vllm"
+    engine_params = {"engine_type": args.model_provider, "model": args.model}
 
-    engine_params = {"engine_type": engine_type, "model": args.model}
+    if args.endpoint_url:
+        engine_params_for_grounding = {
+            "engine_type": args.endpoint_provider,
+            "endpoint_url": args.endpoint_url,
+        }
+    else:
+        engine_params_for_grounding = {
+            "engine_type": args.grounding_model_provider,
+            "model": args.grounding_model,
+            "grounding_width": args.grounding_model_resize_width,
+            "grounding_height": args.screen_height
+            * args.grounding_model_resize_width
+            / args.screen_width,
+        }
 
     # NEW!
     grounding_agent = OSWorldACI(
         platform="linux",
         engine_params_for_generation=engine_params,
-        engine_params_for_grounding={
-            "engine_type": "huggingface",
-            "endpoint_url": args.huggingface_endpoint_url,
-        },
+        engine_params_for_grounding=engine_params_for_grounding,
+        width=args.screen_width,
+        height=args.screen_height,
     )
 
     # NEW!

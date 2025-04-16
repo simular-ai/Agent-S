@@ -203,15 +203,16 @@ agent_s2 \
 
 You can use either Configuration 1 or Configuration 2:
 
-##### **Configuration 1: API-Based Models**
+##### **(Default) Configuration 1: API-Based Models**
 - **`--grounding_model_provider`**, **`--grounding_model`**
   - Purpose: Specifies the model for visual grounding (coordinate prediction)
-  - Supports: Anthropic
-  - Default: None
-- **`--grounding_model_resize_width`**❗**Important**❗
+  - Supports: all model providers in [models.md](models.md)
+  - Default: `--grounding_model_provider "anthropic" --grounding_model "claude-3-7-sonnet-20250219"`
+- ❗**Important**❗ **`--grounding_model_resize_width`**
   - Purpose:  Some API providers automatically rescale images. Therefore, the generated (x, y) will be relative to the rescaled image dimensions, instead of the original image dimensions.
   - Supports: [Anthropic rescaling](https://docs.anthropic.com/en/docs/build-with-claude/vision#)
   - Tips: If your grounding is inaccurate even for very simple queries, double check your rescaling width is correct for your machine's resolution.
+  - Default: `--grounding_model_resize_width 1366` (Anthropic)
 
 ##### **Configuration 2: Custom Endpoint**
 - **`--endpoint_provider`**
@@ -222,6 +223,8 @@ You can use either Configuration 1 or Configuration 2:
 - **`--endpoint_url`**
   - Purpose: The URL for your custom endpoint
   - Default: None
+
+> **Note**: Configuration 2 takes precedence over Configuration 1.
 
 This will show a user query prompt where you can enter your query and interact with Agent S2. You can use any model from the list of supported models in [models.md](models.md).
 
@@ -310,7 +313,7 @@ exec(action[0])
 
 Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
 
-#### Downloading the Knowledege Base
+#### Downloading the Knowledge Base
 
 Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `AgentS2`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `AgentS2` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
 
