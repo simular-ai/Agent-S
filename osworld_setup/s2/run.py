@@ -94,6 +94,8 @@ def config() -> argparse.Namespace:
     # lm config
     parser.add_argument("--model_provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o")
+    parser.add_argument("--model_url", type=str, default="", help="The URL of the main generation model API.")
+    parser.add_argument("--model_api_key", type=str, default="", help="The API key of the main generation model.")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--max_tokens", type=int, default=1500)
@@ -125,6 +127,7 @@ def config() -> argparse.Namespace:
     # Configuration 2
     parser.add_argument("--endpoint_provider", type=str, default="")
     parser.add_argument("--endpoint_url", type=str, default="")
+    parser.add_argument("--endpoint_api_key", type=str, default="", help="The API key of the grounding model.")
 
     parser.add_argument("--kb_name", default="kb_s2", type=str)
 
@@ -159,12 +162,13 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     }
 
     # NEW!
-    engine_params = {"engine_type": args.model_provider, "model": args.model}
+    engine_params = {"engine_type": args.model_provider, "model": args.model, "base_url": args.model_url, "api_key": args.model_api_key}
 
     if args.endpoint_url:
         engine_params_for_grounding = {
             "engine_type": args.endpoint_provider,
-            "endpoint_url": args.endpoint_url,
+            "base_url": args.endpoint_url,
+            "api_key": args.endpoint_api_key
         }
     else:
         engine_params_for_grounding = {
