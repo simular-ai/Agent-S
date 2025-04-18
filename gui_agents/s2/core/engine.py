@@ -318,9 +318,9 @@ class LMMEnginevLLM(LMMEngine):
 
 
 class LMMEngineHuggingFace(LMMEngine):
-    def __init__(self, api_key=None, endpoint_url=None, rate_limit=-1, **kwargs):
-        assert endpoint_url is not None, "HuggingFace endpoint must be provided"
-        self.endpoint_url = endpoint_url
+    def __init__(self, api_key=None, base_url=None, rate_limit=-1, **kwargs):
+        assert base_url is not None, "HuggingFace endpoint must be provided"
+        self.base_url = base_url
 
         api_key = api_key or os.getenv("HF_TOKEN")
         if api_key is None:
@@ -331,7 +331,7 @@ class LMMEngineHuggingFace(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(base_url=self.endpoint_url, api_key=self.api_key)
+        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
