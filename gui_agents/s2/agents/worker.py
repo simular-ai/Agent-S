@@ -57,6 +57,8 @@ class Worker(BaseModule):
         self.search_engine = search_engine
         self.enable_reflection = enable_reflection
         self.use_subtask_experience = use_subtask_experience
+        self.temperature = engine_params.get("temperature", 0.0)
+        self.use_thinking = engine_params.get("model", "") in ["claude-3-7-sonnet-20250219"]
         self.reset()
 
     def reset(self):
@@ -157,6 +159,7 @@ class Worker(BaseModule):
 
         # Reflection generation does not add its own response, it only gets the trajectory
         reflection = None
+        reflection_thoughts = None
         if self.enable_reflection:
             # Load the initial subtask info
             if self.turn_count == 0:
@@ -186,7 +189,12 @@ class Worker(BaseModule):
                     image_content=obs["screenshot"],
                     role="user",
                 )
-                reflection = call_llm_safe(self.reflection_agent)
+                full_reflection = call_llm_safe(
+                    self.reflection_agent,
+                    temperature=self.temperature,
+                    use_thinking=self.use_thinking
+                )
+                reflection, reflection_thoughts = split_thinking_response(full_reflection)
                 self.reflections.append(reflection)
                 logger.info("REFLECTION: %s", reflection)
 
@@ -207,9 +215,15 @@ class Worker(BaseModule):
             generator_message, image_content=obs["screenshot"], role="user"
         )
 
-        plan = call_llm_safe(self.generator_agent)
+        full_plan = call_llm_safe(
+            self.generator_agent,
+            temperature=self.temperature,
+            use_thinking=self.use_thinking
+        )
+        plan, plan_thoughts = split_thinking_response(full_plan)
+        # NOTE: currently dropping thinking tokens from context
         self.planner_history.append(plan)
-        logger.info("PLAN: %s", plan)
+        logger.info("FULL PLAN: %s", full_plan)
         self.generator_agent.add_message(plan, role="assistant")
 
         # Calculate input/output tokens and gpt-4o cost
@@ -233,9 +247,12 @@ class Worker(BaseModule):
         executor_info = {
             "current_subtask": subtask,
             "current_subtask_info": subtask_info,
+            "full_plan": full_plan,
             "executor_plan": plan,
+            "plan_thoughts": plan_thoughts,
             "plan_code": plan_code,
             "reflection": reflection,
+            "reflection_thoughts": reflection_thoughts,
             "num_input_tokens_executor": input_tokens,
             "num_output_tokens_executor": output_tokens,
         }
@@ -285,6 +302,8 @@ class SimpleWorker(BaseModule):
         self.grounding_agent = grounding_agent
         self.max_trajectory_length = max_trajectory_length
         self.enable_reflection = enable_reflection
+        self.temperature = engine_params.get("temperature", 0.0)
+        self.use_thinking = engine_params.get("model", "") in ["claude-3-7-sonnet-20250219"]
         self.reset()
 
     def reset(self):
@@ -376,7 +395,7 @@ class SimpleWorker(BaseModule):
             # Load the latest action
             else:
                 self.reflection_agent.add_message(
-                    text_content=self.planner_history[-1],
+                    text_content=self.worker_history[-1],
                     image_content=obs["screenshot"],
                     role="user",
                 )
@@ -404,8 +423,8 @@ class SimpleWorker(BaseModule):
         )
         plan, plan_thoughts = split_thinking_response(full_plan)
         # NOTE: currently dropping thinking tokens from context
-        self.planner_history.append(plan)
-        logger.info("PLAN:\n %s", plan)
+        self.worker_history.append(plan)
+        logger.info("FULL PLAN:\n %s", full_plan)
         self.generator_agent.add_message(plan, role="assistant")
 
         # Calculate input/output tokens and gpt-4o cost

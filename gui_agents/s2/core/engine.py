@@ -113,20 +113,6 @@ class LMMEngineAnthropic(LMMEngine):
     )
     def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
-        if self.thinking:
-            full_response = self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=8192,
-                thinking={"type": "enabled", "budget_tokens": 4096},
-                **kwargs,
-            )
-
-            thoughts = full_response.content[0].thinking
-            print("CLAUDE 3.7 THOUGHTS:", thoughts)
-            return full_response.content[1].text
-
         return (
             self.llm_client.messages.create(
                 system=messages[0]["content"][0]["text"],
@@ -139,6 +125,30 @@ class LMMEngineAnthropic(LMMEngine):
             .content[0]
             .text
         )
+    
+    @backoff.on_exception(
+        backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
+    )
+    # Compatible with Claude-3.7 Sonnet thinking mode
+    def generate_with_thinking(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+        """Generate the next message based on previous messages, and keeps the thinking tokens"""
+
+        full_response = self.llm_client.messages.create(
+            system=messages[0]["content"][0]["text"],
+            model=self.model,
+            messages=messages[1:],
+            max_tokens=8192,
+            thinking={
+                "type": "enabled",
+                "budget_tokens": 4096
+            },
+            **kwargs,
+        )
+        
+        thoughts = full_response.content[0].thinking
+        answer = full_response.content[1].text
+        full_response = f"<thoughts>\n{thoughts}\n</thoughts>\n\n<answer>\n{answer}\n</answer>\n"
+        return full_response
 
 
 class LMMEngineGemini(LMMEngine):

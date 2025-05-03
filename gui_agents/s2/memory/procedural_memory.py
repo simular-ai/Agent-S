@@ -1,6 +1,7 @@
 import inspect
 import textwrap
 
+# Open Google Chrome, go to Southwest airlines and show me flights to Santa Barbara (SBA)
 
 class PROCEDURAL_MEMORY:
 
@@ -66,7 +67,7 @@ class PROCEDURAL_MEMORY:
         return procedural_memory.strip()
     
     @staticmethod
-    def construct_simple_worker_procedural_memory(agent_class):
+    def construct_simple_worker_procedural_memory(agent_class, skipped_actions):
         procedural_memory = textwrap.dedent(
             f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the task: `TASK_DESCRIPTION`.
@@ -80,6 +81,9 @@ class PROCEDURAL_MEMORY:
         )
 
         for attr_name in dir(agent_class):
+            if attr_name in skipped_actions:
+                continue
+            
             attr = getattr(agent_class, attr_name)
             if callable(attr) and hasattr(attr, "is_agent_action"):
                 # Use inspect to get the full function signature

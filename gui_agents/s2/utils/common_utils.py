@@ -24,14 +24,14 @@ class Dag(BaseModel):
 NUM_IMAGE_TOKEN = 1105  # Value set of screen of size 1920x1080 for openai vision
 
 
-def call_llm_safe(agent) -> Union[str, Dag]:
+def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -> Union[str, Dag]:
     # Retry if fails
     max_retries = 3  # Set the maximum number of retries
     attempt = 0
     response = ""
     while attempt < max_retries:
         try:
-            response = agent.get_response()
+            response = agent.get_response(temperature=temperature, use_thinking=use_thinking)
             break  # If successful, break out of the loop
         except Exception as e:
             attempt += 1

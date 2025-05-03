@@ -10,8 +10,8 @@ import time
 
 from PIL import Image
 
-from gui_agents.s2.agents.grounding import OSWorldACI
-from gui_agents.s2.agents.agent_s import AgentS2
+from gui_agents.s2.agents.grounding import OSWorldWorkerOnlyACI
+from gui_agents.s2.agents.agent_s import AgentS2WorkerOnly
 
 current_platform = platform.system().lower()
 
@@ -82,8 +82,6 @@ def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
 
 def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     obs = {}
-    traj = "Task:\n" + instruction
-    subtask_traj = ""
     for _ in range(15):
         # Get screen shot using pyautogui
         screenshot = pyautogui.screenshot()
@@ -110,33 +108,20 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
                 os.system(
                     f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100'
                 )
-
-            agent.update_narrative_memory(traj)
             break
-
-        if "next" in code[0].lower():
+        
+        elif "next" in code[0].lower():
             continue
 
-        if "wait" in code[0].lower():
+        elif "wait" in code[0].lower():
             time.sleep(5)
             continue
 
         else:
             time.sleep(1.0)
             print("EXECUTING CODE:", code[0])
-
-            # Ask for permission before executing
             exec(code[0])
             time.sleep(1.0)
-
-            # Update task and subtask trajectories and optionally the episodic memory
-            traj += (
-                "\n\nReflection:\n"
-                + str(info["reflection"])
-                + "\n\n----------------------\n\nPlan:\n"
-                + info["executor_plan"]
-            )
-            subtask_traj = agent.update_episodic_memory(info, subtask_traj)
 
 
 def main():
@@ -218,7 +203,7 @@ def main():
             / screen_width,
         }
 
-    grounding_agent = OSWorldACI(
+    grounding_agent = OSWorldWorkerOnlyACI(
         platform=current_platform,
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,
@@ -226,13 +211,13 @@ def main():
         height=screen_height,
     )
 
-    agent = AgentS2(
+    agent = AgentS2WorkerOnly(
         engine_params,
         grounding_agent,
         platform=current_platform,
         action_space="pyautogui",
         observation_type="screenshot",
-        search_engine=None,
+        enable_reflection=False
     )
 
     while True:

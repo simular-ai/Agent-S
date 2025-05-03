@@ -413,6 +413,7 @@ class AgentS2WorkerOnly(UIAgent):
         action_space: str = "pyatuogui",
         observation_type: str = "screenshot",
         max_trajectory_length: int = 8,
+        enable_reflection: bool = True
     ):
         """Initialize a minimalist AgentS2 without hierarchy
 
@@ -423,6 +424,7 @@ class AgentS2WorkerOnly(UIAgent):
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             max_trajectory_length: Maximum number of image turns to keep
+            enable_reflection: Creates a reflection agent to assist the worker agent
         """
 
         super().__init__(
@@ -433,21 +435,27 @@ class AgentS2WorkerOnly(UIAgent):
             observation_type
         )
         self.max_trajectory_length = max_trajectory_length
+        self.enable_reflection = enable_reflection
         self.reset()
 
     def reset(self) -> None:
         """Reset agent state and initialize components"""
         self.executor = SimpleWorker(
-            engine_params=self.engine_params_for_worker,
+            engine_params=self.engine_params,
             grounding_agent=self.grounding_agent,
             platform=self.platform,
-            max_trajectory_length=self.max_trajectory_length
+            max_trajectory_length=self.max_trajectory_length,
+            enable_reflection=self.enable_reflection
         )
 
         # Reset state variables
-        self.turn_count: int = 0
+        self.step_count: int = 0
         self.should_send_action: bool = False
-        self.search_query: str = ""
+
+    def reset_executor_state(self) -> None:
+        """Reset executor and step counter"""
+        self.executor.reset()
+        self.step_count = 0
 
     def predict(
         self, instruction: str, observation: Dict
