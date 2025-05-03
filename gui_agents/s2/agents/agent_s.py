@@ -5,7 +5,7 @@ import platform
 from typing import Dict, List, Optional, Tuple
 
 from gui_agents.s2.agents.grounding import ACI
-from gui_agents.s2.agents.worker import Worker
+from gui_agents.s2.agents.worker import SimpleWorker, Worker
 from gui_agents.s2.agents.manager import Manager
 from gui_agents.s2.utils.common_utils import Node
 from gui_agents.utils import download_kb_data
@@ -400,3 +400,81 @@ class AgentS2(UIAgent):
             )
 
         return subtask_trajectory
+    
+
+class AgentS2WorkerOnly(UIAgent):
+    """Agent that uses no hierarchy for less inference time"""
+    
+    def __init__(
+        self,
+        engine_params: Dict,
+        grounding_agent: ACI,
+        platform: str = platform.system().lower(),
+        action_space: str = "pyatuogui",
+        observation_type: str = "screenshot",
+        max_trajectory_length: int = 8,
+    ):
+        """Initialize a minimalist AgentS2 without hierarchy
+
+        Args:
+            engine_params: Configuration parameters for the LLM engine
+            grounding_agent: Instance of ACI class for UI interaction
+            platform: Operating system platform (darwin, linux, windows)
+            action_space: Type of action space to use (pyautogui, other)
+            observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
+            max_trajectory_length: Maximum number of image turns to keep
+        """
+
+        super().__init__(
+            engine_params,
+            grounding_agent,
+            platform,
+            action_space,
+            observation_type
+        )
+        self.max_trajectory_length = max_trajectory_length
+        self.reset()
+
+    def reset(self) -> None:
+        """Reset agent state and initialize components"""
+        self.executor = SimpleWorker(
+            engine_params=self.engine_params_for_worker,
+            grounding_agent=self.grounding_agent,
+            platform=self.platform,
+            max_trajectory_length=self.max_trajectory_length
+        )
+
+        # Reset state variables
+        self.turn_count: int = 0
+        self.should_send_action: bool = False
+        self.search_query: str = ""
+
+    def predict(
+        self, instruction: str, observation: Dict
+    ) -> Tuple[Dict, List[str]]:
+        # Initialize the three info dictionaries
+        planner_info = {}
+        executor_info = {}
+        evaluator_info = {
+            "obs_evaluator_response": "",
+            "num_input_tokens_evaluator": 0,
+            "num_output_tokens_evaluator": 0,
+            "evaluator_cost": 0.0,
+        }
+        
+        executor_info, actions = self.executor.generate_next_action(
+            instruction=instruction,
+            obs=observation
+        )
+        self.step_count += 1
+
+        # concatenate the three info dictionaries
+        info = {
+            **{
+                k: v
+                for d in [planner_info or {}, executor_info or {}, evaluator_info or {}]
+                for k, v in d.items()
+            }
+        }
+
+        return info, actions
