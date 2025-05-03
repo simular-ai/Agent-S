@@ -10,8 +10,8 @@ import time
 
 from PIL import Image
 
-from gui_agents.s2.agents.grounding import OSWorldACI
-from gui_agents.s2.agents.agent_s import AgentS2
+from gui_agents.s2.agents.grounding import OSWorldACI, OSWorldWorkerOnlyACI
+from gui_agents.s2.agents.agent_s import AgentS2, AgentS2WorkerOnly
 
 current_platform = platform.system().lower()
 
@@ -188,6 +188,13 @@ def main():
         help="Specify the endpoint URL for your grounding model",
     )
 
+    # Controls whether to use hierarchical planning or not
+    parser.add_argument(
+        "--use_worker_only",
+        action="store_true",
+        help="Uses worker only Agent S2"
+    )
+
     args = parser.parse_args()
     assert (
         args.grounding_model_provider and args.grounding_model
@@ -218,26 +225,43 @@ def main():
             / screen_width,
         }
 
-    grounding_agent = OSWorldACI(
-        platform=current_platform,
-        engine_params_for_generation=engine_params,
-        engine_params_for_grounding=engine_params_for_grounding,
-        width=screen_width,
-        height=screen_height,
-    )
-
-    agent = AgentS2(
-        engine_params,
-        grounding_agent,
-        platform=current_platform,
-        action_space="pyautogui",
-        observation_type="screenshot",
-        search_engine=None,
-    )
+    # Creates the regular hierarchcial Agent S2
+    if not args.use_worker_only:
+        grounding_agent = OSWorldACI(
+            platform=current_platform,
+            engine_params_for_generation=engine_params,
+            engine_params_for_grounding=engine_params_for_grounding,
+            width=screen_width,
+            height=screen_height,
+        )
+        agent = AgentS2(
+            engine_params,
+            grounding_agent,
+            platform=current_platform,
+            action_space="pyautogui",
+            observation_type="screenshot",
+            search_engine=None,
+        )
+    # Creates the faster non-hierarchial worker only Agent S2
+    else:
+        grounding_agent = OSWorldWorkerOnlyACI(
+            platform=current_platform,
+            engine_params_for_generation=engine_params,
+            engine_params_for_grounding=engine_params_for_grounding,
+            width=screen_width,
+            height=screen_height,
+        )
+        agent = AgentS2WorkerOnly(
+            engine_params,
+            grounding_agent,
+            platform=current_platform,
+            action_space="pyautogui",
+            observation_type="screenshot",
+            enable_reflection=False
+        )
 
     while True:
         query = input("Query: ")
-
         agent.reset()
 
         # Run the agent on your own device

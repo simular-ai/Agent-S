@@ -1,8 +1,6 @@
 import inspect
 import textwrap
 
-# Open Google Chrome, go to Southwest airlines and show me flights to Santa Barbara (SBA)
-
 class PROCEDURAL_MEMORY:
 
     @staticmethod
