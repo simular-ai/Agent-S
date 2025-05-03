@@ -42,6 +42,19 @@ def call_llm_safe(agent) -> Union[str, Dag]:
     return response
 
 
+def split_thinking_response(full_response: str) -> Tuple[str, str]:
+    try:
+        # Extract thoughts section
+        thoughts_match = re.search(r'<thoughts>(.*?)</thoughts>', full_response, re.DOTALL)
+        thoughts = thoughts_match.group(1).strip()
+        # Extract answer section
+        answer_match = re.search(r'<answer>(.*?)</answer>', full_response, re.DOTALL)
+        answer = answer_match.group(1).strip()
+        return answer, thoughts
+    except Exception as e:
+        return full_response, ""
+
+
 def calculate_tokens(messages, num_image_token=NUM_IMAGE_TOKEN) -> Tuple[int, int]:
 
     num_input_images = 0
