@@ -598,3 +598,18 @@ class OSWorldACI(ACI):
     def fail(self):
         """End the current task with a failure, and replan the whole task."""
         return """FAIL"""
+
+
+# ACI that supports the worker-only mode: done() and fail() become task scoped instead
+class OSWorldWorkerOnlyACI(OSWorldACI):
+    @agent_action
+    def done(
+        self,
+    ):
+        """End the current task with a success. Use this when you believe the entire task has been fully completed."""
+        return """DONE"""
+
+    @agent_action
+    def fail(self):
+        """End the current task with a failure. Use this when you believe the entire task is impossible to complete."""
+        return """FAIL"""
