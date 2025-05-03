@@ -308,11 +308,33 @@ class SimpleWorker(BaseModule):
         self.cost_this_turn = 0
         self.screenshot_inputs = []
 
-    # TODO: image turn flushing only
+    # Flushing strategy dependant on model context limits
     def flush_messages(self):
-        pass
+        engine_type = self.engine_params.get("engine_type", "")
 
-    
+        # Flush strategy for long-context models: keep all text, only keep latest images
+        if engine_type in ["anthropic", "openai", "gemini"]:
+            max_images = self.max_trajectory_length
+            for agent in [self.generator_agent, self.reflection_agent]:
+                # keep latest k images
+                img_count = 0
+                for i in range(len(agent.messages) - 1, -1, -1):
+                    for j in range(len(agent.messages[i]["content"])):
+                        if "image" in agent.messages[i]["content"][j].get("type", ""):
+                            img_count += 1
+                            if img_count > max_images:
+                                del agent.messages[i]["content"][j]
+
+        # Flush strategy for non-long-context models: drop full turns
+        else:
+            # generator msgs are alternating [user, assistant], so 2 per round
+            if len(self.generator_agent.messages) > 2 * self.max_trajectory_length + 1:
+                self.generator_agent.messages.pop(1)
+                self.generator_agent.messages.pop(1)
+            # reflector msgs are all [(user text, user image)], so 1 per round
+            if len(self.reflection_agent.messages) > self.max_trajectory_length + 1:
+                self.reflection_agent.messages.pop(1)
+
     def generate_next_action(
         self,
         instruction: str,
