@@ -293,13 +293,13 @@ class SimpleWorker(BaseModule):
         else:
             skipped_actions = []
 
-        sys_prompt = PROCEDURAL_MEMORY.construct_worker_procedural_memory(
+        sys_prompt = PROCEDURAL_MEMORY.construct_simple_worker_procedural_memory(
             type(self.grounding_agent), skipped_actions=skipped_actions
         ).replace("CURRENT_OS", self.platform)
 
         self.generator_agent = self._create_agent(sys_prompt)
         self.reflection_agent = self._create_agent(
-            PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY
+            PROCEDURAL_MEMORY.REFLECTION_ON_TRAJECTORY_SIMPLE_WORKER
         )
 
         self.turn_count = 0
