@@ -400,11 +400,11 @@ class AgentS2(UIAgent):
             )
 
         return subtask_trajectory
-    
+
 
 class AgentS2WorkerOnly(UIAgent):
     """Agent that uses no hierarchy for less inference time"""
-    
+
     def __init__(
         self,
         engine_params: Dict,
@@ -413,7 +413,7 @@ class AgentS2WorkerOnly(UIAgent):
         action_space: str = "pyatuogui",
         observation_type: str = "screenshot",
         max_trajectory_length: int = 8,
-        enable_reflection: bool = True
+        enable_reflection: bool = True,
     ):
         """Initialize a minimalist AgentS2 without hierarchy
 
@@ -428,11 +428,7 @@ class AgentS2WorkerOnly(UIAgent):
         """
 
         super().__init__(
-            engine_params,
-            grounding_agent,
-            platform,
-            action_space,
-            observation_type
+            engine_params, grounding_agent, platform, action_space, observation_type
         )
         self.max_trajectory_length = max_trajectory_length
         self.enable_reflection = enable_reflection
@@ -445,7 +441,7 @@ class AgentS2WorkerOnly(UIAgent):
             grounding_agent=self.grounding_agent,
             platform=self.platform,
             max_trajectory_length=self.max_trajectory_length,
-            enable_reflection=self.enable_reflection
+            enable_reflection=self.enable_reflection,
         )
 
         # Reset state variables
@@ -457,9 +453,7 @@ class AgentS2WorkerOnly(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(
-        self, instruction: str, observation: Dict
-    ) -> Tuple[Dict, List[str]]:
+    def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
         # Initialize the three info dictionaries
         planner_info = {}
         executor_info = {}
@@ -469,10 +463,9 @@ class AgentS2WorkerOnly(UIAgent):
             "num_output_tokens_evaluator": 0,
             "evaluator_cost": 0.0,
         }
-        
+
         executor_info, actions = self.executor.generate_next_action(
-            instruction=instruction,
-            obs=observation
+            instruction=instruction, obs=observation
         )
         self.step_count += 1
 

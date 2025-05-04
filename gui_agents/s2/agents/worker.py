@@ -15,7 +15,7 @@ from gui_agents.s2.utils.common_utils import (
     extract_first_agent_function,
     parse_single_code_from_string,
     sanitize_code,
-    split_thinking_response
+    split_thinking_response,
 )
 
 logger = logging.getLogger("desktopenv.agent")
@@ -58,7 +58,9 @@ class Worker(BaseModule):
         self.enable_reflection = enable_reflection
         self.use_subtask_experience = use_subtask_experience
         self.temperature = engine_params.get("temperature", 0.0)
-        self.use_thinking = engine_params.get("model", "") in ["claude-3-7-sonnet-20250219"]
+        self.use_thinking = engine_params.get("model", "") in [
+            "claude-3-7-sonnet-20250219"
+        ]
         self.reset()
 
     def reset(self):
@@ -192,9 +194,11 @@ class Worker(BaseModule):
                 full_reflection = call_llm_safe(
                     self.reflection_agent,
                     temperature=self.temperature,
-                    use_thinking=self.use_thinking
+                    use_thinking=self.use_thinking,
                 )
-                reflection, reflection_thoughts = split_thinking_response(full_reflection)
+                reflection, reflection_thoughts = split_thinking_response(
+                    full_reflection
+                )
                 self.reflections.append(reflection)
                 logger.info("REFLECTION: %s", reflection)
 
@@ -218,7 +222,7 @@ class Worker(BaseModule):
         full_plan = call_llm_safe(
             self.generator_agent,
             temperature=self.temperature,
-            use_thinking=self.use_thinking
+            use_thinking=self.use_thinking,
         )
         plan, plan_thoughts = split_thinking_response(full_plan)
         # NOTE: currently dropping thinking tokens from context
@@ -281,7 +285,7 @@ class SimpleWorker(BaseModule):
         grounding_agent: ACI,
         platform: str = "ubuntu",
         max_trajectory_length: int = 8,
-        enable_reflection: bool = True
+        enable_reflection: bool = True,
     ):
         """
         SimpleWorker receives the main task and generates actions, without the need of hierarchical planning
@@ -303,7 +307,9 @@ class SimpleWorker(BaseModule):
         self.max_trajectory_length = max_trajectory_length
         self.enable_reflection = enable_reflection
         self.temperature = engine_params.get("temperature", 0.0)
-        self.use_thinking = engine_params.get("model", "") in ["claude-3-7-sonnet-20250219"]
+        self.use_thinking = engine_params.get("model", "") in [
+            "claude-3-7-sonnet-20250219"
+        ]
         self.reset()
 
     def reset(self):
@@ -363,12 +369,18 @@ class SimpleWorker(BaseModule):
         Predict the next action(s) based on the current observation.
         """
         agent = self.grounding_agent
-        generator_message = "" if self.turn_count > 0 else "The initial screen is provided. No action has been taken yet."
+        generator_message = (
+            ""
+            if self.turn_count > 0
+            else "The initial screen is provided. No action has been taken yet."
+        )
 
-        # Load the task into the system prompt 
+        # Load the task into the system prompt
         if self.turn_count == 0:
             self.generator_agent.add_system_prompt(
-                self.generator_agent.system_prompt.replace("TASK_DESCRIPTION", instruction)
+                self.generator_agent.system_prompt.replace(
+                    "TASK_DESCRIPTION", instruction
+                )
             )
 
         # Get the per-step reflection
@@ -390,7 +402,7 @@ class SimpleWorker(BaseModule):
                 self.reflection_agent.add_message(
                     text_content="The initial screen is provided. No action has been taken yet.",
                     image_content=obs["screenshot"],
-                    role="user"
+                    role="user",
                 )
             # Load the latest action
             else:
@@ -402,9 +414,11 @@ class SimpleWorker(BaseModule):
                 full_reflection = call_llm_safe(
                     self.reflection_agent,
                     temperature=self.temperature,
-                    use_thinking=self.use_thinking
+                    use_thinking=self.use_thinking,
                 )
-                reflection, reflection_thoughts = split_thinking_response(full_reflection)
+                reflection, reflection_thoughts = split_thinking_response(
+                    full_reflection
+                )
                 self.reflections.append(reflection)
                 generator_message += f"REFLECTION: You may use this reflection on the previous action and overall trajectory:\n{reflection}\n"
                 logger.info("REFLECTION: %s", reflection)
@@ -419,7 +433,7 @@ class SimpleWorker(BaseModule):
         full_plan = call_llm_safe(
             self.generator_agent,
             temperature=self.temperature,
-            use_thinking=self.use_thinking
+            use_thinking=self.use_thinking,
         )
         plan, plan_thoughts = split_thinking_response(full_plan)
         # NOTE: currently dropping thinking tokens from context
@@ -436,9 +450,7 @@ class SimpleWorker(BaseModule):
         # Use the grounding agent to convert agent_action("desc") into agent_action([x, y])
         try:
             agent.assign_coordinates(plan, obs)
-            plan_code = parse_single_code_from_string(
-                plan.split("Grounded Action")[-1]
-            )
+            plan_code = parse_single_code_from_string(plan.split("Grounded Action")[-1])
             plan_code = sanitize_code(plan_code)
             plan_code = extract_first_agent_function(plan_code)
             exec_code = eval(plan_code)

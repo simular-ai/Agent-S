@@ -24,14 +24,18 @@ class Dag(BaseModel):
 NUM_IMAGE_TOKEN = 1105  # Value set of screen of size 1920x1080 for openai vision
 
 
-def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -> Union[str, Dag]:
+def call_llm_safe(
+    agent, temperature: float = 0.0, use_thinking: bool = False
+) -> Union[str, Dag]:
     # Retry if fails
     max_retries = 3  # Set the maximum number of retries
     attempt = 0
     response = ""
     while attempt < max_retries:
         try:
-            response = agent.get_response(temperature=temperature, use_thinking=use_thinking)
+            response = agent.get_response(
+                temperature=temperature, use_thinking=use_thinking
+            )
             break  # If successful, break out of the loop
         except Exception as e:
             attempt += 1
@@ -45,10 +49,12 @@ def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -
 def split_thinking_response(full_response: str) -> Tuple[str, str]:
     try:
         # Extract thoughts section
-        thoughts_match = re.search(r'<thoughts>(.*?)</thoughts>', full_response, re.DOTALL)
+        thoughts_match = re.search(
+            r"<thoughts>(.*?)</thoughts>", full_response, re.DOTALL
+        )
         thoughts = thoughts_match.group(1).strip()
         # Extract answer section
-        answer_match = re.search(r'<answer>(.*?)</answer>', full_response, re.DOTALL)
+        answer_match = re.search(r"<answer>(.*?)</answer>", full_response, re.DOTALL)
         answer = answer_match.group(1).strip()
         return answer, thoughts
     except Exception as e:

@@ -125,12 +125,14 @@ class LMMEngineAnthropic(LMMEngine):
             .content[0]
             .text
         )
-    
+
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
     # Compatible with Claude-3.7 Sonnet thinking mode
-    def generate_with_thinking(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    def generate_with_thinking(
+        self, messages, temperature=0.0, max_new_tokens=None, **kwargs
+    ):
         """Generate the next message based on previous messages, and keeps the thinking tokens"""
 
         full_response = self.llm_client.messages.create(
@@ -138,16 +140,15 @@ class LMMEngineAnthropic(LMMEngine):
             model=self.model,
             messages=messages[1:],
             max_tokens=8192,
-            thinking={
-                "type": "enabled",
-                "budget_tokens": 4096
-            },
+            thinking={"type": "enabled", "budget_tokens": 4096},
             **kwargs,
         )
-        
+
         thoughts = full_response.content[0].thinking
         answer = full_response.content[1].text
-        full_response = f"<thoughts>\n{thoughts}\n</thoughts>\n\n<answer>\n{answer}\n</answer>\n"
+        full_response = (
+            f"<thoughts>\n{thoughts}\n</thoughts>\n\n<answer>\n{answer}\n</answer>\n"
+        )
         return full_response
 
 
@@ -244,7 +245,7 @@ class LMMEngineAzureOpenAI(LMMEngine):
         model=None,
         api_version=None,
         rate_limit=-1,
-        **kwargs
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -318,7 +319,7 @@ class LMMEnginevLLM(LMMEngine):
         top_p=0.8,
         repetition_penalty=1.05,
         max_new_tokens=512,
-        **kwargs
+        **kwargs,
     ):
         """Generate the next message based on previous messages"""
         completion = self.llm_client.chat.completions.create(

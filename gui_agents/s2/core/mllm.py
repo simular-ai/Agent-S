@@ -280,7 +280,7 @@ class LMMAgent:
             messages.append(
                 {"role": "user", "content": [{"type": "text", "text": user_message}]}
             )
-        
+
         # Thinking enabled for Claude Sonnet 3.7 and Gemini 2.5 Pro
         if use_thinking:
             return self.engine.generate_with_thinking(

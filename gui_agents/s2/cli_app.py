@@ -190,9 +190,7 @@ def main():
 
     # Controls whether to use hierarchical planning or not
     parser.add_argument(
-        "--use_worker_only",
-        action="store_true",
-        help="Uses worker only Agent S2"
+        "--use_worker_only", action="store_true", help="Uses worker only Agent S2"
     )
 
     args = parser.parse_args()
@@ -257,7 +255,7 @@ def main():
             platform=current_platform,
             action_space="pyautogui",
             observation_type="screenshot",
-            enable_reflection=False
+            enable_reflection=False,
         )
 
     while True:

@@ -1,6 +1,7 @@
 import inspect
 import textwrap
 
+
 class PROCEDURAL_MEMORY:
 
     @staticmethod
@@ -63,7 +64,7 @@ class PROCEDURAL_MEMORY:
         )
 
         return procedural_memory.strip()
-    
+
     @staticmethod
     def construct_simple_worker_procedural_memory(agent_class, skipped_actions):
         procedural_memory = textwrap.dedent(
@@ -81,7 +82,7 @@ class PROCEDURAL_MEMORY:
         for attr_name in dir(agent_class):
             if attr_name in skipped_actions:
                 continue
-            
+
             attr = getattr(agent_class, attr_name)
             if callable(attr) and hasattr(attr, "is_agent_action"):
                 # Use inspect to get the full function signature
@@ -183,7 +184,8 @@ class PROCEDURAL_MEMORY:
     )
 
     # For reflection agent with simple worker, post-action verification mainly for cycle detection
-    REFLECTION_ON_TRAJECTORY_SIMPLE_WORKER = textwrap.dedent("""
+    REFLECTION_ON_TRAJECTORY_SIMPLE_WORKER = textwrap.dedent(
+        """
     You are an expert computer use agent designed to reflect on the trajectory of a task and provide feedback on what has happened so far.
     You have access to the Task Description and the Current Trajectory of another computer agent. The Current Trajectory is a sequence of a desktop image, chain-of-thought reasoning, and a desktop action for each time step. The last image is the screen's display after the last action.
     Your task is to generate a reflection. Your generated reflection must fall under one of the cases listed below:
