@@ -141,31 +141,27 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Run AgentS2 with specified model.")
+
+    # lm config
+    parser.add_argument("--model_provider", type=str, default="openai")
+    parser.add_argument("--model", type=str, default="gpt-4o")
     parser.add_argument(
-        "--provider",
+        "--model_url",
         type=str,
-        default="anthropic",
-        help="Specify the provider to use (e.g., openai, anthropic, etc.)",
+        default="",
+        help="The URL of the main generation model API.",
     )
     parser.add_argument(
-        "--model",
+        "--model_api_key",
         type=str,
-        default="claude-3-7-sonnet-20250219",
-        help="Specify the model to use (e.g., gpt-4o)",
+        default="",
+        help="The API key of the main generation model.",
     )
 
-    # Grounding model config option 1: API based
+    # Configuration 1
+    parser.add_argument("--grounding_model_provider", type=str, default="anthropic")
     parser.add_argument(
-        "--grounding_model_provider",
-        type=str,
-        default="anthropic",
-        help="Specify the provider to use for the grounding model (e.g., openai, anthropic, etc.)",
-    )
-    parser.add_argument(
-        "--grounding_model",
-        type=str,
-        default="claude-3-7-sonnet-20250219",
-        help="Specify the grounding model to use (e.g., claude-3-5-sonnet-20241022)",
+        "--grounding_model", type=str, default="claude-3-7-sonnet-20250219"
     )
     parser.add_argument(
         "--grounding_model_resize_width",
@@ -174,18 +170,14 @@ def main():
         help="Width of screenshot image after processor rescaling",
     )
 
-    # Grounding model config option 2: Self-hosted endpoint based
+    # Configuration 2
+    parser.add_argument("--endpoint_provider", type=str, default="")
+    parser.add_argument("--endpoint_url", type=str, default="")
     parser.add_argument(
-        "--endpoint_provider",
+        "--endpoint_api_key",
         type=str,
         default="",
-        help="Specify the endpoint provider for your grounding model, only HuggingFace TGI support for now",
-    )
-    parser.add_argument(
-        "--endpoint_url",
-        type=str,
-        default="",
-        help="Specify the endpoint URL for your grounding model",
+        help="The API key of the grounding model.",
     )
 
     # Controls whether to use hierarchical planning or not
@@ -205,22 +197,27 @@ def main():
     )
 
     # Load the general engine params
-    engine_params = {"engine_type": args.provider, "model": args.model}
+    engine_params = {
+        "engine_type": args.model_provider,
+        "model": args.model,
+        "base_url": args.model_url,
+        "api_key": args.model_api_key,
+    }
 
-    # Load the grounding model engine params
     if args.endpoint_url:
         engine_params_for_grounding = {
             "engine_type": args.endpoint_provider,
-            "endpoint_url": args.endpoint_url,
+            "base_url": args.endpoint_url,
+            "api_key": args.endpoint_api_key,
         }
     else:
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
             "grounding_width": args.grounding_model_resize_width,
-            "grounding_height": screen_height
+            "grounding_height": args.screen_height
             * args.grounding_model_resize_width
-            / screen_width,
+            / args.screen_width,
         }
 
     # Creates the regular hierarchcial Agent S2
