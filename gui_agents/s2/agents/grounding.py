@@ -526,8 +526,8 @@ class OSWorldACI(ACI):
         Args:
             cell_values: Dict[str, Any], A dictionary of cell values to set in the spreadsheet. The keys are the cell coordinates in the format "A1", "B2", etc.
                 Supported value types include: float, int, string, bool, formulas.
-            app_name: str, The name of the spreadsheet application.
-            sheet_name: str, The name of the sheet in the spreadsheet.
+            app_name: str, The name of the spreadsheet application. For example, "Some_sheet.xlsx".
+            sheet_name: str, The name of the sheet in the spreadsheet. For example, "Sheet1".
         """
         return SET_CELL_VALUES_CMD.format(
             cell_values=cell_values, app_name=app_name, sheet_name=sheet_name

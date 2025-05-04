@@ -77,7 +77,7 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--observation_type",
         choices=["screenshot", "a11y_tree", "screenshot_a11y_tree", "som"],
-        default="a11y_tree",
+        default="screenshot",
         help="Observation type",
     )
     parser.add_argument("--screen_width", type=int, default=1920)
@@ -94,8 +94,18 @@ def config() -> argparse.Namespace:
     # lm config
     parser.add_argument("--model_provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o")
-    parser.add_argument("--model_url", type=str, default="", help="The URL of the main generation model API.")
-    parser.add_argument("--model_api_key", type=str, default="", help="The API key of the main generation model.")
+    parser.add_argument(
+        "--model_url",
+        type=str,
+        default="",
+        help="The URL of the main generation model API.",
+    )
+    parser.add_argument(
+        "--model_api_key",
+        type=str,
+        default="",
+        help="The API key of the main generation model.",
+    )
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--max_tokens", type=int, default=1500)
@@ -127,7 +137,12 @@ def config() -> argparse.Namespace:
     # Configuration 2
     parser.add_argument("--endpoint_provider", type=str, default="")
     parser.add_argument("--endpoint_url", type=str, default="")
-    parser.add_argument("--endpoint_api_key", type=str, default="", help="The API key of the grounding model.")
+    parser.add_argument(
+        "--endpoint_api_key",
+        type=str,
+        default="",
+        help="The API key of the grounding model.",
+    )
 
     parser.add_argument("--kb_name", default="kb_s2", type=str)
 
@@ -142,7 +157,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
 
     # log args
     logger.info("Args: %s", args)
-    # set wandb project
     cfg_args = {
         "path_to_vm": args.path_to_vm,
         "headless": args.headless,
@@ -162,13 +176,18 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     }
 
     # NEW!
-    engine_params = {"engine_type": args.model_provider, "model": args.model, "base_url": args.model_url, "api_key": args.model_api_key}
+    engine_params = {
+        "engine_type": args.model_provider,
+        "model": args.model,
+        "base_url": args.model_url,
+        "api_key": args.model_api_key,
+    }
 
     if args.endpoint_url:
         engine_params_for_grounding = {
             "engine_type": args.endpoint_provider,
             "base_url": args.endpoint_url,
-            "api_key": args.endpoint_api_key
+            "api_key": args.endpoint_api_key,
         }
     else:
         engine_params_for_grounding = {
@@ -207,7 +226,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         action_space=agent.action_space,
         screen_size=(args.screen_width, args.screen_height),
         headless=args.headless,
-        os_type="Ubuntu",
         require_a11y_tree=args.observation_type
         in ["a11y_tree", "screenshot_a11y_tree", "som"],
     )
@@ -231,7 +249,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             cfg_args["start_time"] = datetime.datetime.now().strftime(
                 "%Y:%m:%d-%H:%M:%S"
             )
-            # run.config.update(cfg_args)
 
             example_result_dir = os.path.join(
                 args.result_dir,
