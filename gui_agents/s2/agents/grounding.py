@@ -433,6 +433,8 @@ class OSWorldACI(ACI):
             enter:bool, Assign it to True if the enter key should be pressed after typing the text, otherwise assign it to False.
         """
 
+        select_mod = "command" if self.platform == "darwin" else "ctrl"
+
         if self.coords1 is not None:
             # If a node is found, retrieve its coordinates and size
             # Start typing at the center of the element
@@ -444,7 +446,8 @@ class OSWorldACI(ACI):
 
             if overwrite:
                 command += (
-                    f"pyautogui.hotkey('ctrl', 'a'); pyautogui.press('backspace'); "
+                    f"pyautogui.hotkey({repr(select_mod)}, 'a'); "
+                    "pyautogui.press('backspace'); "
                 )
 
             command += f"pyautogui.write({repr(text)}); "
@@ -457,7 +460,8 @@ class OSWorldACI(ACI):
 
             if overwrite:
                 command += (
-                    f"pyautogui.hotkey('ctrl', 'a'); pyautogui.press('backspace'); "
+                    f"pyautogui.hotkey({repr(select_mod)}, 'a'); "
+                    "pyautogui.press('backspace'); "
                 )
 
             command += f"pyautogui.write({repr(text)}); "
