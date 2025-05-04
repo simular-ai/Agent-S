@@ -175,9 +175,9 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 
 Run Agent S2 with a specific model (default is `gpt-4o`):
 
-```sh
+```bash
 agent_s2 \
-  --provider "anthropic" \
+  --model_provider "anthropic" \
   --model "claude-3-7-sonnet-20250219" \
   --grounding_model_provider "anthropic" \
   --grounding_model "claude-3-7-sonnet-20250219" \
@@ -187,17 +187,22 @@ Or use a custom endpoint:
 
 ```bash
 agent_s2 \
-  --provider "anthropic" \
+  --model_provider "anthropic" \
   --model "claude-3-7-sonnet-20250219" \
   --endpoint_provider "huggingface" \
   --endpoint_url "<endpoint_url>/v1/"
 ```
 
+#### Architecture Settings
+- **`--use_worker_only`**
+  - Purpose: Controls whether to use hierarchical planning or not. Hierarchical planning adds a lot of LLM call overhead, so using the worker only mode is a lot faster for simpler tasks. Anything involving hierarchy is dropped (subtasks, knowledge retrieval, DAG planning).
+  - Default: The flag is not set by default.
+
 #### Main Model Settings
-- **`--provider`**, **`--model`** 
+- **`--model_provider`**, **`--model`** 
   - Purpose: Specifies the main generation model
   - Supports: all model providers in [models.md](models.md)
-  - Default: `--provider "anthropic" --model "claude-3-7-sonnet-20250219"`
+  - Default: `--model_provider "anthropic" --model "claude-3-7-sonnet-20250219"`
 
 #### Grounding Configuration Options
 
@@ -244,33 +249,34 @@ load_dotenv()
 current_platform = "linux"  # "darwin", "windows"
 ```
 
-Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
+Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the HuggingFace Inference Endpoints (for UI-TARS), as well as API based models like Claude and GPT.
 
 ```
-engine_type_for_grounding = "huggingface"
-
+# Load the general engine params
 engine_params = {
-    "engine_type": "openai",
-    "model": "gpt-4o",
+    "engine_type": args.model_provider,
+    "model": args.model,
+    "base_url": args.model_url,
+    "api_key": args.model_api_key,
 }
 
-if engine_type_for_grounding == "huggingface":
-  engine_params_for_grounding = {
-      "engine_type": "huggingface",
-      "endpoint_url": "<endpoint_url>/v1/",
-  }
-elif engine_type_for_grounding == "claude":
-  engine_params_for_grounding = {
-      "engine_type": "claude",
-      "model": "claude-3-7-sonnet-20250219",
-  }
-elif engine_type_for_grounding == "gpt":
-  engine_params_for_grounding = {
-    "engine_type": "gpt",
-    "model": "gpt-4o",
-  }
+# Load the grounding engine from a HuggingFace TGI endpoint
+if args.endpoint_url:
+    engine_params_for_grounding = {
+        "engine_type": args.endpoint_provider,
+        "base_url": args.endpoint_url,
+        "api_key": args.endpoint_api_key,
+    }
+# Load the grounding engine from an API based model
 else:
-  raise ValueError("Invalid engine type for grounding")
+    engine_params_for_grounding = {
+        "engine_type": args.grounding_model_provider,
+        "model": args.grounding_model,
+        "grounding_width": args.grounding_model_resize_width,
+        "grounding_height": args.screen_height
+        * args.grounding_model_resize_width
+        / args.screen_width,
+    }
 ```
 
 Then, we define our grounding agent and Agent S2.
@@ -287,7 +293,7 @@ agent = AgentS2(
   grounding_agent,
   platform=current_platform,
   action_space="pyautogui",
-  observation_type="mixed",
+  observation_type="screenshot",
   search_engine="Perplexica"  # Assuming you have set up Perplexica.
 )
 ```

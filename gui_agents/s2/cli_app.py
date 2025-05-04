@@ -204,12 +204,14 @@ def main():
         "api_key": args.model_api_key,
     }
 
+    # Load the grounding engine from a HuggingFace TGI endpoint
     if args.endpoint_url:
         engine_params_for_grounding = {
             "engine_type": args.endpoint_provider,
             "base_url": args.endpoint_url,
             "api_key": args.endpoint_api_key,
         }
+    # Load the grounding engine from an API based model
     else:
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
