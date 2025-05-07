@@ -332,10 +332,6 @@ This will download Agent S2's knowledge base for Linux from release tag `v0.2.2`
 
 To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
 
-## 🤝 Acknowledgements
-
-We extend our sincere thanks to Tianbao Xie for developing OSWorld and discussing computer use challenges. We also appreciate the engaging discussions with Yujia Qin and Shihao Liang regarding UI-TARS.
-
 ## 💬 Citations
 
 If you find this codebase useful, please cite 
@@ -362,3 +358,6 @@ If you find this codebase useful, please cite
 }
 ```
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=simular-ai/agent-s&type=Date)](https://www.star-history.com/#simular-ai/agent-s&Date)
