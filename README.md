@@ -198,6 +198,11 @@ agent_s2 \
   - Purpose: Specifies the main generation model
   - Supports: all model providers in [models.md](models.md)
   - Default: `--provider "anthropic" --model "claude-3-7-sonnet-20250219"`
+- **`--model_url`**, **`--model_api_key`**
+   - Purpose: Specifies the custom endpoint for the main generation model and your API key
+   - Note: These are optional. If not specified, `gui-agents` will default to your environment variables for the URL and API key.
+   - Supports: all model providers in [models.md](models.md)
+   - Default: None
 
 #### Grounding Configuration Options
 
@@ -223,6 +228,11 @@ You can use either Configuration 1 or Configuration 2:
 - **`--endpoint_url`**
   - Purpose: The URL for your custom endpoint
   - Default: None
+
+- **`--endpoint_api_key`**
+   - Purpose: Your API key for your custom endpoint
+   - Note: This is optional. If not specified, `gui-agents` will default to your environment variables for the API key.
+   - Default: None
 
 > **Note**: Configuration 2 takes precedence over Configuration 1.
 
