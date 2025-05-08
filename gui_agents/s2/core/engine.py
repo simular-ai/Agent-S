@@ -67,10 +67,15 @@ class LMMEngineOpenAI(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
 
+        self.base_url = base_url or os.getenv("OPENAI_ENDPOINT_URL")
+
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(api_key=self.api_key)
+        if self.base_url is None:
+            self.llm_client = OpenAI(api_key=self.api_key)
+        else:
+            self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
