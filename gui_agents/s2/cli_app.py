@@ -153,6 +153,18 @@ def main():
         default="claude-3-7-sonnet-20250219",
         help="Specify the model to use (e.g., gpt-4o)",
     )
+    parser.add_argument(
+        "--model_url",
+        type=str,
+        default="",
+        help="The URL of the main generation model API.",
+    )
+    parser.add_argument(
+        "--model_api_key",
+        type=str,
+        default="",
+        help="The API key of the main generation model.",
+    )
 
     # Grounding model config option 1: API based
     parser.add_argument(
@@ -187,6 +199,12 @@ def main():
         default="",
         help="Specify the endpoint URL for your grounding model",
     )
+    parser.add_argument(
+        "--endpoint_api_key",
+        type=str,
+        default="",
+        help="The API key of the grounding model.",
+    )
 
     args = parser.parse_args()
     assert (
@@ -200,13 +218,19 @@ def main():
     )
 
     # Load the general engine params
-    engine_params = {"engine_type": args.provider, "model": args.model}
+    engine_params = {
+        "engine_type": args.model_provider,
+        "model": args.model,
+        "base_url": args.model_url,
+        "api_key": args.model_api_key,
+    }
 
-    # Load the grounding model engine params
+    # Load the grounding engine from a HuggingFace TGI endpoint
     if args.endpoint_url:
         engine_params_for_grounding = {
             "engine_type": args.endpoint_provider,
-            "endpoint_url": args.endpoint_url,
+            "base_url": args.endpoint_url,
+            "api_key": args.endpoint_api_key,
         }
     else:
         engine_params_for_grounding = {
