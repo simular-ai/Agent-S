@@ -257,30 +257,38 @@ current_platform = "linux"  # "darwin", "windows"
 Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
 
 ```
-engine_type_for_grounding = "huggingface"
-
 engine_params = {
-    "engine_type": "openai",
-    "model": "gpt-4o",
+  "engine_type": provider,
+  "model": model,
+  "base_url": model_url,     # Optional
+  "api_key": model_api_key,  # Optional
 }
 
-if engine_type_for_grounding == "huggingface":
-  engine_params_for_grounding = {
-      "engine_type": "huggingface",
-      "endpoint_url": "<endpoint_url>/v1/",
-  }
-elif engine_type_for_grounding == "claude":
-  engine_params_for_grounding = {
-      "engine_type": "claude",
-      "model": "claude-3-7-sonnet-20250219",
-  }
-elif engine_type_for_grounding == "gpt":
-  engine_params_for_grounding = {
-    "engine_type": "gpt",
-    "model": "gpt-4o",
-  }
-else:
-  raise ValueError("Invalid engine type for grounding")
+# Grounding Configuration 1: Load the grounding engine from an API based model
+grounding_model_provider = "<your_grounding_model_provider>"
+grounding_model = "<your_grounding_model>"
+grounding_model_resize_width = 1366
+screen_width, screen_height = pyautogui.size()
+
+engine_params_for_grounding = {
+  "engine_type": grounding_model_provider,
+  "model": grounding_model,
+  "grounding_width": grounding_model_resize_width,
+  "grounding_height": screen_height
+  * grounding_model_resize_width
+  / screen_width,
+}
+
+# Grounding Configuration 2: Load the grounding engine from a HuggingFace TGI endpoint
+endpoint_provider = "<your_endpoint_provider>"
+endpoint_url = "<your_endpoint_url>"
+endpoint_api_key = "<your_api_key>"
+
+engine_params_for_grounding = {
+  "engine_type": endpoint_provider,
+  "base_url": endpoint_url,
+  "api_key": endpoint_api_key,  # Optional
+}
 ```
 
 Then, we define our grounding agent and Agent S2.
@@ -297,7 +305,7 @@ agent = AgentS2(
   grounding_agent,
   platform=current_platform,
   action_space="pyautogui",
-  observation_type="mixed",
+  observation_type="screenshot",
   search_engine="Perplexica"  # Assuming you have set up Perplexica.
 )
 ```
