@@ -378,4 +378,4 @@ If you find this codebase useful, please cite
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=simular-ai/agent-s&type=Date)](https://www.star-history.com/#simular-ai/agent-s&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=agent-s/agent-s,simular-ai/Agent-S&type=Date)](https://www.star-history.com/#agent-s/agent-s&simular-ai/Agent-S&Date)
