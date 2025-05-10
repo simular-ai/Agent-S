@@ -219,7 +219,7 @@ def main():
 
     # Load the general engine params
     engine_params = {
-        "engine_type": args.model_provider,
+        "engine_type": args.provider,
         "model": args.model,
         "base_url": args.model_url,
         "api_key": args.model_api_key,
