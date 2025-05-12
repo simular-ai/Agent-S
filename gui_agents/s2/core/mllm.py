@@ -124,6 +124,7 @@ class LMMAgent:
                 LMMEngineAzureOpenAI,
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
+                LMMEngineOpenRouter,
             ),
         ):
             # infer role from previous message
@@ -263,6 +264,8 @@ class LMMAgent:
                     )
 
             self.messages.append(message)
+        else:
+            raise ValueError("engine_type is not supported")
 
     def get_response(
         self,
