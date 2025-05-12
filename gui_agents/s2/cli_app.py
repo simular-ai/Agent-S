@@ -80,11 +80,13 @@ def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
     return safe_width, safe_height
 
 
-def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
+def run_agent(
+    agent, instruction: str, scaled_width: int, scaled_height: int, max_steps: int
+):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
-    for _ in range(15):
+    for _ in range(max_steps):
         # Get screen shot using pyautogui
         screenshot = pyautogui.screenshot()
         screenshot = screenshot.resize((scaled_width, scaled_height), Image.LANCZOS)
@@ -141,6 +143,8 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
 def main():
     parser = argparse.ArgumentParser(description="Run AgentS2 with specified model.")
+
+    parser.add_argument("--max_steps", type=int, default=50)
 
     # lm config
     parser.add_argument("--model_provider", type=str, default="openai")
@@ -262,7 +266,7 @@ def main():
         agent.reset()
 
         # Run the agent on your own device
-        run_agent(agent, query, scaled_width, scaled_height)
+        run_agent(agent, query, scaled_width, scaled_height, args.max_steps)
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":

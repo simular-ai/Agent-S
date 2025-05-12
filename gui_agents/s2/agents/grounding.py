@@ -499,7 +499,7 @@ class OSWorldACI(ACI):
         # TODO: specified duration?
         for k in hold_keys:
             command += f"pyautogui.keyDown({repr(k)}); "
-        command += f"pyautogui.dragTo({x2}, {y2}, duration=1.); pyautogui.mouseUp(); "
+        command += f"pyautogui.dragTo({x2}, {y2}, duration=1., button='left'); pyautogui.mouseUp(); "
         for k in hold_keys:
             command += f"pyautogui.keyUp({repr(k)}); "
 
@@ -508,11 +508,14 @@ class OSWorldACI(ACI):
         return command
 
     @agent_action
-    def highlight_text_span(self, starting_phrase: str, ending_phrase: str):
+    def highlight_text_span(
+        self, starting_phrase: str, ending_phrase: str, button: str = "left"
+    ):
         """Highlight a text span between a provided starting phrase and ending phrase. Use this to highlight words, lines, and paragraphs.
         Args:
             starting_phrase:str, the phrase that denotes the start of the text span you want to highlight. If you only want to highlight one word, just pass in that single word.
             ending_phrase:str, the phrase that denotes the end of the text span you want to highlight. If you only want to highlight one word, just pass in that single word.
+            button:str, the button to use to highlight the text span. Defaults to "left". Can be "left", "right", or "middle".
         """
 
         x1, y1 = self.coords1
@@ -520,7 +523,7 @@ class OSWorldACI(ACI):
 
         command = "import pyautogui; "
         command += f"pyautogui.moveTo({x1}, {y1}); "
-        command += f"pyautogui.dragTo({x2}, {y2}, duration=1.); pyautogui.mouseUp(); "
+        command += f"pyautogui.dragTo({x2}, {y2}, duration=1., button='{button}'); pyautogui.mouseUp(); "
 
         # Return pyautoguicode to drag and drop the elements
         return command
