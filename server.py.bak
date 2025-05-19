@@ -116,19 +116,7 @@ def run_agent(agent: GraphSearchAgent, instruction: str):
             print("EXECUTING CODE:", code[0])
 
             # Ask for permission before executing
-            # Original: exec(code[0])
-# Replaced with safer alternative
-from RestrictedPython import compile_restricted
-from RestrictedPython.Guards import safe_globals
-
-def safe_execute(code_string):
-    byte_code = compile_restricted(code_string, "<string>", "exec")
-    restricted_globals = dict(safe_globals)
-    # Add any necessary functions to restricted_globals
-    exec(byte_code, restricted_globals)
-    return restricted_globals
-
-# Then use safe_execute instead of exec
+            exec(code[0])
             time.sleep(1.0)
 
             # Update task and subtask trajectories and optionally the episodic memory
