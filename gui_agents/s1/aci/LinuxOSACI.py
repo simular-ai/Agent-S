@@ -1,3 +1,4 @@
+import ast
 import base64
 import logging
 import os
@@ -147,7 +148,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             if node.tag not in exclude_tags:
                 if show_all:
                     if node.attrib.get(f"{{{state_ns}}}visible") == "true":
-                        coords: Tuple[int, int] = eval(
+                        coords: Tuple[int, int] = ast.literal_eval(
                             node.get(
                                 "{{{:}}}screencoord".format(component_ns), "(-1, -1)"
                             )
@@ -157,7 +158,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
                 # if show_all is false, only show elements that are currently showing on screen
                 else:
                     if node.attrib.get(f"{{{state_ns}}}showing") == "true":
-                        coords: Tuple[int, int] = eval(
+                        coords: Tuple[int, int] = ast.literal_eval(
                             node.get(
                                 "{{{:}}}screencoord".format(component_ns), "(-1, -1)"
                             )
@@ -228,10 +229,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         # Get the bounding boxes of the elements in the linearized accessibility tree
         tree_bboxes = []
         for node in preserved_nodes:
-            coordinates: Tuple[int, int] = eval(
+            coordinates: Tuple[int, int] = ast.literal_eval(
                 node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
             )
-            sizes: Tuple[int, int] = eval(
+            sizes: Tuple[int, int] = ast.literal_eval(
                 node.get("{{{:}}}size".format(component_ns), "(-1, -1)")
             )
             tree_bboxes.append(
@@ -366,10 +367,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             hold_keys:List, list of keys to hold while clicking
         """
         node = self.find_element(element_id)
-        coordinates: Tuple[int, int] = eval(
+        coordinates: Tuple[int, int] = ast.literal_eval(
             node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
         )
-        sizes: Tuple[int, int] = eval(
+        sizes: Tuple[int, int] = ast.literal_eval(
             node.get("{{{:}}}size".format(component_ns), "(-1, -1)")
         )
 
@@ -419,10 +420,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
 
         if node is not None:
             # If a node is found, retrieve its coordinates and size
-            coordinates = eval(
+            coordinates = ast.literal_eval(
                 node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
             )
-            sizes = eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
+            sizes = ast.literal_eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
 
             # Calculate the center of the element
             x = coordinates[0] + sizes[0] // 2
@@ -476,15 +477,15 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         """
         node1 = self.find_element(drag_from_id)
         node2 = self.find_element(drop_on_id)
-        coordinates1 = eval(
+        coordinates1 = ast.literal_eval(
             node1.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
         )
-        sizes1 = eval(node1.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
+        sizes1 = ast.literal_eval(node1.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
 
-        coordinates2 = eval(
+        coordinates2 = ast.literal_eval(
             node2.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
         )
-        sizes2 = eval(node2.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
+        sizes2 = ast.literal_eval(node2.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
 
         # Calculate the center of the element
         x1 = coordinates1[0] + sizes1[0] // 2
@@ -519,10 +520,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         except:
             node = self.find_element(0)
         # print(node.attrib)
-        coordinates = eval(
+        coordinates = ast.literal_eval(
             node.get("{{{:}}}screencoord".format(component_ns), "(-1, -1)")
         )
-        sizes = eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
+        sizes = ast.literal_eval(node.get("{{{:}}}size".format(component_ns), "(-1, -1)"))
 
         # Calculate the center of the element
         x = coordinates[0] + sizes[0] // 2
