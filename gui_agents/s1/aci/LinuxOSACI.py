@@ -844,3 +844,32 @@ class UIElement(object):
 
     def __repr__(self):
         return "UIElement%s" % (self.node)
+
+def safe_execute(operation_name, *args, **kwargs):
+    """
+    Safely execute predefined operations without using eval()
+    
+    Args:
+        operation_name: String identifier for the operation
+        *args, **kwargs: Arguments to pass to the operation function
+        
+    Returns:
+        Result of the operation
+    """
+    # Define all allowed operations
+    allowed_operations = {
+        # Add all necessary operations here based on the original use case
+        'add': lambda x, y: x + y,
+        'subtract': lambda x, y: x - y,
+        'multiply': lambda x, y: x * y,
+        'divide': lambda x, y: x / y if y != 0 else None,
+        'get_dict_value': lambda d, key: d.get(key),
+        'create_list': lambda *items: list(items),
+        'create_dict': lambda **items: items,
+        # Add more operations as needed
+    }
+    
+    if operation_name in allowed_operations:
+        return allowed_operations[operation_name](*args, **kwargs)
+    else:
+        raise ValueError(f"Operation '{operation_name}' not allowed")
