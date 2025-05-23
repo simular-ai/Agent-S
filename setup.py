@@ -28,6 +28,7 @@ setup(
         "pyautogui",
         "toml",
         "pytesseract",
+        "google-genai",
         'pywinauto; platform_system == "Windows"',  # Only for Windows
         'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
