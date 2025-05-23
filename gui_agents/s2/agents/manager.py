@@ -8,6 +8,7 @@ from gui_agents.s2.agents.grounding import ACI
 from gui_agents.s2.core.module import BaseModule
 from gui_agents.s2.core.knowledge import KnowledgeBase
 from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.s2.core.engine import OpenAIEmbeddingEngine
 from gui_agents.s2.utils.common_utils import (
     Dag,
     Node,
@@ -27,6 +28,7 @@ class Manager(BaseModule):
         engine_params: Dict,
         grounding_agent: ACI,
         local_kb_path: str,
+        embedding_engine=OpenAIEmbeddingEngine(),
         search_engine: Optional[str] = None,
         multi_round: bool = False,
         platform: str = platform.system().lower(),
@@ -55,10 +57,12 @@ class Manager(BaseModule):
 
         self.local_kb_path = local_kb_path
 
+        self.embedding_engine = embedding_engine
         self.knowledge_base = KnowledgeBase(
-            self.local_kb_path,
-            platform,
-            engine_params,
+            embedding_engine=self.embedding_engine,
+            local_kb_path=self.local_kb_path,
+            platform=platform,
+            engine_params=engine_params,
         )
 
         self.planner_history = []

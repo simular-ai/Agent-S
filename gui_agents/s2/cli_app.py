@@ -206,6 +206,13 @@ def main():
         help="The API key of the grounding model.",
     )
 
+    parser.add_argument(
+        "--embedding_engine_type",
+        type=str,
+        default="openai",
+        help="Specify the embedding engine type (supports openai, gemini)",
+    )
+
     args = parser.parse_args()
     assert (
         args.grounding_model_provider and args.grounding_model
@@ -257,6 +264,7 @@ def main():
         action_space="pyautogui",
         observation_type="mixed",
         search_engine=None,
+        embedding_engine_type=args.embedding_engine_type,
     )
 
     while True:

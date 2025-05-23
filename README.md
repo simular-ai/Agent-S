@@ -307,6 +307,7 @@ agent = AgentS2(
   action_space="pyautogui",
   observation_type="screenshot",
   search_engine="Perplexica"  # Assuming you have set up Perplexica.
+  embedding_engine_type="openai"  # Supports "gemini", "openai"
 )
 ```
 

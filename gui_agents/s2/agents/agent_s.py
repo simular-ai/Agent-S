@@ -9,6 +9,7 @@ from gui_agents.s2.agents.worker import Worker
 from gui_agents.s2.agents.manager import Manager
 from gui_agents.s2.utils.common_utils import Node
 from gui_agents.utils import download_kb_data
+from gui_agents.s2.core.engine import OpenAIEmbeddingEngine, GeminiEmbeddingEngine
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -93,6 +94,7 @@ class AgentS2(UIAgent):
         memory_root_path: str = os.getcwd(),
         memory_folder_name: str = "kb_s2",
         kb_release_tag: str = "v0.2.2",
+        embedding_engine_type: str = "openai",
     ):
         """Initialize AgentS2
 
@@ -106,6 +108,7 @@ class AgentS2(UIAgent):
             memory_root_path: Path to memory directory. Defaults to current working directory.
             memory_folder_name: Name of memory folder. Defaults to "kb_s2".
             kb_release_tag: Release tag for knowledge base. Defaults to "v0.2.2".
+            embedding_engine_type: Embedding engine to use for knowledge base. Defaults to "openai". Supports "openai" and "gemini".
         """
         super().__init__(
             engine_params,
@@ -147,23 +150,30 @@ class AgentS2(UIAgent):
                 "Note, the knowledge is continually updated during inference. Deleting the knowledge base will wipe out all experience gained since the last knowledge base download."
             )
 
+        if embedding_engine_type == "openai":
+            self.embedding_engine = OpenAIEmbeddingEngine()
+        elif embedding_engine_type == "gemini":
+            self.embedding_engine = GeminiEmbeddingEngine()
+
         self.reset()
 
     def reset(self) -> None:
         """Reset agent state and initialize components"""
         # Initialize core components
         self.planner = Manager(
-            self.engine_params,
-            self.grounding_agent,
-            platform=self.platform,
-            search_engine=self.engine,
+            engine_params=self.engine_params,
+            grounding_agent=self.grounding_agent,
             local_kb_path=self.local_kb_path,
+            embedding_engine=self.embedding_engine,
+            search_engine=self.engine,
+            platform=self.platform,
         )
         self.executor = Worker(
-            self.engine_params,
-            self.grounding_agent,
-            platform=self.platform,
+            engine_params=self.engine_params,
+            grounding_agent=self.grounding_agent,
             local_kb_path=self.local_kb_path,
+            embedding_engine=self.embedding_engine,
+            platform=self.platform,
         )
 
         # Reset state variables

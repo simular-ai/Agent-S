@@ -219,6 +219,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         memory_root_path=os.getcwd(),
         memory_folder_name=args.kb_name,
         kb_release_tag="v0.2.2",
+        embedding_engine_type="openai",
     )
 
     env = DesktopEnv(
