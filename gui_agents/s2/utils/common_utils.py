@@ -89,6 +89,43 @@ def parse_dag(text):
         return None
 
 
+def parse_dag(text):
+    """
+    Try extracting JSON from <json>…</json> tags first;
+    if not found, try ```json … ``` Markdown fences.
+    """
+
+    def _extract(pattern):
+        m = re.search(pattern, text, re.DOTALL)
+        return m.group(1).strip() if m else None
+
+    # 1) look for <json>…</json>
+    json_str = _extract(r"<json>(.*?)</json>")
+    # 2) fallback to ```json … ```
+    if json_str is None:
+        json_str = _extract(r"```json\s*(.*?)\s*```")
+
+    if json_str is None:
+        print("Error: JSON not found in either <json> tags or ```json``` fence")
+        return None
+
+    try:
+        payload = json.loads(json_str)
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON ({e})")
+        return None
+
+    if "dag" not in payload:
+        print("Error: 'dag' key not found in JSON")
+        return None
+
+    try:
+        return Dag(**payload["dag"])
+    except ValidationError as e:
+        print(f"Error: Invalid data structure - {e}")
+        return None
+
+
 def parse_single_code_from_string(input_string):
     input_string = input_string.strip()
     if input_string.strip() in ["WAIT", "DONE", "FAIL"]:
