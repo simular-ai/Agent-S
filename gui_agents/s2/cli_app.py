@@ -185,6 +185,12 @@ def main():
         default=1366,
         help="Width of screenshot image after processor rescaling",
     )
+    parser.add_argument(
+        "--grounding_model_resize_height",
+        type=int,
+        default=None,
+        help="Height of screenshot image after processor rescaling",
+    )
 
     # Grounding model config option 2: Self-hosted endpoint based
     parser.add_argument(
@@ -240,13 +246,16 @@ def main():
             "api_key": args.endpoint_api_key,
         }
     else:
+        grounding_height = args.grounding_model_resize_height
+        # If not provided, use the aspect ratio of the screen to compute the height
+        if grounding_height is None:
+            grounding_height = screen_height * args.grounding_model_resize_width / screen_width
+
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
             "grounding_width": args.grounding_model_resize_width,
-            "grounding_height": screen_height
-            * args.grounding_model_resize_width
-            / screen_width,
+            "grounding_height": grounding_height,
         }
 
     grounding_agent = OSWorldACI(

@@ -133,6 +133,12 @@ def config() -> argparse.Namespace:
         default=1366,
         help="Width of screenshot image after processor rescaling",
     )
+    parser.add_argument(
+        "--grounding_model_resize_height",
+        type=int,
+        default=None,
+        help="Height of screenshot image after processor rescaling",
+    )
 
     # Configuration 2
     parser.add_argument("--endpoint_provider", type=str, default="")
@@ -190,13 +196,16 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             "api_key": args.endpoint_api_key,
         }
     else:
+        grounding_height = args.grounding_model_resize_height
+        # If not provided, use the aspect ratio of the screen to compute the height
+        if grounding_height is None:
+            grounding_height = args.screen_height * args.grounding_model_resize_width / args.screen_width
+
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
             "grounding_width": args.grounding_model_resize_width,
-            "grounding_height": args.screen_height
-            * args.grounding_model_resize_width
-            / args.screen_width,
+            "grounding_height": grounding_height,
         }
 
     # NEW!
