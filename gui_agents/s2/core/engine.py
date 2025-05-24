@@ -3,7 +3,14 @@ import os
 import backoff
 import numpy as np
 from anthropic import Anthropic
-from openai import APIConnectionError, APIError, AzureOpenAI, OpenAI, RateLimitError
+from openai import (
+    AzureOpenAI,
+    APIConnectionError,
+    APIError,
+    AzureOpenAI,
+    OpenAI,
+    RateLimitError,
+)
 from google import genai
 from google.genai import types
 
@@ -86,6 +93,63 @@ class GeminiEmbeddingEngine(LMMEngine):
         )
 
         return np.array([i.values for i in result.embeddings])
+
+
+class AzureOpenAIEmbeddingEngine(LMMEngine):
+    def __init__(
+        self,
+        embedding_model: str = "text-embedding-3-small",
+        api_key=None,
+        api_version=None,
+        endpoint_url=None,
+    ):
+        """Init an Azure OpenAI Embedding engine
+
+        Args:
+            embedding_model (str, optional): Model name. Defaults to "text-embedding-3-small".
+            api_key (_type_, optional): Auth key from Azure OpenAI. Defaults to None.
+            api_version (_type_, optional): API version. Defaults to None.
+            endpoint_url (_type_, optional): Endpoint URL. Defaults to None.
+        """
+        self.model = embedding_model
+
+        api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named AZURE_OPENAI_API_KEY"
+            )
+        self.api_key = api_key
+
+        api_version = api_version or os.getenv("OPENAI_API_VERSION")
+        if api_version is None:
+            raise ValueError(
+                "An API Version needs to be provided in either the api_version parameter or as an environment variable named OPENAI_API_VERSION"
+            )
+        self.api_version = api_version
+
+        endpoint_url = endpoint_url or os.getenv("AZURE_OPENAI_ENDPOINT")
+        if endpoint_url is None:
+            raise ValueError(
+                "An Endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named AZURE_OPENAI_ENDPOINT"
+            )
+        self.endpoint_url = endpoint_url
+
+    @backoff.on_exception(
+        backoff.expo,
+        (
+            APIError,
+            RateLimitError,
+            APIConnectionError,
+        ),
+    )
+    def get_embeddings(self, text: str) -> np.ndarray:
+        client = AzureOpenAI(
+            api_key=self.api_key,
+            api_version=self.api_version,
+            azure_endpoint=self.endpoint_url,
+        )
+        response = client.embeddings.create(input=text, model=self.model)
+        return np.array([data.embedding for data in response.data])
 
 
 class LMMEngineOpenAI(LMMEngine):

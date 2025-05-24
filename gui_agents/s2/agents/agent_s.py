@@ -9,7 +9,11 @@ from gui_agents.s2.agents.worker import Worker
 from gui_agents.s2.agents.manager import Manager
 from gui_agents.s2.utils.common_utils import Node
 from gui_agents.utils import download_kb_data
-from gui_agents.s2.core.engine import OpenAIEmbeddingEngine, GeminiEmbeddingEngine
+from gui_agents.s2.core.engine import (
+    OpenAIEmbeddingEngine,
+    GeminiEmbeddingEngine,
+    AzureOpenAIEmbeddingEngine,
+)
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -154,6 +158,8 @@ class AgentS2(UIAgent):
             self.embedding_engine = OpenAIEmbeddingEngine()
         elif embedding_engine_type == "gemini":
             self.embedding_engine = GeminiEmbeddingEngine()
+        elif embedding_engine_type == "azure":
+            self.embedding_engine = AzureOpenAIEmbeddingEngine()
 
         self.reset()
 
