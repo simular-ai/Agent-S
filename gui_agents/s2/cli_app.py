@@ -249,7 +249,9 @@ def main():
         grounding_height = args.grounding_model_resize_height
         # If not provided, use the aspect ratio of the screen to compute the height
         if grounding_height is None:
-            grounding_height = screen_height * args.grounding_model_resize_width / screen_width
+            grounding_height = (
+                screen_height * args.grounding_model_resize_width / screen_width
+            )
 
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
