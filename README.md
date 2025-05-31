@@ -156,7 +156,7 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
    ```bash
    docker compose up -d
    ```
-5. Next, export your Perplexica URL. This URL is used to interact with the Perplexica API backend. The port is given by the `config.toml` in your Perplexica directory.
+5. Export your Perplexica URL using the port found in the `docker-compose.yaml` file. The port before the colon : in the perplexica app represents the port exposed by your host machine.
 
    ```bash
    export PERPLEXICA_URL=http://localhost:{port}/api/search
