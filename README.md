@@ -156,7 +156,7 @@ Agent S works best with web-knowledge retrieval. To enable this feature, you nee
    ```bash
    docker compose up -d
    ```
-5. Export your Perplexica URL using the port found in the `[docker-compose.yaml](https://github.com/ItzCrazyKns/Perplexica/blob/master/docker-compose.yaml)` file Under `app/ports`, you'll see `3000:3000`. The port is the left-hand number (in this case, 3000).
+5. Export your Perplexica URL using the port found in the [`docker-compose.yaml`](https://github.com/ItzCrazyKns/Perplexica/blob/master/docker-compose.yaml) file Under `app/ports`, you'll see `3000:3000`. The port is the left-hand number (in this case, 3000).
 
    ```bash
    export PERPLEXICA_URL=http://localhost:{port}/api/search
