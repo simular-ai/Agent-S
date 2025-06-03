@@ -3,6 +3,8 @@ import os
 from typing import Dict, Tuple
 
 import numpy as np
+
+from gui_agents.s2.core.engine import OpenAIEmbeddingEngine, GeminiEmbeddingEngine
 from sklearn.metrics.pairwise import cosine_similarity
 
 from gui_agents.s2.core.module import BaseModule
@@ -19,7 +21,6 @@ from gui_agents.s2.utils.query_perplexica import query_to_perplexica
 class KnowledgeBase(BaseModule):
     def __init__(
         self,
-        embedding_engine,
         local_kb_path: str,
         platform: str,
         engine_params: Dict,
@@ -30,7 +31,15 @@ class KnowledgeBase(BaseModule):
         self.local_kb_path = local_kb_path
 
         # initialize embedding engine
-        self.embedding_engine = embedding_engine
+        embedding_provider = os.getenv("EMBEDDING_PROVIDER", "openai").lower()
+        if embedding_provider == "gemini":
+            self.embedding_engine = GeminiEmbeddingEngine()
+        elif embedding_provider == "openai":
+            self.embedding_engine = OpenAIEmbeddingEngine()
+        else:
+            raise ValueError(
+                f"Unsupported EMBEDDING_PROVIDER: {embedding_provider}. Supported values are 'openai' or 'gemini'."
+            )
 
         # Initialize paths for different memory types
         self.episodic_memory_path = os.path.join(
