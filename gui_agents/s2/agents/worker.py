@@ -1,7 +1,7 @@
 import logging
 import re
 import textwrap
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable, Optional
 import platform
 
 from gui_agents.s2.agents.grounding import ACI
@@ -96,7 +96,7 @@ class Worker(BaseModule):
         if len(self.reflection_agent.messages) > self.max_trajector_length + 1:
             self.reflection_agent.remove_message_at(1)
 
-    def generate_next_action(
+    async def generate_next_action(
         self,
         instruction: str,
         search_query: str,
@@ -105,6 +105,8 @@ class Worker(BaseModule):
         future_tasks: List[Node],
         done_task: List[Node],
         obs: Dict,
+        on_reflection_generated: Optional[Callable] = None,
+        on_action_generated: Optional[Callable] = None,
     ) -> Tuple[Dict, List]:
         """
         Predict the next action(s) based on the current observation.
@@ -124,7 +126,9 @@ class Worker(BaseModule):
                     + subtask_info
                 )
                 retrieved_similar_subtask, retrieved_subtask_experience = (
-                    self.knowledge_base.retrieve_episodic_experience(subtask_query_key)
+                    await self.knowledge_base.retrieve_episodic_experience(
+                        subtask_query_key
+                    )
                 )
 
                 # Dirty fix to replace id with element description during subtask retrieval
@@ -186,9 +190,11 @@ class Worker(BaseModule):
                     image_content=obs["screenshot"],
                     role="user",
                 )
-                reflection = call_llm_safe(self.reflection_agent)
+                reflection = await call_llm_safe(self.reflection_agent)
                 self.reflections.append(reflection)
                 logger.info("REFLECTION: %s", reflection)
+                if on_reflection_generated:
+                    await on_reflection_generated(reflection)
 
         generator_message = (
             f"\nYou may use this reflection on the previous action and overall trajectory: {reflection}\n"
@@ -207,10 +213,20 @@ class Worker(BaseModule):
             generator_message, image_content=obs["screenshot"], role="user"
         )
 
-        plan = call_llm_safe(self.generator_agent)
+        plan = await call_llm_safe(self.generator_agent)
+
         self.planner_history.append(plan)
         logger.info("PLAN: %s", plan)
         self.generator_agent.add_message(plan, role="assistant")
+
+        if on_action_generated:
+            await on_action_generated(
+                {
+                    "executor_plan": plan,
+                    "current_subtask": subtask,
+                    "current_subtask_info": subtask_info,
+                }
+            )
 
         # Calculate input/output tokens and gpt-4o cost
         input_tokens, output_tokens = calculate_tokens(self.generator_agent.messages)
@@ -220,7 +236,7 @@ class Worker(BaseModule):
 
         # Use the DescriptionBasedACI to convert agent_action("desc") into agent_action([x, y])
         try:
-            agent.assign_coordinates(plan, obs)
+            await agent.assign_coordinates(plan, obs)
             plan_code = parse_single_code_from_string(plan.split("Grounded Action")[-1])
             plan_code = sanitize_code(plan_code)
             plan_code = extract_first_agent_function(plan_code)

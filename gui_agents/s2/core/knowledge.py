@@ -67,7 +67,7 @@ class KnowledgeBase(BaseModule):
 
         self.save_knowledge = save_knowledge
 
-    def retrieve_knowledge(
+    async def retrieve_knowledge(
         self, instruction: str, search_query: str, search_engine: str = "llm"
     ) -> Tuple[str, str]:
         """Retrieve knowledge using search engine
@@ -77,11 +77,11 @@ class KnowledgeBase(BaseModule):
             search_engine (str): search engine to use"""
 
         # Use search engine to retrieve knowledge based on the formulated query
-        search_results = self._search(instruction, search_query, search_engine)
+        search_results = await self._search(instruction, search_query, search_engine)
 
         return search_query, search_results
 
-    def formulate_query(self, instruction: str, observation: Dict) -> str:
+    async def formulate_query(self, instruction: str, observation: Dict) -> str:
         """Formulate search query based on instruction and current state"""
         query_path = os.path.join(
             self.local_kb_path, self.platform, "formulate_query.json"
@@ -111,7 +111,9 @@ class KnowledgeBase(BaseModule):
             role="user",
         )
 
-        search_query = self.query_formulator.get_response().strip().replace('"', "")
+        responses = await self.query_formulator.get_response()
+        search_query = responses.strip().replace('"', "")
+
         print("search query: ", search_query)
         formulate_query[instruction] = search_query
         with open(query_path, "w") as f:
@@ -119,7 +121,9 @@ class KnowledgeBase(BaseModule):
 
         return search_query
 
-    def _search(self, instruction: str, search_query: str, search_engine: str) -> str:
+    async def _search(
+        self, instruction: str, search_query: str, search_engine: str
+    ) -> str:
         """Execute search using specified engine"""
 
         # Default to perplexica rag knowledge to see if the query exists
@@ -139,7 +143,7 @@ class KnowledgeBase(BaseModule):
             self.llm_search_agent.reset()
             # Use LLM's internal knowledge like a search engine
             self.llm_search_agent.add_message(search_query, role="user")
-            search_results = self.llm_search_agent.get_response()
+            search_results = await self.llm_search_agent.get_response()
         elif search_engine.lower() == "perplexica":
             # Use perplexica to search for the query
             search_results = query_to_perplexica(search_query)
@@ -159,7 +163,7 @@ class KnowledgeBase(BaseModule):
 
         return search_results
 
-    def retrieve_narrative_experience(self, instruction: str) -> Tuple[str, str]:
+    async def retrieve_narrative_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve narrative experience using embeddings"""
 
         knowledge_base = load_knowledge_base(self.narrative_memory_path)
@@ -172,7 +176,9 @@ class KnowledgeBase(BaseModule):
         instruction_embedding = embeddings.get(instruction)
 
         if instruction_embedding is None:
-            instruction_embedding = self.embedding_engine.get_embeddings(instruction)
+            instruction_embedding = await self.embedding_engine.get_embeddings(
+                instruction
+            )
             embeddings[instruction] = instruction_embedding
 
         # Get or create embeddings for knowledge base entries
@@ -180,7 +186,7 @@ class KnowledgeBase(BaseModule):
         for key in knowledge_base:
             candidate_embedding = embeddings.get(key)
             if candidate_embedding is None:
-                candidate_embedding = self.embedding_engine.get_embeddings(key)
+                candidate_embedding = await self.embedding_engine.get_embeddings(key)
                 embeddings[key] = candidate_embedding
 
             candidate_embeddings.append(candidate_embedding)
@@ -196,7 +202,7 @@ class KnowledgeBase(BaseModule):
         idx = 1 if keys[sorted_indices[0]] == instruction else 0
         return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
 
-    def retrieve_episodic_experience(self, instruction: str) -> Tuple[str, str]:
+    async def retrieve_episodic_experience(self, instruction: str) -> Tuple[str, str]:
         """Retrieve similar task experience using embeddings"""
 
         knowledge_base = load_knowledge_base(self.episodic_memory_path)
@@ -209,7 +215,9 @@ class KnowledgeBase(BaseModule):
         instruction_embedding = embeddings.get(instruction)
 
         if instruction_embedding is None:
-            instruction_embedding = self.embedding_engine.get_embeddings(instruction)
+            instruction_embedding = await self.embedding_engine.get_embeddings(
+                instruction
+            )
             embeddings[instruction] = instruction_embedding
 
         # Get or create embeddings for knowledge base entries
@@ -217,7 +225,7 @@ class KnowledgeBase(BaseModule):
         for key in knowledge_base:
             candidate_embedding = embeddings.get(key)
             if candidate_embedding is None:
-                candidate_embedding = self.embedding_engine.get_embeddings(key)
+                candidate_embedding = await self.embedding_engine.get_embeddings(key)
                 embeddings[key] = candidate_embedding
 
             candidate_embeddings.append(candidate_embedding)
@@ -233,7 +241,7 @@ class KnowledgeBase(BaseModule):
         idx = 1 if keys[sorted_indices[0]] == instruction else 0
         return keys[sorted_indices[idx]], knowledge_base[keys[sorted_indices[idx]]]
 
-    def knowledge_fusion(
+    async def knowledge_fusion(
         self,
         observation: Dict,
         instruction: str,
@@ -258,9 +266,9 @@ class KnowledgeBase(BaseModule):
             ),
             role="user",
         )
-        return self.knowledge_fusion_agent.get_response()
+        return await self.knowledge_fusion_agent.get_response()
 
-    def save_episodic_memory(self, subtask_key: str, subtask_traj: str) -> None:
+    async def save_episodic_memory(self, subtask_key: str, subtask_traj: str) -> None:
         """Save episodic memory (subtask level knowledge).
 
         Args:
@@ -276,7 +284,7 @@ class KnowledgeBase(BaseModule):
             kb = {}
 
         if subtask_key not in kb:
-            subtask_summarization = self.summarize_episode(subtask_traj)
+            subtask_summarization = await self.summarize_episode(subtask_traj)
             kb[subtask_key] = subtask_summarization
 
             if self.save_knowledge:
@@ -286,7 +294,7 @@ class KnowledgeBase(BaseModule):
 
         return kb.get(subtask_key)
 
-    def save_narrative_memory(self, task_key: str, task_traj: str) -> None:
+    async def save_narrative_memory(self, task_key: str, task_traj: str) -> None:
         """Save narrative memory (task level knowledge).
 
         Args:
@@ -338,7 +346,7 @@ class KnowledgeBase(BaseModule):
             + meta_data["executor_plan"]
         )
 
-    def handle_subtask_trajectory(self, meta_data: Dict) -> None:
+    async def handle_subtask_trajectory(self, meta_data: Dict) -> None:
         """Handle subtask trajectory updates based on subtask status.
 
         Args:
@@ -358,7 +366,9 @@ class KnowledgeBase(BaseModule):
                 subtask_key = self.current_subtask_trajectory.split(
                     "\n----------------------\n\nPlan:\n"
                 )[0]
-                self.save_episodic_memory(subtask_key, self.current_subtask_trajectory)
+                await self.save_episodic_memory(
+                    subtask_key, self.current_subtask_trajectory
+                )
                 self.current_subtask_trajectory = ""
                 return True
 
@@ -379,7 +389,7 @@ class KnowledgeBase(BaseModule):
             )
             return False
 
-    def finalize_task(self) -> None:
+    async def finalize_task(self) -> None:
         """Finalize the task by saving any remaining trajectories."""
         # Save any remaining subtask trajectory
         if self.current_subtask_trajectory:
@@ -391,14 +401,16 @@ class KnowledgeBase(BaseModule):
 
         # Save the complete task trajectory
         if self.task_trajectory and self.current_search_query:
-            self.save_narrative_memory(self.current_search_query, self.task_trajectory)
+            await self.save_narrative_memory(
+                self.current_search_query, self.task_trajectory
+            )
 
         # Reset trajectories
         self.task_trajectory = ""
         self.current_subtask_trajectory = ""
         self.current_search_query = ""
 
-    def summarize_episode(self, trajectory):
+    async def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection
         Args:
             trajectory: str: The episode experience to be summarized
@@ -406,18 +418,18 @@ class KnowledgeBase(BaseModule):
 
         # Create Reflection on whole trajectories for next round trial, keep earlier messages as exemplars
         self.episode_summarization_agent.add_message(trajectory)
-        subtask_summarization = call_llm_safe(self.episode_summarization_agent)
+        subtask_summarization = await call_llm_safe(self.episode_summarization_agent)
         self.episode_summarization_agent.add_message(subtask_summarization)
 
         return subtask_summarization
 
-    def summarize_narrative(self, trajectory):
+    async def summarize_narrative(self, trajectory):
         """Summarize the narrative experience for lifelong learning reflection
         Args:
             trajectory: str: The narrative experience to be summarized
         """
         # Create Reflection on whole trajectories for next round trial
         self.narrative_summarization_agent.add_message(trajectory)
-        task_summarization = call_llm_safe(self.narrative_summarization_agent)
+        task_summarization = await call_llm_safe(self.narrative_summarization_agent)
 
         return task_summarization

@@ -264,7 +264,7 @@ class LMMAgent:
 
             self.messages.append(message)
 
-    def get_response(
+    async def get_response(
         self,
         user_message=None,
         messages=None,
@@ -280,7 +280,7 @@ class LMMAgent:
                 {"role": "user", "content": [{"type": "text", "text": user_message}]}
             )
 
-        return self.engine.generate(
+        return await self.engine.generate(
             messages,
             temperature=temperature,
             max_new_tokens=max_new_tokens,

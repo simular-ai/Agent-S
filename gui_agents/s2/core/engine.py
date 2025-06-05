@@ -2,8 +2,16 @@ import os
 
 import backoff
 import numpy as np
-from anthropic import Anthropic
-from openai import APIConnectionError, APIError, AzureOpenAI, OpenAI, RateLimitError
+from anthropic import Anthropic, AsyncAnthropic, AsyncAnthropicVertex
+from openai import (
+    APIConnectionError,
+    APIError,
+    AzureOpenAI,
+    OpenAI,
+    RateLimitError,
+    AsyncOpenAI,
+    AsyncAzureOpenAI,
+)
 
 
 class LMMEngine:
@@ -44,9 +52,9 @@ class OpenAIEmbeddingEngine(LMMEngine):
             APIConnectionError,
         ),
     )
-    def get_embeddings(self, text: str) -> np.ndarray:
-        client = OpenAI(api_key=self.api_key)
-        response = client.embeddings.create(model=self.model, input=text)
+    async def get_embeddings(self, text: str) -> np.ndarray:
+        client = AsyncOpenAI(api_key=self.api_key)
+        response = await client.embeddings.create(model=self.model, input=text)
         if self.display_cost:
             total_tokens = response.usage.total_tokens
             cost = self.cost_per_thousand_tokens * total_tokens / 1000
@@ -70,20 +78,22 @@ class LMMEngineOpenAI(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(api_key=self.api_key)
+        self.llm_client = AsyncOpenAI(api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
         return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
+            (
+                await self.llm_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_new_tokens if max_new_tokens else 4096,
+                    temperature=temperature,
+                    **kwargs,
+                )
             )
             .choices[0]
             .message.content
@@ -104,17 +114,20 @@ class LMMEngineAnthropic(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named ANTHROPIC_API_KEY"
             )
 
+        location = os.getenv("ANTHROPIC_LOCATION")
+        project_id = os.getenv("GCP_PROJECT_ID")
         self.api_key = api_key
 
-        self.llm_client = Anthropic(api_key=self.api_key)
+        # self.llm_client = Anthropic(api_key=self.api_key)
+        self.llm_client = AsyncAnthropicVertex(region="us-east5", project_id=project_id)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
         if self.thinking:
-            full_response = self.llm_client.messages.create(
+            full_response = await self.llm_client.messages.create(
                 system=messages[0]["content"][0]["text"],
                 model=self.model,
                 messages=messages[1:],
@@ -128,13 +141,15 @@ class LMMEngineAnthropic(LMMEngine):
             return full_response.content[1].text
 
         return (
-            self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
+            (
+                await self.llm_client.messages.create(
+                    system=messages[0]["content"][0]["text"],
+                    model=self.model,
+                    messages=messages[1:],
+                    max_tokens=max_new_tokens if max_new_tokens else 4096,
+                    temperature=temperature,
+                    **kwargs,
+                )
             )
             .content[0]
             .text
@@ -163,20 +178,22 @@ class LMMEngineGemini(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.llm_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
         return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
+            (
+                await self.llm_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_new_tokens if max_new_tokens else 4096,
+                    temperature=temperature,
+                    **kwargs,
+                )
             )
             .choices[0]
             .message.content
@@ -205,20 +222,22 @@ class LMMEngineOpenRouter(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.llm_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
         return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
+            (
+                await self.llm_client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    max_tokens=max_new_tokens if max_new_tokens else 4096,
+                    temperature=temperature,
+                    **kwargs,
+                )
             )
             .choices[0]
             .message.content
@@ -259,7 +278,7 @@ class LMMEngineAzureOpenAI(LMMEngine):
         self.azure_endpoint = azure_endpoint
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = AzureOpenAI(
+        self.llm_client = AsyncAzureOpenAI(
             azure_endpoint=self.azure_endpoint,
             api_key=self.api_key,
             api_version=self.api_version,
@@ -267,9 +286,9 @@ class LMMEngineAzureOpenAI(LMMEngine):
         self.cost = 0.0
 
     # @backoff.on_exception(backoff.expo, (APIConnectionError, APIError, RateLimitError), max_tries=10)
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
-        completion = self.llm_client.chat.completions.create(
+        completion = await self.llm_client.chat.completions.create(
             model=self.model,
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
@@ -297,11 +316,11 @@ class LMMEnginevLLM(LMMEngine):
 
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.llm_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
 
     # @backoff.on_exception(backoff.expo, (APIConnectionError, APIError, RateLimitError), max_tries=10)
     # TODO: Default params chosen for the Qwen model
-    def generate(
+    async def generate(
         self,
         messages,
         temperature=0.0,
@@ -311,7 +330,7 @@ class LMMEnginevLLM(LMMEngine):
         **kwargs
     ):
         """Generate the next message based on previous messages"""
-        completion = self.llm_client.chat.completions.create(
+        completion = await self.llm_client.chat.completions.create(
             model=self.model,
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
@@ -336,20 +355,22 @@ class LMMEngineHuggingFace(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+        self.llm_client = AsyncOpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+    async def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
         return (
-            self.llm_client.chat.completions.create(
-                model="tgi",
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
+            (
+                await self.llm_client.chat.completions.create(
+                    model="tgi",
+                    messages=messages,
+                    max_tokens=max_new_tokens if max_new_tokens else 4096,
+                    temperature=temperature,
+                    **kwargs,
+                )
             )
             .choices[0]
             .message.content

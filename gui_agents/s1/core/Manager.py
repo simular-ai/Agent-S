@@ -59,7 +59,7 @@ class Manager(BaseModule):
         self.multi_round = multi_round
         self.platform = platform
 
-    def summarize_episode(self, trajectory):
+    async def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection
         Args:
             trajectory: str: The episode experience to be summarized
@@ -67,23 +67,25 @@ class Manager(BaseModule):
 
         # Create Reflection on whole trajectories for next round trial, keep earlier messages as exemplars
         self.episode_summarization_agent.add_message(trajectory)
-        subtask_summarization = call_llm_safe(self.episode_summarization_agent)
+        subtask_summarization = await call_llm_safe(self.episode_summarization_agent)
         self.episode_summarization_agent.add_message(subtask_summarization)
 
         return subtask_summarization
 
-    def summarize_narrative(self, trajectory):
+    async def summarize_narrative(self, trajectory):
         """Summarize the narrative experience for lifelong learning reflection
         Args:
             trajectory: str: The narrative experience to be summarized
         """
         # Create Reflection on whole trajectories for next round trial
         self.narrative_summarization_agent.add_message(trajectory)
-        lifelong_learning_reflection = call_llm_safe(self.narrative_summarization_agent)
+        lifelong_learning_reflection = await call_llm_safe(
+            self.narrative_summarization_agent
+        )
 
         return lifelong_learning_reflection
 
-    def _generate_step_by_step_plan(
+    async def _generate_step_by_step_plan(
         self, observation: Dict, instruction: str, failure_feedback: str = ""
     ) -> Tuple[Dict, str]:
         agent = self.grounding_agent
@@ -160,7 +162,7 @@ class Manager(BaseModule):
 
         logger.info("GENERATING HIGH LEVEL PLAN")
 
-        plan = call_llm_safe(self.generator_agent)
+        plan = await call_llm_safe(self.generator_agent)
 
         if plan == "":
             raise Exception("Plan Generation Failed - Fix the Prompt")
@@ -190,7 +192,7 @@ class Manager(BaseModule):
 
         return planner_info, plan
 
-    def _generate_dag(self, instruction: str, plan: str) -> Tuple[Dict, Dag]:
+    async def _generate_dag(self, instruction: str, plan: str) -> Tuple[Dict, Dag]:
         # Add initial instruction and plan to the agent's message history
         self.dag_translator_agent.add_message(
             f"Instruction: {instruction}\nPlan: {plan}"
@@ -199,7 +201,7 @@ class Manager(BaseModule):
         logger.info("GENERATING DAG")
 
         # Generate DAG
-        dag_raw = call_llm_safe(self.dag_translator_agent)
+        dag_raw = await call_llm_safe(self.dag_translator_agent)
 
         dag = parse_dag(dag_raw)
 
@@ -255,7 +257,7 @@ class Manager(BaseModule):
         ]
         return sorted_nodes
 
-    def get_action_queue(
+    async def get_action_queue(
         self,
         instruction: str,
         observation: Dict,
@@ -265,12 +267,12 @@ class Manager(BaseModule):
         instruction:str: Instruction for the task
         """
         # Generate the high level plan
-        planner_info, plan = self._generate_step_by_step_plan(
+        planner_info, plan = await self._generate_step_by_step_plan(
             observation, instruction, failure_feedback
         )
 
         # Generate the DAG
-        dag_info, dag = self._generate_dag(instruction, plan)
+        dag_info, dag = await self._generate_dag(instruction, plan)
 
         # Topological sort of the DAG
         action_queue = self._topological_sort(dag)

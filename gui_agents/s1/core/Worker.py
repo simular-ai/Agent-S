@@ -104,7 +104,7 @@ class Worker(BaseModule):
                         # replace message content
                         content["text"] = result
 
-    def generate_next_action(
+    async def generate_next_action(
         self,
         instruction: str,
         search_query: str,
@@ -173,7 +173,7 @@ class Worker(BaseModule):
                 + "\n\n".join(self.planner_history)
                 + "\n"
             )
-            reflection = call_llm_safe(self.reflection_agent)
+            reflection = await call_llm_safe(self.reflection_agent)
             self.reflections.append(reflection)
             self.reflection_agent.add_message(reflection)
 
@@ -208,7 +208,7 @@ class Worker(BaseModule):
             generator_message, image_content=obs["screenshot"]
         )
 
-        plan = call_llm_safe(self.generator_agent)
+        plan = await call_llm_safe(self.generator_agent)
         self.planner_history.append(plan)
         logger.info("PLAN: %s", plan)
 

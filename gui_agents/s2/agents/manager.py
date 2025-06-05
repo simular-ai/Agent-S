@@ -1,7 +1,7 @@
 import logging
 import re
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Callable
 import platform
 
 from gui_agents.s2.agents.grounding import ACI
@@ -67,7 +67,7 @@ class Manager(BaseModule):
         self.search_engine = search_engine
         self.multi_round = multi_round
 
-    def summarize_episode(self, trajectory):
+    async def summarize_episode(self, trajectory):
         """Summarize the episode experience for lifelong learning reflection
         Args:
             trajectory: str: The episode experience to be summarized
@@ -75,25 +75,27 @@ class Manager(BaseModule):
 
         # Create Reflection on whole trajectories for next round trial, keep earlier messages as exemplars
         self.episode_summarization_agent.add_message(trajectory, role="user")
-        subtask_summarization = call_llm_safe(self.episode_summarization_agent)
+        subtask_summarization = await call_llm_safe(self.episode_summarization_agent)
         self.episode_summarization_agent.add_message(
             subtask_summarization, role="assistant"
         )
 
         return subtask_summarization
 
-    def summarize_narrative(self, trajectory):
+    async def summarize_narrative(self, trajectory):
         """Summarize the narrative experience for lifelong learning reflection
         Args:
             trajectory: str: The narrative experience to be summarized
         """
         # Create Reflection on whole trajectories for next round trial
         self.narrative_summarization_agent.add_message(trajectory, role="user")
-        lifelong_learning_reflection = call_llm_safe(self.narrative_summarization_agent)
+        lifelong_learning_reflection = await call_llm_safe(
+            self.narrative_summarization_agent
+        )
 
         return lifelong_learning_reflection
 
-    def _generate_step_by_step_plan(
+    async def _generate_step_by_step_plan(
         self,
         observation: Dict,
         instruction: str,
@@ -117,7 +119,7 @@ class Manager(BaseModule):
         # Perform Retrieval only at the first planning step
         if self.turn_count == 0:
 
-            self.search_query = self.knowledge_base.formulate_query(
+            self.search_query = await self.knowledge_base.formulate_query(
                 instruction, observation
             )
 
@@ -126,7 +128,7 @@ class Manager(BaseModule):
             integrated_knowledge = ""
             # Retrieve most similar narrative (task) experience
             most_similar_task, retrieved_experience = (
-                self.knowledge_base.retrieve_narrative_experience(instruction)
+                await self.knowledge_base.retrieve_narrative_experience(instruction)
             )
             logger.info(
                 "SIMILAR TASK EXPERIENCE: %s",
@@ -135,7 +137,7 @@ class Manager(BaseModule):
 
             # Retrieve knowledge from the web if search_engine is provided
             if self.search_engine is not None:
-                retrieved_knowledge = self.knowledge_base.retrieve_knowledge(
+                retrieved_knowledge = await self.knowledge_base.retrieve_knowledge(
                     instruction=instruction,
                     search_query=self.search_query,
                     search_engine=self.search_engine,
@@ -144,7 +146,7 @@ class Manager(BaseModule):
 
                 if retrieved_knowledge is not None:
                     # Fuse the retrieved knowledge and experience
-                    integrated_knowledge = self.knowledge_base.knowledge_fusion(
+                    integrated_knowledge = await self.knowledge_base.knowledge_fusion(
                         observation=observation,
                         instruction=instruction,
                         web_knowledge=retrieved_knowledge,
@@ -192,7 +194,7 @@ class Manager(BaseModule):
 
         logger.info("GENERATING HIGH LEVEL PLAN")
 
-        plan = call_llm_safe(self.generator_agent)
+        plan = await call_llm_safe(self.generator_agent)
         if plan == "":
             raise Exception("Plan Generation Failed - Fix the Prompt")
 
@@ -218,7 +220,7 @@ class Manager(BaseModule):
 
         return planner_info, plan
 
-    def _generate_dag(self, instruction: str, plan: str) -> Tuple[Dict, Dag]:
+    async def _generate_dag(self, instruction: str, plan: str) -> Tuple[Dict, Dag]:
         # For the re-planning case, remove the prior input since this should only translate the new plan
         self.dag_translator_agent.reset()
 
@@ -230,7 +232,7 @@ class Manager(BaseModule):
         logger.info("GENERATING DAG")
 
         # Generate DAG
-        dag_raw = call_llm_safe(self.dag_translator_agent)
+        dag_raw = await call_llm_safe(self.dag_translator_agent)
 
         dag = parse_dag(dag_raw)
 
@@ -286,19 +288,20 @@ class Manager(BaseModule):
         ]
         return sorted_nodes
 
-    def get_action_queue(
+    async def get_action_queue(
         self,
         instruction: str,
         observation: Dict,
         failed_subtask: Optional[Node] = None,
         completed_subtasks_list: List[Node] = [],
         remaining_subtasks_list: List[Node] = [],
+        on_goal_plan_generated: Optional[Callable] = None,
     ):
         """Generate the action list based on the instruction
         instruction:str: Instruction for the task
         """
 
-        planner_info, plan = self._generate_step_by_step_plan(
+        planner_info, plan = await self._generate_step_by_step_plan(
             observation,
             instruction,
             failed_subtask,
@@ -306,8 +309,11 @@ class Manager(BaseModule):
             remaining_subtasks_list,
         )
 
+        if on_goal_plan_generated:
+            await on_goal_plan_generated(planner_info)
+
         # Generate the DAG
-        dag_info, dag = self._generate_dag(instruction, plan)
+        dag_info, dag = await self._generate_dag(instruction, plan)
 
         # Topological sort of the DAG
         action_queue = self._topological_sort(dag)

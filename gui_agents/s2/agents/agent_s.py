@@ -9,6 +9,8 @@ from gui_agents.s2.agents.worker import Worker
 from gui_agents.s2.agents.manager import Manager
 from gui_agents.s2.utils.common_utils import Node
 from gui_agents.utils import download_kb_data
+from typing import Callable
+import time
 
 logger = logging.getLogger("desktopenv.agent")
 
@@ -184,7 +186,17 @@ class AgentS2(UIAgent):
         self.executor.reset()
         self.step_count = 0
 
-    def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
+    async def predict(
+        self,
+        instruction: str,
+        observation: Dict,
+        # callback func when goal plan generated
+        on_goal_plan_generated: Optional[Callable] = None,
+        # callback func when subtask reflection generated
+        on_reflection_generated: Optional[Callable] = None,
+        # callback func when action generated
+        on_action_generated: Optional[Callable] = None,
+    ) -> Tuple[Dict, List[str]]:
         # Initialize the three info dictionaries
         planner_info = {}
         executor_info = {}
@@ -202,13 +214,20 @@ class AgentS2(UIAgent):
             # If replan is true, generate a new plan. True at start, after a failed plan, or after subtask completion
             if self.requires_replan:
                 logger.info("(RE)PLANNING...")
-                planner_info, self.subtasks = self.planner.get_action_queue(
+                # log timing for get_action_queue
+                start_time = time.time()
+                logger.info(f"GET ACTION QUEUE START TIME: {start_time}")
+                planner_info, self.subtasks = await self.planner.get_action_queue(
                     instruction=instruction,
                     observation=observation,
                     failed_subtask=self.failure_subtask,
                     completed_subtasks_list=self.completed_tasks,
                     remaining_subtasks_list=self.subtasks,
+                    on_goal_plan_generated=on_goal_plan_generated,
                 )
+                end_time = time.time()
+                logger.info(f"GET ACTION QUEUE END TIME: {end_time}")
+                logger.info(f"GET ACTION QUEUE TIME: {end_time - start_time}")
 
                 self.requires_replan = False
                 if "search_query" in planner_info:
@@ -245,7 +264,9 @@ class AgentS2(UIAgent):
                 self.subtask_status = "Start"
 
             # get the next action from the executor
-            executor_info, actions = self.executor.generate_next_action(
+            start_time = time.time()
+            logger.info(f"GENERATE NEXT ACTION START TIME: {start_time}")
+            executor_info, actions = await self.executor.generate_next_action(
                 instruction=instruction,
                 search_query=self.search_query,
                 subtask=self.current_subtask.name,
@@ -253,7 +274,12 @@ class AgentS2(UIAgent):
                 future_tasks=self.subtasks,
                 done_task=self.completed_tasks,
                 obs=observation,
+                on_reflection_generated=on_reflection_generated,
+                on_action_generated=on_action_generated,
             )
+            end_time = time.time()
+            logger.info(f"GENERATE NEXT ACTION END TIME: {end_time}")
+            logger.info(f"GENERATE NEXT ACTION TIME: {end_time - start_time}")
 
             self.step_count += 1
 
@@ -313,7 +339,7 @@ class AgentS2(UIAgent):
 
         return info, actions
 
-    def update_narrative_memory(self, trajectory: str) -> None:
+    async def update_narrative_memory(self, trajectory: str) -> None:
         """Update narrative memory from task trajectory
 
         Args:
@@ -329,7 +355,7 @@ class AgentS2(UIAgent):
                 reflections = {}
 
             if self.search_query not in reflections:
-                reflection = self.planner.summarize_narrative(trajectory)
+                reflection = await self.planner.summarize_narrative(trajectory)
                 reflections[self.search_query] = reflection
 
             with open(reflection_path, "w") as f:
@@ -338,7 +364,9 @@ class AgentS2(UIAgent):
         except Exception as e:
             logger.error(f"Failed to update narrative memory: {e}")
 
-    def update_episodic_memory(self, meta_data: Dict, subtask_trajectory: str) -> str:
+    async def update_episodic_memory(
+        self, meta_data: Dict, subtask_trajectory: str
+    ) -> str:
         """Update episodic memory from subtask trajectory
 
         Args:
@@ -367,7 +395,7 @@ class AgentS2(UIAgent):
                 except:
                     kb = {}
                 if subtask_key not in kb.keys():
-                    subtask_summarization = self.planner.summarize_episode(
+                    subtask_summarization = await self.planner.summarize_episode(
                         subtask_trajectory
                     )
                     kb[subtask_key] = subtask_summarization

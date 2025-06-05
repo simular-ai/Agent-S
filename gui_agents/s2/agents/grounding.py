@@ -191,7 +191,7 @@ class OSWorldACI(ACI):
         )
 
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
-    def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
+    async def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
 
         # Reset the grounding model state
         self.grounding_model.reset()
@@ -203,7 +203,7 @@ class OSWorldACI(ACI):
         )
 
         # Generate and parse coordinates
-        response = call_llm_safe(self.grounding_model)
+        response = await call_llm_safe(self.grounding_model)
         print("RAW GROUNDING MODEL RESPONSE:", response)
         numericals = re.findall(r"\d+", response)
         assert len(numericals) >= 2
@@ -247,7 +247,7 @@ class OSWorldACI(ACI):
         return ocr_table, ocr_elements
 
     # Given the state and worker's text phrase, generate the coords of the first/last word in the phrase
-    def generate_text_coords(
+    async def generate_text_coords(
         self, phrase: str, obs: Dict, alignment: str = ""
     ) -> List[int]:
 
@@ -269,7 +269,7 @@ class OSWorldACI(ACI):
         )
 
         # Obtain the target element
-        response = call_llm_safe(self.text_span_agent)
+        response = await call_llm_safe(self.text_span_agent)
         print("TEXT SPAN AGENT RESPONSE:", response)
         numericals = re.findall(r"\d+", response)
         if len(numericals) > 0:
@@ -292,7 +292,7 @@ class OSWorldACI(ACI):
 
     # Takes a description based action and assigns the coordinates for any coordinate based action
     # Raises an error if function can't be parsed
-    def assign_coordinates(self, plan: str, obs: Dict):
+    async def assign_coordinates(self, plan: str, obs: Dict):
 
         # Reset coords from previous action generation
         self.coords1, self.coords2 = None, None
@@ -311,15 +311,19 @@ class OSWorldACI(ACI):
             and len(args) >= 1
             and args[0] != None
         ):
-            self.coords1 = self.generate_coords(args[0], obs)
+            self.coords1 = await self.generate_coords(args[0], obs)
         # arg0 and arg1 are descriptions
         elif function_name == "agent.drag_and_drop" and len(args) >= 2:
-            self.coords1 = self.generate_coords(args[0], obs)
-            self.coords2 = self.generate_coords(args[1], obs)
+            self.coords1 = await self.generate_coords(args[0], obs)
+            self.coords2 = await self.generate_coords(args[1], obs)
         # arg0 and arg1 are text phrases
         elif function_name == "agent.highlight_text_span" and len(args) >= 2:
-            self.coords1 = self.generate_text_coords(args[0], obs, alignment="start")
-            self.coords2 = self.generate_text_coords(args[1], obs, alignment="end")
+            self.coords1 = await self.generate_text_coords(
+                args[0], obs, alignment="start"
+            )
+            self.coords2 = await self.generate_text_coords(
+                args[1], obs, alignment="end"
+            )
 
     # Resize from grounding model dim into OSWorld dim (1920 * 1080)
     def resize_coordinates(self, coordinates: List[int]) -> List[int]:
