@@ -57,13 +57,13 @@ class OpenAIEmbeddingEngine(LMMEngine):
 class GeminiEmbeddingEngine(LMMEngine):
     def __init__(
         self,
-        embedding_model: str = "gemini-embedding-exp-03-07",
+        embedding_model: str = "text-embedding-004",
         api_key=None,
     ):
         """Init an Gemini Embedding engine
 
         Args:
-            embedding_model (str, optional): Model name. Defaults to "gemini-embedding-exp-03-07".
+            embedding_model (str, optional): Model name. Defaults to "text-embedding-004".
             api_key (_type_, optional): Auth key from Gemini. Defaults to None.
         """
         self.model = embedding_model

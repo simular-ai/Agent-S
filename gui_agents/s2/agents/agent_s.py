@@ -99,6 +99,7 @@ class AgentS2(UIAgent):
         memory_folder_name: str = "kb_s2",
         kb_release_tag: str = "v0.2.2",
         embedding_engine_type: str = "openai",
+        embedding_engine_params: Dict = {},
     ):
         """Initialize AgentS2
 
@@ -113,6 +114,7 @@ class AgentS2(UIAgent):
             memory_folder_name: Name of memory folder. Defaults to "kb_s2".
             kb_release_tag: Release tag for knowledge base. Defaults to "v0.2.2".
             embedding_engine_type: Embedding engine to use for knowledge base. Defaults to "openai". Supports "openai" and "gemini".
+            embedding_engine_params: Parameters for embedding engine. Defaults to {}.
         """
         super().__init__(
             engine_params,
@@ -155,11 +157,13 @@ class AgentS2(UIAgent):
             )
 
         if embedding_engine_type == "openai":
-            self.embedding_engine = OpenAIEmbeddingEngine()
+            self.embedding_engine = OpenAIEmbeddingEngine(**embedding_engine_params)
         elif embedding_engine_type == "gemini":
-            self.embedding_engine = GeminiEmbeddingEngine()
+            self.embedding_engine = GeminiEmbeddingEngine(**embedding_engine_params)
         elif embedding_engine_type == "azure":
-            self.embedding_engine = AzureOpenAIEmbeddingEngine()
+            self.embedding_engine = AzureOpenAIEmbeddingEngine(
+                **embedding_engine_params
+            )
 
         self.reset()
 
