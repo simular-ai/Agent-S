@@ -241,7 +241,7 @@ This will show a user query prompt where you can enter your query and interact w
 ### `gui_agents` SDK
 
 First, we import the necessary modules. `AgentS2` is the main agent class for Agent S2. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
-```
+```python
 import pyautogui
 import io
 from gui_agents.s2.agents.agent_s import AgentS2
@@ -256,7 +256,7 @@ current_platform = "linux"  # "darwin", "windows"
 
 Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
 
-```
+```python
 engine_params = {
   "engine_type": provider,
   "model": model,
@@ -293,7 +293,7 @@ engine_params_for_grounding = {
 
 Then, we define our grounding agent and Agent S2.
 
-```
+```python
 grounding_agent = OSWorldACI(
     platform=current_platform,
     engine_params_for_generation=engine_params,
@@ -313,7 +313,7 @@ agent = AgentS2(
 
 Finally, let's query the agent!
 
-```
+```python
 # Get screenshot.
 screenshot = pyautogui.screenshot()
 buffered = io.BytesIO() 
@@ -336,7 +336,7 @@ Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop w
 
 Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `AgentS2`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `AgentS2` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
 
-```
+```python
 download_kb_data(
     version="s2",
     release_tag="v0.2.2",
