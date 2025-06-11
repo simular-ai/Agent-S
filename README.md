@@ -29,6 +29,18 @@
   </a>
 </p>
 
+<div align="center">
+  <!-- Keep these links. Translations will automatically update with the README. -->
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=de">Deutsch</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=es">Español</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=fr">français</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ja">日本語</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ko">한국어</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=pt">Português</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ru">Русский</a> | 
+  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=zh">中文</a>
+</div>
+
 ## 🥳 Updates
 - [x] **2025/04/01**: Released <a href="https://arxiv.org/abs/2504.00906">Agent S2 paper</a> with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
