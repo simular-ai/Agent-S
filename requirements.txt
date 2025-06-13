@@ -15,6 +15,7 @@ pyautogui
 toml
 black
 pytesseract
+google-genai
 
 # Platform-specific dependencies
 pyobjc; platform_system == "Darwin"
