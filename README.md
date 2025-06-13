@@ -3,6 +3,8 @@
   <small>A Compositional Generalist-Specialist Framework for Computer Use Agents</small>
 </h1>
 
+test
+
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper]</a>&nbsp;
