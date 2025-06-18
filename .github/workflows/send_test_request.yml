@@ -1,0 +1,41 @@
+name: Agent Test
+
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  pull_request_target:
+    types:
+      - opened
+      - synchronize
+
+  workflow_dispatch:
+    # Inputs the workflow accepts.
+    inputs:
+      name:
+        # Friendly description to be shown in the UI instead of 'name'
+        description: 'test agent'
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "greet"
+  promptAgent:
+    # The type of runner that the job will run on
+    runs-on: macos-latest
+  
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+    - name: Send request to server
+      run: |
+        curl -X POST ${{secrets.ACTION_QUEUE_SERVER_URL}} \
+            -k \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{secrets.USER_TOKEN}}" \
+            -d '{
+                "requireConfirm": true,
+                "run": "jsAction_OaQgphcCVB07zbYcpg1g(branchName:\"${{ github.ref_name }}\")_spaceID__community",
+                "status": "pending",
+                "title": "CI/CD",
+                "when": "asap",
+                "machineName": "SGFv4oCZcyBNYWNCb29rIFBybw=="
+            }'
+        
