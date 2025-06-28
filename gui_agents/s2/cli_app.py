@@ -7,6 +7,8 @@ import platform
 import pyautogui
 import sys
 import time
+import json
+
 
 from PIL import Image
 
@@ -285,6 +287,15 @@ def main():
 
         # Run the agent on your own device
         run_agent(agent, query, scaled_width, scaled_height)
+        # Show what was saved in memory for verification
+        with open("agent_memory.json", "r") as f:
+            memory = json.load(f)
+            if query in memory:
+                print("\n🧠 Memory stored for this task:")
+                print(json.dumps(memory[query], indent=2))
+            else:
+                print("\n⚠️ No memory entry found for this task.")
+
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":
