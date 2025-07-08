@@ -5,7 +5,7 @@
 
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper]</a>&nbsp;
+  📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper (COLM 2025)]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
 </p>
 
