@@ -378,9 +378,7 @@ If you find this codebase useful, please cite
       primaryClass={cs.AI},
       url={https://arxiv.org/abs/2504.00906}, 
 }
-```
 
-```
 @inproceedings{Agent-S,
     title={{Agent S: An Open Agentic Framework that Uses Computers Like a Human}},
     author={Saaket Agashe and Jiuzhou Han and Shuyu Gan and Jiachen Yang and Ang Li and Xin Eric Wang},
