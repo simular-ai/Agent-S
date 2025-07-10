@@ -1,0 +1,47 @@
+{
+  "open notes": {
+    "observation": {},
+    "actions": [
+      "DONE"
+    ],
+    "subtask": "Open Notes",
+    "subtask_info": "Click on the Notes app icon in Launchpad. It is located in the top row and looks like a yellow notepad.",
+    "status": "Done"
+  },
+  "open notepad": {
+    "observation": {},
+    "actions": [
+      "DONE"
+    ],
+    "subtask": "Open TextEdit",
+    "subtask_info": "Once TextEdit appears in the search results, press `Enter` to open it.",
+    "status": "Done"
+  },
+  "open calculator": {
+    "observation": {},
+    "actions": [
+      "import pyautogui; pyautogui.write('Calculator'); "
+    ],
+    "subtask": "Open Calculator",
+    "subtask_info": "Press `Enter` to open the Calculator application.",
+    "status": "In"
+  },
+  "open visual studio code": {
+    "observation": {},
+    "actions": [
+      "import pyautogui; pyautogui.hotkey('control', 'command', 'eject')"
+    ],
+    "subtask": "Open Visual Studio Code",
+    "subtask_info": "To open Visual Studio Code on macOS, follow these steps:\n\n1. **Open Spotlight Search**:\n   - Press `Command (\u2318) + Spacebar` on your keyboard to open Spotlight Search.\n\n2. **Search for Visual Studio Code**:\n   - Type \"Visual Studio Code\" into the Spotlight Search bar.\n\n3. **Select Visual Studio Code**:\n   - Use the arrow keys to navigate to Visual Studio Code if it is not already highlighted.\n\n4. **Open Visual Studio Code**:\n   - Press `Enter` to launch the application.",
+    "status": "In"
+  },
+  "open vs code": {
+    "observation": {},
+    "actions": [
+      "import pyautogui; import pyautogui; pyautogui.click(0, 0, clicks=1, button='left'); "
+    ],
+    "subtask": "Select Visual Studio Code",
+    "subtask_info": "Ensure \"Visual Studio Code\" is highlighted in the search results.",
+    "status": "Start"
+  }
+}
