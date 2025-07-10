@@ -114,6 +114,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 
 ## 🛠️ Installation & Setup
+> **Note**: Our agent returns `pyautogui` code and is intended for a single monitor screen. 
 
 > ❗**Warning**❗: If you are on a Linux machine, creating a `conda` environment will interfere with `pyatspi`. As of now, there's no clean solution for this issue. Proceed through the installation without using `conda` or any virtual environment.
 
