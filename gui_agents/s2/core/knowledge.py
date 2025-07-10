@@ -278,10 +278,9 @@ class KnowledgeBase(BaseModule):
             subtask_summarization = self.summarize_episode(subtask_traj)
             kb[subtask_key] = subtask_summarization
 
-            if self.save_knowledge:
-                os.makedirs(os.path.dirname(self.episodic_memory_path), exist_ok=True)
-                with open(self.episodic_memory_path, "w") as fout:
-                    json.dump(kb, fout, indent=2)
+            os.makedirs(os.path.dirname(self.episodic_memory_path), exist_ok=True)
+            with open(self.episodic_memory_path, "w") as fout:
+                json.dump(kb, fout, indent=2)
 
         return kb.get(subtask_key)
 
@@ -304,10 +303,9 @@ class KnowledgeBase(BaseModule):
             task_summarization = self.summarize_narrative(task_traj)
             kb[task_key] = task_summarization
 
-            if self.save_knowledge:
-                os.makedirs(os.path.dirname(self.narrative_memory_path), exist_ok=True)
-                with open(self.narrative_memory_path, "w") as fout:
-                    json.dump(kb, fout, indent=2)
+            os.makedirs(os.path.dirname(self.narrative_memory_path), exist_ok=True)
+            with open(self.narrative_memory_path, "w") as fout:
+                json.dump(kb, fout, indent=2)
 
         return kb.get(task_key)
 
