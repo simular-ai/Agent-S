@@ -96,6 +96,7 @@ class AgentS2(UIAgent):
         observation_type: str = "mixed",
         search_engine: Optional[str] = None,
         memory_root_path: str = os.getcwd(),
+        use_default_kb: bool = False,
         memory_folder_name: str = "kb_s2",
         kb_release_tag: str = "v0.2.2",
         embedding_engine_type: str = "openai",
@@ -110,6 +111,7 @@ class AgentS2(UIAgent):
             action_space: Type of action space to use (pyautogui, other)
             observation_type: Type of observations to use (a11y_tree, screenshot, mixed)
             search_engine: Search engine to use (LLM, perplexica)
+            use_default_kb: True to use the default OpenAI kb.
             memory_root_path: Path to memory directory. Defaults to current working directory.
             memory_folder_name: Name of memory folder. Defaults to "kb_s2".
             kb_release_tag: Release tag for knowledge base. Defaults to "v0.2.2".
@@ -130,31 +132,32 @@ class AgentS2(UIAgent):
         self.kb_release_tag = kb_release_tag
 
         # Initialize agent's knowledge base on user's current working directory.
-        print("Downloading knowledge base initial Agent-S knowledge...")
         self.local_kb_path = os.path.join(
             self.memory_root_path, self.memory_folder_name
         )
 
-        if not os.path.exists(os.path.join(self.local_kb_path, self.platform)):
-            download_kb_data(
-                version="s2",
-                release_tag=kb_release_tag,
-                download_dir=self.local_kb_path,
-                platform=self.platform,
-            )
-            print(
-                f"Successfully completed download of knowledge base for version s2, tag {self.kb_release_tag}, platform {self.platform}."
-            )
-        else:
-            print(
-                f"Path local_kb_path {self.local_kb_path} already exists. Skipping download."
-            )
-            print(
-                f"If you'd like to re-download the initial knowledge base, please delete the existing knowledge base at {self.local_kb_path}."
-            )
-            print(
-                "Note, the knowledge is continually updated during inference. Deleting the knowledge base will wipe out all experience gained since the last knowledge base download."
-            )
+        if use_default_kb:
+            if not os.path.exists(os.path.join(self.local_kb_path, self.platform)):
+                print("Downloading Agent S2's default knowledge base...")
+                download_kb_data(
+                    version="s2",
+                    release_tag=kb_release_tag,
+                    download_dir=self.local_kb_path,
+                    platform=self.platform,
+                )
+                print(
+                    f"Successfully completed download of knowledge base for version s2, tag {self.kb_release_tag}, platform {self.platform}."
+                )
+            else:
+                print(
+                    f"Path local_kb_path {self.local_kb_path} already exists. Skipping download."
+                )
+                print(
+                    f"If you'd like to re-download the initial knowledge base, please delete the existing knowledge base at {self.local_kb_path}."
+                )
+                print(
+                    "Note, the knowledge is continually updated during inference. Deleting the knowledge base will wipe out all experience gained since the last knowledge base download."
+                )
 
         if embedding_engine_type == "openai":
             self.embedding_engine = OpenAIEmbeddingEngine(**embedding_engine_params)
