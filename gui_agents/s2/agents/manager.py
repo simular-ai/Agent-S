@@ -28,7 +28,7 @@ class Manager(BaseModule):
         engine_params: Dict,
         grounding_agent: ACI,
         local_kb_path: str,
-        embedding_engine=OpenAIEmbeddingEngine(),
+        embedding_engine,
         search_engine: Optional[str] = None,
         multi_round: bool = False,
         platform: str = platform.system().lower(),
