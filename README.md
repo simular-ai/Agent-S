@@ -363,7 +363,7 @@ This will download Agent S2's knowledge base for Linux from release tag `v0.2.2`
 
 ### OSWorld
 
-To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
+To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s2/OSWorld.md).
 
 ### WindowsAgentArena
 
