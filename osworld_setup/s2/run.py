@@ -77,7 +77,7 @@ def config() -> argparse.Namespace:
     parser.add_argument(
         "--observation_type",
         choices=["screenshot", "a11y_tree", "screenshot_a11y_tree", "som"],
-        default="a11y_tree",
+        default="screenshot",
         help="Observation type",
     )
     parser.add_argument("--screen_width", type=int, default=1920)
@@ -133,6 +133,12 @@ def config() -> argparse.Namespace:
         default=1366,
         help="Width of screenshot image after processor rescaling",
     )
+    parser.add_argument(
+        "--grounding_model_resize_height",
+        type=int,
+        default=None,
+        help="Height of screenshot image after processor rescaling",
+    )
 
     # Configuration 2
     parser.add_argument("--endpoint_provider", type=str, default="")
@@ -157,7 +163,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
 
     # log args
     logger.info("Args: %s", args)
-    # set wandb project
     cfg_args = {
         "path_to_vm": args.path_to_vm,
         "headless": args.headless,
@@ -191,13 +196,20 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             "api_key": args.endpoint_api_key,
         }
     else:
+        grounding_height = args.grounding_model_resize_height
+        # If not provided, use the aspect ratio of the screen to compute the height
+        if grounding_height is None:
+            grounding_height = (
+                args.screen_height
+                * args.grounding_model_resize_width
+                / args.screen_width
+            )
+
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,
             "grounding_width": args.grounding_model_resize_width,
-            "grounding_height": args.screen_height
-            * args.grounding_model_resize_width
-            / args.screen_width,
+            "grounding_height": grounding_height,
         }
 
     # NEW!
@@ -220,6 +232,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         memory_root_path=os.getcwd(),
         memory_folder_name=args.kb_name,
         kb_release_tag="v0.2.2",
+        embedding_engine_type="openai",
     )
 
     env = DesktopEnv(
@@ -227,7 +240,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         action_space=agent.action_space,
         screen_size=(args.screen_width, args.screen_height),
         headless=args.headless,
-        os_type="Ubuntu",
         require_a11y_tree=args.observation_type
         in ["a11y_tree", "screenshot_a11y_tree", "som"],
     )
@@ -251,7 +263,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             cfg_args["start_time"] = datetime.datetime.now().strftime(
                 "%Y:%m:%d-%H:%M:%S"
             )
-            # run.config.update(cfg_args)
 
             example_result_dir = os.path.join(
                 args.result_dir,

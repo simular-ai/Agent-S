@@ -3,7 +3,16 @@ import os
 import backoff
 import numpy as np
 from anthropic import Anthropic
-from openai import APIConnectionError, APIError, AzureOpenAI, OpenAI, RateLimitError
+from openai import (
+    AzureOpenAI,
+    APIConnectionError,
+    APIError,
+    AzureOpenAI,
+    OpenAI,
+    RateLimitError,
+)
+from google import genai
+from google.genai import types
 
 
 class LMMEngine:
@@ -13,19 +22,16 @@ class LMMEngine:
 class OpenAIEmbeddingEngine(LMMEngine):
     def __init__(
         self,
+        embedding_model: str = "text-embedding-3-small",
         api_key=None,
-        rate_limit: int = -1,
-        display_cost: bool = True,
     ):
         """Init an OpenAI Embedding engine
 
         Args:
+            embedding_model (str, optional): Model name. Defaults to "text-embedding-3-small".
             api_key (_type_, optional): Auth key from OpenAI. Defaults to None.
-            rate_limit (int, optional): Max number of requests per minute. Defaults to -1.
-            display_cost (bool, optional): Display cost of API call. Defaults to True.
         """
-        self.model = "text-embedding-3-small"
-        self.cost_per_thousand_tokens = 0.00002
+        self.model = embedding_model
 
         api_key = api_key or os.getenv("OPENAI_API_KEY")
         if api_key is None:
@@ -33,8 +39,6 @@ class OpenAIEmbeddingEngine(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
         self.api_key = api_key
-        self.display_cost = display_cost
-        self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
     @backoff.on_exception(
         backoff.expo,
@@ -47,10 +51,104 @@ class OpenAIEmbeddingEngine(LMMEngine):
     def get_embeddings(self, text: str) -> np.ndarray:
         client = OpenAI(api_key=self.api_key)
         response = client.embeddings.create(model=self.model, input=text)
-        if self.display_cost:
-            total_tokens = response.usage.total_tokens
-            cost = self.cost_per_thousand_tokens * total_tokens / 1000
-            # print(f"Total cost for this embedding API call: {cost}")
+        return np.array([data.embedding for data in response.data])
+
+
+class GeminiEmbeddingEngine(LMMEngine):
+    def __init__(
+        self,
+        embedding_model: str = "text-embedding-004",
+        api_key=None,
+    ):
+        """Init an Gemini Embedding engine
+
+        Args:
+            embedding_model (str, optional): Model name. Defaults to "text-embedding-004".
+            api_key (_type_, optional): Auth key from Gemini. Defaults to None.
+        """
+        self.model = embedding_model
+
+        api_key = api_key or os.getenv("GEMINI_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named GEMINI_API_KEY"
+            )
+        self.api_key = api_key
+
+    @backoff.on_exception(
+        backoff.expo,
+        (
+            APIError,
+            RateLimitError,
+            APIConnectionError,
+        ),
+    )
+    def get_embeddings(self, text: str) -> np.ndarray:
+        client = genai.Client(api_key=self.api_key)
+
+        result = client.models.embed_content(
+            model=self.model,
+            contents=text,
+            config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
+        )
+
+        return np.array([i.values for i in result.embeddings])
+
+
+class AzureOpenAIEmbeddingEngine(LMMEngine):
+    def __init__(
+        self,
+        embedding_model: str = "text-embedding-3-small",
+        api_key=None,
+        api_version=None,
+        endpoint_url=None,
+    ):
+        """Init an Azure OpenAI Embedding engine
+
+        Args:
+            embedding_model (str, optional): Model name. Defaults to "text-embedding-3-small".
+            api_key (_type_, optional): Auth key from Azure OpenAI. Defaults to None.
+            api_version (_type_, optional): API version. Defaults to None.
+            endpoint_url (_type_, optional): Endpoint URL. Defaults to None.
+        """
+        self.model = embedding_model
+
+        api_key = api_key or os.getenv("AZURE_OPENAI_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named AZURE_OPENAI_API_KEY"
+            )
+        self.api_key = api_key
+
+        api_version = api_version or os.getenv("OPENAI_API_VERSION")
+        if api_version is None:
+            raise ValueError(
+                "An API Version needs to be provided in either the api_version parameter or as an environment variable named OPENAI_API_VERSION"
+            )
+        self.api_version = api_version
+
+        endpoint_url = endpoint_url or os.getenv("AZURE_OPENAI_ENDPOINT")
+        if endpoint_url is None:
+            raise ValueError(
+                "An Endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named AZURE_OPENAI_ENDPOINT"
+            )
+        self.endpoint_url = endpoint_url
+
+    @backoff.on_exception(
+        backoff.expo,
+        (
+            APIError,
+            RateLimitError,
+            APIConnectionError,
+        ),
+    )
+    def get_embeddings(self, text: str) -> np.ndarray:
+        client = AzureOpenAI(
+            api_key=self.api_key,
+            api_version=self.api_version,
+            azure_endpoint=self.endpoint_url,
+        )
+        response = client.embeddings.create(input=text, model=self.model)
         return np.array([data.embedding for data in response.data])
 
 
@@ -67,10 +165,15 @@ class LMMEngineOpenAI(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
 
+        self.base_url = base_url
+
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
 
-        self.llm_client = OpenAI(api_key=self.api_key)
+        if not self.base_url:
+            self.llm_client = OpenAI(api_key=self.api_key)
+        else:
+            self.llm_client = OpenAI(base_url=self.base_url, api_key=self.api_key)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60

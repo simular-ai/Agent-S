@@ -161,6 +161,18 @@ def main():
         default="",
         help="The API key of the main generation model.",
     )
+    parser.add_argument(
+        "--model_url",
+        type=str,
+        default="",
+        help="The URL of the main generation model API.",
+    )
+    parser.add_argument(
+        "--model_api_key",
+        type=str,
+        default="",
+        help="The API key of the main generation model.",
+    )
 
     # Configuration 1
     parser.add_argument("--grounding_model_provider", type=str, default="anthropic")
@@ -172,6 +184,12 @@ def main():
         type=int,
         default=1366,
         help="Width of screenshot image after processor rescaling",
+    )
+    parser.add_argument(
+        "--grounding_model_resize_height",
+        type=int,
+        default=None,
+        help="Height of screenshot image after processor rescaling",
     )
 
     # Configuration 2
@@ -187,6 +205,19 @@ def main():
     # Controls whether to use hierarchical planning or not
     parser.add_argument(
         "--use_worker_only", action="store_true", help="Uses worker only Agent S2"
+    )
+    parser.add_argument(
+        "--endpoint_api_key",
+        type=str,
+        default="",
+        help="The API key of the grounding model.",
+    )
+
+    parser.add_argument(
+        "--embedding_engine_type",
+        type=str,
+        default="openai",
+        help="Specify the embedding engine type (supports openai, gemini)",
     )
 
     args = parser.parse_args()
@@ -217,6 +248,13 @@ def main():
         }
     # Load the grounding engine from an API based model
     else:
+        grounding_height = args.grounding_model_resize_height
+        # If not provided, use the aspect ratio of the screen to compute the height
+        if grounding_height is None:
+            grounding_height = (
+                screen_height * args.grounding_model_resize_width / screen_width
+            )
+
         engine_params_for_grounding = {
             "engine_type": args.grounding_model_provider,
             "model": args.grounding_model,

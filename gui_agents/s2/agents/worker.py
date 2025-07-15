@@ -27,8 +27,8 @@ class Worker(BaseModule):
         engine_params: Dict,
         grounding_agent: ACI,
         local_kb_path: str,
+        embedding_engine,
         platform: str = platform.system().lower(),
-        search_engine: str = "perplexica",
         enable_reflection: bool = True,
         use_subtask_experience: bool = True,
     ):
@@ -43,8 +43,6 @@ class Worker(BaseModule):
                 Path to knowledge base
             platform: str
                 OS platform the agent runs on (darwin, linux, windows)
-            search_engine: str
-                The search engine to use
             enable_reflection: bool
                 Whether to enable reflection
             use_subtask_experience: bool
@@ -54,7 +52,7 @@ class Worker(BaseModule):
 
         self.grounding_agent = grounding_agent
         self.local_kb_path = local_kb_path
-        self.search_engine = search_engine
+        self.embedding_engine = embedding_engine
         self.enable_reflection = enable_reflection
         self.use_subtask_experience = use_subtask_experience
         self.temperature = engine_params.get("temperature", 0.0)
@@ -79,6 +77,7 @@ class Worker(BaseModule):
         )
 
         self.knowledge_base = KnowledgeBase(
+            embedding_engine=self.embedding_engine,
             local_kb_path=self.local_kb_path,
             platform=self.platform,
             engine_params=self.engine_params,

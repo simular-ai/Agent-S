@@ -7,7 +7,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 from gui_agents.s2.core.module import BaseModule
 from gui_agents.s2.memory.procedural_memory import PROCEDURAL_MEMORY
-from gui_agents.s2.core.engine import OpenAIEmbeddingEngine
 from gui_agents.s2.utils.common_utils import (
     call_llm_safe,
     load_embeddings,
@@ -20,6 +19,7 @@ from gui_agents.s2.utils.query_perplexica import query_to_perplexica
 class KnowledgeBase(BaseModule):
     def __init__(
         self,
+        embedding_engine,
         local_kb_path: str,
         platform: str,
         engine_params: Dict,
@@ -30,8 +30,7 @@ class KnowledgeBase(BaseModule):
         self.local_kb_path = local_kb_path
 
         # initialize embedding engine
-        # TODO: Support other embedding engines
-        self.embedding_engine = OpenAIEmbeddingEngine()
+        self.embedding_engine = embedding_engine
 
         # Initialize paths for different memory types
         self.episodic_memory_path = os.path.join(
@@ -279,10 +278,9 @@ class KnowledgeBase(BaseModule):
             subtask_summarization = self.summarize_episode(subtask_traj)
             kb[subtask_key] = subtask_summarization
 
-            if self.save_knowledge:
-                os.makedirs(os.path.dirname(self.episodic_memory_path), exist_ok=True)
-                with open(self.episodic_memory_path, "w") as fout:
-                    json.dump(kb, fout, indent=2)
+            os.makedirs(os.path.dirname(self.episodic_memory_path), exist_ok=True)
+            with open(self.episodic_memory_path, "w") as fout:
+                json.dump(kb, fout, indent=2)
 
         return kb.get(subtask_key)
 
@@ -305,10 +303,9 @@ class KnowledgeBase(BaseModule):
             task_summarization = self.summarize_narrative(task_traj)
             kb[task_key] = task_summarization
 
-            if self.save_knowledge:
-                os.makedirs(os.path.dirname(self.narrative_memory_path), exist_ok=True)
-                with open(self.narrative_memory_path, "w") as fout:
-                    json.dump(kb, fout, indent=2)
+            os.makedirs(os.path.dirname(self.narrative_memory_path), exist_ok=True)
+            with open(self.narrative_memory_path, "w") as fout:
+                json.dump(kb, fout, indent=2)
 
         return kb.get(task_key)
 
