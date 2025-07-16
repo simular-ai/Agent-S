@@ -433,7 +433,7 @@ class AgentS2WorkerOnly(UIAgent):
         engine_params: Dict,
         grounding_agent: ACI,
         platform: str = platform.system().lower(),
-        action_space: str = "pyatuogui",
+        action_space: str = "pyautogui",
         observation_type: str = "screenshot",
         max_trajectory_length: int = 8,
         enable_reflection: bool = True,
