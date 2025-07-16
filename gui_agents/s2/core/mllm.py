@@ -8,6 +8,7 @@ from gui_agents.s2.core.engine import (
     LMMEngineHuggingFace,
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
+    LMMEngineParasail,
     LMMEnginevLLM,
     LMMEngineGemini,
 )
@@ -32,6 +33,8 @@ class LMMAgent:
                     self.engine = LMMEngineGemini(**engine_params)
                 elif engine_type == "open_router":
                     self.engine = LMMEngineOpenRouter(**engine_params)
+                elif engine_type == "parasail":
+                    self.engine = LMMEngineParasail(**engine_params)
                 else:
                     raise ValueError("engine_type is not supported")
             else:
@@ -125,6 +128,7 @@ class LMMAgent:
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
+                LMMEngineParasail
             ),
         ):
             # infer role from previous message
