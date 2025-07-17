@@ -471,11 +471,6 @@ class AgentS2WorkerOnly(UIAgent):
         self.step_count: int = 0
         self.should_send_action: bool = False
 
-    def reset_executor_state(self) -> None:
-        """Reset executor and step counter"""
-        self.executor.reset()
-        self.step_count = 0
-
     def predict(self, instruction: str, observation: Dict) -> Tuple[Dict, List[str]]:
         # Initialize the three info dictionaries
         planner_info = {}

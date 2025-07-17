@@ -216,7 +216,6 @@ class LMMEngineAnthropic(LMMEngine):
                 **kwargs,
             )
             thoughts = full_response.content[0].thinking
-            print("CLAUDE 3.7 THOUGHTS:", thoughts)
             return full_response.content[1].text
         return (
             self.llm_client.messages.create(
@@ -477,8 +476,9 @@ class LMMEngineHuggingFace(LMMEngine):
 
 
 class LMMEngineParasail(LMMEngine):
-    def __init__(self, api_key=None, model=None, rate_limit=-1, **kwargs):
+    def __init__(self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs):
         assert model is not None, "Parasail model id must be provided"
+        self.base_url = base_url
         self.model = model
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
@@ -493,8 +493,13 @@ class LMMEngineParasail(LMMEngine):
             raise ValueError(
                 "A Parasail API key needs to be provided in either the api_key parameter or as an environment variable named PARASAIL_API_KEY"
             )
+        base_url = self.base_url
+        if base_url is None:
+            raise ValueError(
+                "Parasail endpoint must be provided as base_url parameter or as an environment variable named PARASAIL_ENDPOINT_URL"
+            )
         if not self.llm_client:
-            self.llm_client = OpenAI(base_url="https://api.parasail.io/v1", api_key=api_key)
+            self.llm_client = OpenAI(base_url=base_url if base_url else "https://api.parasail.io/v1", api_key=api_key)
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
