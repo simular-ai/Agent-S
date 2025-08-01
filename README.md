@@ -100,116 +100,90 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 
 ## 🛠️ Installation & Setup
-> **Note**: Our agent returns `pyautogui` code and is intended for a single monitor screen. 
 
-> ❗**Warning**❗: If you are on a Linux machine, creating a `conda` environment will interfere with `pyatspi`. As of now, there's no clean solution for this issue. Proceed through the installation without using `conda` or any virtual environment.
+### Prerequisites
+- **Single Monitor**: Our agent is designed for single monitor screens
+- **Linux Users**: Avoid `conda` environments as they interfere with `pyatspi`
+- **Security**: The agent runs Python code to control your computer - use with care
 
-> ⚠️**Disclaimer**⚠️: To leverage the full potential of Agent S2, we utilize [UI-TARS](https://github.com/bytedance/UI-TARS) as a grounding model (7B-DPO or 72B-DPO for better performance). They can be hosted locally, or on Hugging Face Inference Endpoints. Our code supports Hugging Face Inference Endpoints. Check out [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for more information on how to set up and query this endpoint. However, running Agent S2 does not require this model, and you can use alternative API based models for visual grounding, such as Claude.
-
-Install the package:
-```
+### Installation
+```bash
 pip install gui-agents
 ```
 
-Set your LLM API Keys and other environment variables. You can do this by adding the following line to your .bashrc (Linux), or .zshrc (MacOS) file. 
+### API Configuration
 
-```
+#### Option 1: Environment Variables
+Add to your `.bashrc` (Linux) or `.zshrc` (MacOS):
+```bash
 export OPENAI_API_KEY=<YOUR_API_KEY>
 export ANTHROPIC_API_KEY=<YOUR_ANTHROPIC_API_KEY>
 export HF_TOKEN=<YOUR_HF_TOKEN>
 ```
 
-Alternatively, you can set the environment variable in your Python script:
-
-```
+#### Option 2: Python Script
+```python
 import os
 os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 ```
 
-We also support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. For more information refer to [models.md](models.md).
+### Supported Models
+We support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. See [models.md](models.md) for details.
 
-> ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
+### Grounding Models (Required)
+For optimal performance, we recommend [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) hosted on Hugging Face Inference Endpoints or another provider. See [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for setup instructions.
 
 ## 🚀 Usage
 
 
-> **Note**: Our best configuration uses o3 and UI-TARS-1.5-7B.
+> ⚡️ **Recommended Setup:**  
+> For the best configuration, we recommend using **OpenAI o3-2025-04-16** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
+
 
 ### CLI
 
-Run Agent S2 with a specific model (default is `gpt-4o`):
-
-```sh
-agent_s2 \
-  --provider "anthropic" \
-  --model "claude-3-7-sonnet-20250219" \
-  --grounding_model_provider "anthropic" \
-  --grounding_model "claude-3-7-sonnet-20250219" \
-```
-
-Or use a custom endpoint:
+Run Agent S2.5 with the required parameters:
 
 ```bash
-agent_s2 \
-  --provider "anthropic" \
-  --model "claude-3-7-sonnet-20250219" \
-  --endpoint_provider "huggingface" \
-  --endpoint_url "<endpoint_url>/v1/"
+agent_s \
+    --provider openai \
+    --model o3-2025-04-16 \
+    --ground_provider huggingface \
+    --ground_url http://localhost:8080 \
+    --ground_model ui-tars-1.5-7b \
+    --grounding_width 1920 \
+    --grounding_height 1080
 ```
 
-#### Main Model Settings
-- **`--provider`**, **`--model`** 
-  - Purpose: Specifies the main generation model
-  - Supports: all model providers in [models.md](models.md)
-  - Default: `--provider "anthropic" --model "claude-3-7-sonnet-20250219"`
-- **`--model_url`**, **`--model_api_key`**
-   - Purpose: Specifies the custom endpoint for the main generation model and your API key
-   - Note: These are optional. If not specified, `gui-agents` will default to your environment variables for the URL and API key.
-   - Supports: all model providers in [models.md](models.md)
-   - Default: None
+#### Required Parameters
+- **`--provider`**: Main generation model provider (e.g., openai, anthropic, etc.) - Default: "openai"
+- **`--model`**: Main generation model name (e.g., o3-2025-04-16) - Default: "o3-2025-04-16"
+- **`--ground_provider`**: The provider for the grounding model - **Required**
+- **`--ground_url`**: The URL of the grounding model - **Required**
+- **`--ground_model`**: The model name for the grounding model - **Required**
+- **`--grounding_width`**: Width of the output coordinate resolution from the grounding model - **Required**
+- **`--grounding_height`**: Height of the output coordinate resolution from the grounding model - **Required**
 
-#### Grounding Configuration Options
+#### Grounding Model Dimensions
+The grounding width and height should match the output coordinate resolution of your grounding model:
+- **UI-TARS-1.5-7B**: Use `--grounding_width 1920 --grounding_height 1080`
+- **UI-TARS-72B**: Use `--grounding_width 1000 --grounding_height 1000`
 
-You can use either Configuration 1 or Configuration 2:
-
-##### **(Default) Configuration 1: API-Based Models**
-- **`--grounding_model_provider`**, **`--grounding_model`**
-  - Purpose: Specifies the model for visual grounding (coordinate prediction)
-  - Supports: all model providers in [models.md](models.md)
-  - Default: `--grounding_model_provider "anthropic" --grounding_model "claude-3-7-sonnet-20250219"`
-- ❗**Important**❗ **`--grounding_model_resize_width`**
-  - Purpose:  Some API providers automatically rescale images. Therefore, the generated (x, y) will be relative to the rescaled image dimensions, instead of the original image dimensions.
-  - Supports: [Anthropic rescaling](https://docs.anthropic.com/en/docs/build-with-claude/vision#)
-  - Tips: If your grounding is inaccurate even for very simple queries, double check your rescaling width is correct for your machine's resolution.
-  - Default: `--grounding_model_resize_width 1366` (Anthropic)
-
-##### **Configuration 2: Custom Endpoint**
-- **`--endpoint_provider`**
-  - Purpose: Specifies the endpoint provider
-  - Supports: HuggingFace TGI, vLLM, Open Router
-  - Default: None
-
-- **`--endpoint_url`**
-  - Purpose: The URL for your custom endpoint
-  - Default: None
-
-- **`--endpoint_api_key`**
-   - Purpose: Your API key for your custom endpoint
-   - Note: This is optional. If not specified, `gui-agents` will default to your environment variables for the API key.
-   - Default: None
-
-> **Note**: Configuration 2 takes precedence over Configuration 1.
-
-This will show a user query prompt where you can enter your query and interact with Agent S2. You can use any model from the list of supported models in [models.md](models.md).
+#### Optional Parameters
+- **`--model_url`**: Custom API URL for main generation model - Default: ""
+- **`--model_api_key`**: API key for main generation model - Default: ""
+- **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
+- **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
+- **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 
 ### `gui_agents` SDK
 
-First, we import the necessary modules. `AgentS2` is the main agent class for Agent S2. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
+First, we import the necessary modules. `AgentS2_5` is the main agent class for Agent S2.5. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
 ```python
 import pyautogui
 import io
-from gui_agents.s2.agents.agent_s import AgentS2
-from gui_agents.s2.agents.grounding import OSWorldACI
+from gui_agents.s2_5.agents.agent_s import AgentS2_5
+from gui_agents.s2_5.agents.grounding import OSWorldACI
 
 # Load in your API keys.
 from dotenv import load_dotenv
@@ -218,7 +192,7 @@ load_dotenv()
 current_platform = "linux"  # "darwin", "windows"
 ```
 
-Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support the Claude, GPT series, and Hugging Face Inference Endpoints.
+Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support custom endpoints like HuggingFace TGI, vLLM, and Open Router.
 
 ```python
 engine_params = {
@@ -228,50 +202,45 @@ engine_params = {
   "api_key": model_api_key,  # Optional
 }
 
-# Grounding Configuration 1: Load the grounding engine from an API based model
-grounding_model_provider = "<your_grounding_model_provider>"
-grounding_model = "<your_grounding_model>"
-grounding_model_resize_width = 1366
-screen_width, screen_height = pyautogui.size()
+# Load the grounding engine from a custom endpoint
+ground_provider = "<your_ground_provider>"
+ground_url = "<your_ground_url>"
+ground_model = "<your_ground_model>"
+ground_api_key = "<your_ground_api_key>"
+
+# Set grounding dimensions based on your model's output coordinate resolution
+# UI-TARS-1.5-7B: grounding_width=1920, grounding_height=1080
+# UI-TARS-72B: grounding_width=1000, grounding_height=1000
+grounding_width = 1920  # Width of output coordinate resolution
+grounding_height = 1080  # Height of output coordinate resolution
 
 engine_params_for_grounding = {
-  "engine_type": grounding_model_provider,
-  "model": grounding_model,
-  "grounding_width": grounding_model_resize_width,
-  "grounding_height": screen_height
-  * grounding_model_resize_width
-  / screen_width,
-}
-
-# Grounding Configuration 2: Load the grounding engine from a HuggingFace TGI endpoint
-endpoint_provider = "<your_endpoint_provider>"
-endpoint_url = "<your_endpoint_url>"
-endpoint_api_key = "<your_api_key>"
-
-engine_params_for_grounding = {
-  "engine_type": endpoint_provider,
-  "base_url": endpoint_url,
-  "api_key": endpoint_api_key,  # Optional
+  "engine_type": ground_provider,
+  "model": ground_model,
+  "base_url": ground_url,
+  "api_key": ground_api_key,  # Optional
+  "grounding_width": grounding_width,
+  "grounding_height": grounding_height,
 }
 ```
 
-Then, we define our grounding agent and Agent S2.
+Then, we define our grounding agent and Agent S2.5.
 
 ```python
 grounding_agent = OSWorldACI(
     platform=current_platform,
     engine_params_for_generation=engine_params,
-    engine_params_for_grounding=engine_params_for_grounding
+    engine_params_for_grounding=engine_params_for_grounding,
+    width=1920,  # Optional: screen width
+    height=1080  # Optional: screen height
 )
 
-agent = AgentS2(
-  engine_params,
-  grounding_agent,
-  platform=current_platform,
-  action_space="pyautogui",
-  observation_type="screenshot",
-  search_engine="Perplexica",  # Assuming you have set up Perplexica.
-  embedding_engine_type="openai"  # Supports "gemini", "openai"
+agent = AgentS2_5(
+    engine_params,
+    grounding_agent,
+    platform=current_platform,
+    max_trajectory_length=8,  # Optional: maximum image turns to keep
+    enable_reflection=True     # Optional: enable reflection agent
 )
 ```
 
@@ -294,19 +263,15 @@ info, action = agent.predict(instruction=instruction, observation=obs)
 exec(action[0])
 ```
 
-Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
+Refer to `gui_agents/s2_5/cli_app.py` for more details on how the inference loop works.
 
 ### OSWorld
 
-To deploy Agent S2 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s2/OSWorld.md).
-
-### WindowsAgentArena
-
-To deploy Agent S2 in WindowsAgentArena, follow the [WindowsAgentArena Deployment Instructions](WAA_setup.md).
+To deploy Agent S2.5 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s2_5/OSWorld.md).
 
 ## 💬 Citations
 
-If you find this codebase useful, please cite 
+If you find this codebase useful, please cite:
 
 ```
 @misc{Agent-S2,

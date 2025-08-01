@@ -1,7 +1,6 @@
 import os
 
 import backoff
-import numpy as np
 from anthropic import Anthropic
 from openai import (
     AzureOpenAI,
@@ -11,152 +10,31 @@ from openai import (
     OpenAI,
     RateLimitError,
 )
-from google import genai
-from google.genai import types
 
 
 class LMMEngine:
     pass
 
 
-class OpenAIEmbeddingEngine(LMMEngine):
-    def __init__(
-        self,
-        embedding_model: str = "text-embedding-3-small",
-        api_key=None,
-    ):
-        """Init an OpenAI Embedding engine
-
-        Args:
-            embedding_model (str, optional): Model name. Defaults to "text-embedding-3-small".
-            api_key (_type_, optional): Auth key from OpenAI. Defaults to None.
-        """
-        self.model = embedding_model
-        self.api_key = api_key
-
-    @backoff.on_exception(
-        backoff.expo,
-        (
-            APIError,
-            RateLimitError,
-            APIConnectionError,
-        ),
-    )
-    def get_embeddings(self, text: str) -> np.ndarray:
-        api_key = self.api_key or os.getenv("OPENAI_API_KEY")
-        if api_key is None:
-            raise ValueError(
-                "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
-            )
-        client = OpenAI(api_key=api_key)
-        response = client.embeddings.create(model=self.model, input=text)
-        return np.array([data.embedding for data in response.data])
-
-
-class GeminiEmbeddingEngine(LMMEngine):
-    def __init__(
-        self,
-        embedding_model: str = "text-embedding-004",
-        api_key=None,
-    ):
-        """Init an Gemini Embedding engine
-
-        Args:
-            embedding_model (str, optional): Model name. Defaults to "text-embedding-004".
-            api_key (_type_, optional): Auth key from Gemini. Defaults to None.
-        """
-        self.model = embedding_model
-        self.api_key = api_key
-
-    @backoff.on_exception(
-        backoff.expo,
-        (
-            APIError,
-            RateLimitError,
-            APIConnectionError,
-        ),
-    )
-    def get_embeddings(self, text: str) -> np.ndarray:
-        api_key = self.api_key or os.getenv("GEMINI_API_KEY")
-        if api_key is None:
-            raise ValueError(
-                "An API Key needs to be provided in either the api_key parameter or as an environment variable named GEMINI_API_KEY"
-            )
-        client = genai.Client(api_key=api_key)
-
-        result = client.models.embed_content(
-            model=self.model,
-            contents=text,
-            config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
-        )
-
-        return np.array([i.values for i in result.embeddings])
-
-
-class AzureOpenAIEmbeddingEngine(LMMEngine):
-    def __init__(
-        self,
-        embedding_model: str = "text-embedding-3-small",
-        api_key=None,
-        api_version=None,
-        endpoint_url=None,
-    ):
-        """Init an Azure OpenAI Embedding engine
-
-        Args:
-            embedding_model (str, optional): Model name. Defaults to "text-embedding-3-small".
-            api_key (_type_, optional): Auth key from Azure OpenAI. Defaults to None.
-            api_version (_type_, optional): API version. Defaults to None.
-            endpoint_url (_type_, optional): Endpoint URL. Defaults to None.
-        """
-        self.model = embedding_model
-        self.api_key = api_key
-        self.api_version = api_version
-        self.endpoint_url = endpoint_url
-
-    @backoff.on_exception(
-        backoff.expo,
-        (
-            APIError,
-            RateLimitError,
-            APIConnectionError,
-        ),
-    )
-    def get_embeddings(self, text: str) -> np.ndarray:
-        api_key = self.api_key or os.getenv("AZURE_OPENAI_API_KEY")
-        if api_key is None:
-            raise ValueError(
-                "An API Key needs to be provided in either the api_key parameter or as an environment variable named AZURE_OPENAI_API_KEY"
-            )
-        api_version = self.api_version or os.getenv("OPENAI_API_VERSION")
-        if api_version is None:
-            raise ValueError(
-                "An API Version needs to be provided in either the api_version parameter or as an environment variable named OPENAI_API_VERSION"
-            )
-        endpoint_url = self.endpoint_url or os.getenv("AZURE_OPENAI_ENDPOINT")
-        if endpoint_url is None:
-            raise ValueError(
-                "An Endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named AZURE_OPENAI_ENDPOINT"
-            )
-        client = AzureOpenAI(
-            api_key=api_key,
-            api_version=api_version,
-            azure_endpoint=endpoint_url,
-        )
-        response = client.embeddings.create(input=text, model=self.model)
-        return np.array([data.embedding for data in response.data])
-
-
 class LMMEngineOpenAI(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        organization=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
         self.base_url = base_url
         self.api_key = api_key
+        self.organization = organization
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
+        self.temperature = temperature  # Can force temperature to be the same (in the case of o3 requiring temperature to be 1)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -167,17 +45,22 @@ class LMMEngineOpenAI(LMMEngine):
             raise ValueError(
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
+        organization = self.organization or os.getenv("OPENAI_ORG_ID")
         if not self.llm_client:
             if not self.base_url:
-                self.llm_client = OpenAI(api_key=api_key)
+                self.llm_client = OpenAI(api_key=api_key, organization=organization)
             else:
-                self.llm_client = OpenAI(base_url=self.base_url, api_key=api_key)
+                self.llm_client = OpenAI(
+                    base_url=self.base_url, api_key=api_key, organization=organization
+                )
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
+                max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
+                temperature=(
+                    temperature if self.temperature is None else self.temperature
+                ),
                 **kwargs,
             )
             .choices[0]
@@ -187,13 +70,20 @@ class LMMEngineOpenAI(LMMEngine):
 
 class LMMEngineAnthropic(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, thinking=False, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        thinking=False,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
         self.thinking = thinking
         self.api_key = api_key
         self.llm_client = None
+        self.temperature = temperature
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -206,6 +96,8 @@ class LMMEngineAnthropic(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = Anthropic(api_key=api_key)
+        # Use the instance temperature if not specified in the call
+        temp = self.temperature if temperature is None else temperature
         if self.thinking:
             full_response = self.llm_client.messages.create(
                 system=messages[0]["content"][0]["text"],
@@ -216,7 +108,6 @@ class LMMEngineAnthropic(LMMEngine):
                 **kwargs,
             )
             thoughts = full_response.content[0].thinking
-            print("CLAUDE 3.7 THOUGHTS:", thoughts)
             return full_response.content[1].text
         return (
             self.llm_client.messages.create(
@@ -224,17 +115,48 @@ class LMMEngineAnthropic(LMMEngine):
                 model=self.model,
                 messages=messages[1:],
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
+                temperature=temp,
                 **kwargs,
             )
             .content[0]
             .text
         )
 
+    @backoff.on_exception(
+        backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
+    )
+    # Compatible with Claude-3.7 Sonnet thinking mode
+    def generate_with_thinking(
+        self, messages, temperature=0.0, max_new_tokens=None, **kwargs
+    ):
+        """Generate the next message based on previous messages, and keeps the thinking tokens"""
+
+        full_response = self.llm_client.messages.create(
+            system=messages[0]["content"][0]["text"],
+            model=self.model,
+            messages=messages[1:],
+            max_tokens=8192,
+            thinking={"type": "enabled", "budget_tokens": 4096},
+            **kwargs,
+        )
+
+        thoughts = full_response.content[0].thinking
+        answer = full_response.content[1].text
+        full_response = (
+            f"<thoughts>\n{thoughts}\n</thoughts>\n\n<answer>\n{answer}\n</answer>\n"
+        )
+        return full_response
+
 
 class LMMEngineGemini(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -242,6 +164,7 @@ class LMMEngineGemini(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
+        self.temperature = temperature
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -259,12 +182,14 @@ class LMMEngineGemini(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
+        # Use the temperature passed to generate, otherwise use the instance's temperature, otherwise default to 0.0
+        temp = self.temperature if temperature is None else temperature
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
+                temperature=temp,
                 **kwargs,
             )
             .choices[0]
@@ -274,7 +199,13 @@ class LMMEngineGemini(LMMEngine):
 
 class LMMEngineOpenRouter(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -282,6 +213,7 @@ class LMMEngineOpenRouter(LMMEngine):
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
+        self.temperature = temperature
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -299,12 +231,14 @@ class LMMEngineOpenRouter(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
+        # Use self.temperature if set, otherwise use the temperature argument
+        temp = self.temperature if self.temperature is not None else temperature
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
+                temperature=temp,
                 **kwargs,
             )
             .choices[0]
@@ -321,7 +255,8 @@ class LMMEngineAzureOpenAI(LMMEngine):
         model=None,
         api_version=None,
         rate_limit=-1,
-        **kwargs
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -331,6 +266,7 @@ class LMMEngineAzureOpenAI(LMMEngine):
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
         self.cost = 0.0
+        self.temperature = temperature
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -357,11 +293,13 @@ class LMMEngineAzureOpenAI(LMMEngine):
                 api_key=api_key,
                 api_version=api_version,
             )
+        # Use self.temperature if set, otherwise use the temperature argument
+        temp = self.temperature if self.temperature is not None else temperature
         completion = self.llm_client.chat.completions.create(
             model=self.model,
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
-            temperature=temperature,
+            temperature=temp,
             **kwargs,
         )
         total_tokens = completion.usage.total_tokens
@@ -371,7 +309,13 @@ class LMMEngineAzureOpenAI(LMMEngine):
 
 class LMMEnginevLLM(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -379,6 +323,7 @@ class LMMEnginevLLM(LMMEngine):
         self.base_url = base_url
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
+        self.temperature = temperature
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -390,7 +335,7 @@ class LMMEnginevLLM(LMMEngine):
         top_p=0.8,
         repetition_penalty=1.05,
         max_new_tokens=512,
-        **kwargs
+        **kwargs,
     ):
         api_key = self.api_key or os.getenv("vLLM_API_KEY")
         if api_key is None:
@@ -404,11 +349,13 @@ class LMMEnginevLLM(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
+        # Use self.temperature if set, otherwise use the temperature argument
+        temp = self.temperature if self.temperature is not None else temperature
         completion = self.llm_client.chat.completions.create(
             model=self.model,
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
-            temperature=temperature,
+            temperature=temp,
             top_p=top_p,
             extra_body={"repetition_penalty": repetition_penalty},
         )
@@ -431,10 +378,10 @@ class LMMEngineHuggingFace(LMMEngine):
             raise ValueError(
                 "A HuggingFace token needs to be provided in either the api_key parameter or as an environment variable named HF_TOKEN"
             )
-        base_url = self.base_url
+        base_url = self.base_url or os.getenv("HF_ENDPOINT_URL")
         if base_url is None:
             raise ValueError(
-                "HuggingFace endpoint must be provided as base_url parameter."
+                "HuggingFace endpoint must be provided as base_url parameter or as an environment variable named HF_ENDPOINT_URL."
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
@@ -452,8 +399,11 @@ class LMMEngineHuggingFace(LMMEngine):
 
 
 class LMMEngineParasail(LMMEngine):
-    def __init__(self, api_key=None, model=None, rate_limit=-1, **kwargs):
+    def __init__(
+        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+    ):
         assert model is not None, "Parasail model id must be provided"
+        self.base_url = base_url
         self.model = model
         self.api_key = api_key
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
@@ -468,9 +418,15 @@ class LMMEngineParasail(LMMEngine):
             raise ValueError(
                 "A Parasail API key needs to be provided in either the api_key parameter or as an environment variable named PARASAIL_API_KEY"
             )
+        base_url = self.base_url
+        if base_url is None:
+            raise ValueError(
+                "Parasail endpoint must be provided as base_url parameter or as an environment variable named PARASAIL_ENDPOINT_URL"
+            )
         if not self.llm_client:
             self.llm_client = OpenAI(
-                base_url="https://api.parasail.io/v1", api_key=api_key
+                base_url=base_url if base_url else "https://api.parasail.io/v1",
+                api_key=api_key,
             )
         return (
             self.llm_client.chat.completions.create(

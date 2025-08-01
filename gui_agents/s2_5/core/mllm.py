@@ -2,7 +2,7 @@ import base64
 
 import numpy as np
 
-from gui_agents.s2.core.engine import (
+from gui_agents.s2_5.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineHuggingFace,
@@ -277,6 +277,7 @@ class LMMAgent:
         messages=None,
         temperature=0.0,
         max_new_tokens=None,
+        use_thinking=False,
         **kwargs,
     ):
         """Generate the next response based on previous messages"""
@@ -287,6 +288,16 @@ class LMMAgent:
                 {"role": "user", "content": [{"type": "text", "text": user_message}]}
             )
 
+        # Thinking enabled for Claude Sonnet 3.7 and Gemini 2.5 Pro
+        if use_thinking:
+            return self.engine.generate_with_thinking(
+                messages,
+                temperature=temperature,
+                max_new_tokens=max_new_tokens,
+                **kwargs,
+            )
+
+        # Regular generation
         return self.engine.generate(
             messages,
             temperature=temperature,
