@@ -128,7 +128,7 @@ class LMMAgent:
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
-                LMMEngineParasail
+                LMMEngineParasail,
             ),
         ):
             # infer role from previous message

@@ -469,15 +469,17 @@ class LMMEngineParasail(LMMEngine):
                 "A Parasail API key needs to be provided in either the api_key parameter or as an environment variable named PARASAIL_API_KEY"
             )
         if not self.llm_client:
-            self.llm_client = OpenAI(base_url="https://api.parasail.io/v1", api_key=api_key)
+            self.llm_client = OpenAI(
+                base_url="https://api.parasail.io/v1", api_key=api_key
+            )
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
                 temperature=temperature,
-                **kwargs
+                **kwargs,
             )
-            .choices[0].
-            message.content
+            .choices[0]
+            .message.content
         )

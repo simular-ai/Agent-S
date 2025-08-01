@@ -18,7 +18,14 @@ class LMMEngine:
 
 class LMMEngineOpenAI(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, temperature=None, organization=None, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        organization=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -27,7 +34,7 @@ class LMMEngineOpenAI(LMMEngine):
         self.organization = organization
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
-        self.temperature = temperature # Can force temperature to be the same (in the case of o3 requiring temperature to be 1)
+        self.temperature = temperature  # Can force temperature to be the same (in the case of o3 requiring temperature to be 1)
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -43,13 +50,17 @@ class LMMEngineOpenAI(LMMEngine):
             if not self.base_url:
                 self.llm_client = OpenAI(api_key=api_key, organization=organization)
             else:
-                self.llm_client = OpenAI(base_url=self.base_url, api_key=api_key, organization=organization)
+                self.llm_client = OpenAI(
+                    base_url=self.base_url, api_key=api_key, organization=organization
+                )
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature if self.temperature is None else self.temperature,
+                temperature=(
+                    temperature if self.temperature is None else self.temperature
+                ),
                 **kwargs,
             )
             .choices[0]
@@ -59,7 +70,13 @@ class LMMEngineOpenAI(LMMEngine):
 
 class LMMEngineAnthropic(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, thinking=False, temperature=None, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        thinking=False,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -133,7 +150,13 @@ class LMMEngineAnthropic(LMMEngine):
 
 class LMMEngineGemini(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, temperature=None, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -176,7 +199,13 @@ class LMMEngineGemini(LMMEngine):
 
 class LMMEngineOpenRouter(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, temperature=None, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -280,7 +309,13 @@ class LMMEngineAzureOpenAI(LMMEngine):
 
 class LMMEnginevLLM(LMMEngine):
     def __init__(
-        self, base_url=None, api_key=None, model=None, rate_limit=-1, temperature=None, **kwargs
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        rate_limit=-1,
+        temperature=None,
+        **kwargs,
     ):
         assert model is not None, "model must be provided"
         self.model = model
@@ -300,7 +335,7 @@ class LMMEnginevLLM(LMMEngine):
         top_p=0.8,
         repetition_penalty=1.05,
         max_new_tokens=512,
-        **kwargs
+        **kwargs,
     ):
         api_key = self.api_key or os.getenv("vLLM_API_KEY")
         if api_key is None:
@@ -364,7 +399,9 @@ class LMMEngineHuggingFace(LMMEngine):
 
 
 class LMMEngineParasail(LMMEngine):
-    def __init__(self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs):
+    def __init__(
+        self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
+    ):
         assert model is not None, "Parasail model id must be provided"
         self.base_url = base_url
         self.model = model
@@ -387,15 +424,18 @@ class LMMEngineParasail(LMMEngine):
                 "Parasail endpoint must be provided as base_url parameter or as an environment variable named PARASAIL_ENDPOINT_URL"
             )
         if not self.llm_client:
-            self.llm_client = OpenAI(base_url=base_url if base_url else "https://api.parasail.io/v1", api_key=api_key)
+            self.llm_client = OpenAI(
+                base_url=base_url if base_url else "https://api.parasail.io/v1",
+                api_key=api_key,
+            )
         return (
             self.llm_client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 max_tokens=max_new_tokens if max_new_tokens else 4096,
                 temperature=temperature,
-                **kwargs
+                **kwargs,
             )
-            .choices[0].
-            message.content
+            .choices[0]
+            .message.content
         )

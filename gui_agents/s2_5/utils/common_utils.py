@@ -3,9 +3,8 @@ import time
 
 from typing import Tuple
 
-def call_llm_safe(
-    agent, temperature: float = 0.0, use_thinking: bool = False
-) -> str:
+
+def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -> str:
     # Retry if fails
     max_retries = 3  # Set the maximum number of retries
     attempt = 0

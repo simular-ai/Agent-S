@@ -66,9 +66,7 @@ class AgentS2_5(UIAgent):
             enable_reflection: Creates a reflection agent to assist the worker agent
         """
 
-        super().__init__(
-            engine_params, grounding_agent, platform
-        )
+        super().__init__(engine_params, grounding_agent, platform)
         self.max_trajectory_length = max_trajectory_length
         self.enable_reflection = enable_reflection
         self.reset()
@@ -90,12 +88,6 @@ class AgentS2_5(UIAgent):
         )
 
         # concatenate the three info dictionaries
-        info = {
-            **{
-                k: v
-                for d in [executor_info or {}]
-                for k, v in d.items()
-            }
-        }
+        info = {**{k: v for d in [executor_info or {}] for k, v in d.items()}}
 
         return info, actions
