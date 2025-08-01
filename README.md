@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S2:
-  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents</small>
+  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
+  <small>Use Computer Like a Human</small>
 </h1>
 
 <p align="center">&nbsp;
@@ -42,7 +42,7 @@
 </div>
 
 ## 🥳 Updates
-- [x] **2025/08/01**: Agent S2.5 is out with new SOTA scores on OSWorld Verified for 100-step and 50-step!
+- [x] **2025/08/01**: Agent S2.5 is released: simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
 - [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
@@ -68,30 +68,33 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 ## 🎯 Current Results
 
-
 <div align="center">
   <table border="0" cellspacing="0" cellpadding="5">
     <tr>
-      <th rowspan="2">OSWorld Verified</th>
-      <th colspan="3"> </th>
-    </tr>
-    <tr>
+      <th>Benchmark</th>
       <th>Agent S2.5</th>
-      <th>Agent S2</th>
       <th>Previous SOTA</th>
     </tr>
     <tr>
-      <td>50 step</td>
-      <td>54.2%</td>
-      <td>45.8%</td>
-      <td>50.6%</td>
-    </tr>
-    <tr>
-      <td>100 step</td>
-      <td>56.0%</td>
-      <td>-</td>
+      <td>OSWorld Verified (100 step)</td>
+      <td><b>56.0%</b></td>
       <td>53.1%</td>
     </tr>
+    <tr>
+      <td>OSWorld Verified (50 step)</td>
+      <td><b>54.2%</b></td>
+      <td>50.6%</td>
+    </tr>
+<!--     <tr>
+      <td>WindowsAgentArena</td>
+      <td>29.8%</td>
+      <td>19.5% (NAVI)</td>
+    </tr>
+    <tr>
+      <td>AndroidWorld</td>
+      <td>54.3%</td>
+      <td>46.8% (UI-TARS)</td>
+    </tr> -->
   </table>
 </div>
 
