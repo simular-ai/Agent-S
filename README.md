@@ -72,34 +72,29 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
   <table border="0" cellspacing="0" cellpadding="5">
     <tr>
       <th>Benchmark</th>
-      <th>Agent S2</th>
+      <th>Agent S2.5</th>
       <th>Previous SOTA</th>
-      <th>Δ improve</th>
     </tr>
     <tr>
-      <td>OSWorld (15 step)</td>
-      <td>27.0%</td>
-      <td>22.7% (UI-TARS)</td>
-      <td>+4.3%</td>
+      <td>OSWorld Verified (100 step)</td>
+      <td><b>56.0%</b></td>
+      <td>53.1%</td>
     </tr>
     <tr>
-      <td>OSWorld (50 step)</td>
-      <td>34.5%</td>
-      <td>32.6% (OpenAI CUA)</td>
-      <td>+1.9%</td>
+      <td>OSWorld Verified (50 step)</td>
+      <td><b>54.2%</b></td>
+      <td>50.6%</td>
     </tr>
-    <tr>
+<!--     <tr>
       <td>WindowsAgentArena</td>
       <td>29.8%</td>
       <td>19.5% (NAVI)</td>
-      <td>+10.3%</td>
     </tr>
     <tr>
       <td>AndroidWorld</td>
       <td>54.3%</td>
       <td>46.8% (UI-TARS)</td>
-      <td>+7.5%</td>
-    </tr>
+    </tr> -->
   </table>
 </div>
 
