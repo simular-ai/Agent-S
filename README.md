@@ -1,6 +1,6 @@
 <h1 align="center">
-  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S2:
-  <small>A Compositional Generalist-Specialist Framework for Computer Use Agents</small>
+  <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
+  <small>Use Computer Like a Human</small>
 </h1>
 
 <p align="center">&nbsp;
@@ -42,6 +42,7 @@
 </div>
 
 ## 🥳 Updates
+- [x] **2025/08/01**: Agent S2.5 is released: simpler, better, and faster! New SOTA on OSWorld Verified!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
 - [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
 - [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
@@ -61,21 +62,11 @@
 
 ## 💡 Introduction
 
-<p align="center">
-    <img src="./images/agent_s2_teaser.png" width="800">
-</p>
-
 Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through Agent-Computer Interface. Our mission is to build intelligent GUI agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
 
 Whether you're interested in AI, automation, or contributing to cutting-edge agent-based systems, we're excited to have you here!
 
 ## 🎯 Current Results
-
-<p align="center">
-    <img src="./images/agent_s2_osworld_result.png" width="600">
-    <br>
-    Results of Agent S2's Successful Rate (%) on the OSWorld full test set using Screenshot input only.
-</p>
 
 <div align="center">
   <table border="0" cellspacing="0" cellpadding="5">
@@ -142,48 +133,12 @@ os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 
 We also support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. For more information refer to [models.md](models.md).
 
-### Setup Retrieval from Web using Perplexica
-Agent S works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
-
-1. Ensure Docker Desktop is installed and running on your system.
-
-2. Navigate to the directory containing the project files.
-
-   ```bash
-    cd Perplexica
-    git submodule update --init
-   ```
-
-3. Rename the `sample.config.toml` file to `config.toml`. For Docker setups, you need only fill in the following fields:
-
-   - `OPENAI`: Your OpenAI API key. **You only need to fill this if you wish to use OpenAI's models**.
-   - `OLLAMA`: Your Ollama API URL. You should enter it as `http://host.docker.internal:PORT_NUMBER`. If you installed Ollama on port 11434, use `http://host.docker.internal:11434`. For other ports, adjust accordingly. **You need to fill this if you wish to use Ollama's models instead of OpenAI's**.
-   - `GROQ`: Your Groq API key. **You only need to fill this if you wish to use Groq's hosted models**.
-   - `ANTHROPIC`: Your Anthropic API key. **You only need to fill this if you wish to use Anthropic models**.
-
-     **Note**: You can change these after starting Perplexica from the settings dialog.
-
-   - `SIMILARITY_MEASURE`: The similarity measure to use (This is filled by default; you can leave it as is if you are unsure about it.)
-
-4. Ensure you are in the directory containing the `docker-compose.yaml` file and execute:
-
-   ```bash
-   docker compose up -d
-   ```
-5. Export your Perplexica URL using the port found in the [`docker-compose.yaml`](https://github.com/ItzCrazyKns/Perplexica/blob/master/docker-compose.yaml) file Under `app/ports`, you'll see `3000:3000`. The port is the left-hand number (in this case, 3000).
-
-   ```bash
-   export PERPLEXICA_URL=http://localhost:{port}/api/search
-   ```
-6. Our implementation of Agent S incorporates the Perplexica API to integrate a search engine capability, which allows for a more convenient and responsive user experience. If you want to tailor the API to your settings and specific requirements, you may modify the URL and the message of request parameters in  `agent_s/query_perplexica.py`. For a comprehensive guide on configuring the Perplexica API, please refer to [Perplexica Search API Documentation](https://github.com/ItzCrazyKns/Perplexica/blob/master/docs/API/SEARCH.md).
-For a more detailed setup and usage guide, please refer to the [Perplexica Repository](https://github.com/ItzCrazyKns/Perplexica.git).
-
 > ❗**Warning**❗: The agent will directly run python code to control your computer. Please use with care.
 
 ## 🚀 Usage
 
 
-> **Note**: Our best configuration uses Claude 3.7 with extended thinking and UI-TARS-72B-DPO. If you are unable to run UI-TARS-72B-DPO due to resource constraints, UI-TARS-7B-DPO can be used as a lighter alternative with minimal performance degradation.
+> **Note**: Our best configuration uses o3 and UI-TARS-1.5-7B.
 
 ### CLI
 
@@ -345,21 +300,6 @@ exec(action[0])
 ```
 
 Refer to `gui_agents/s2/cli_app.py` for more details on how the inference loop works.
-
-#### Downloading the Knowledge Base
-
-Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `AgentS2`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `AgentS2` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
-
-```python
-download_kb_data(
-    version="s2",
-    release_tag="v0.2.2",
-    download_dir="kb_data",
-    platform="linux"  # "darwin", "windows"
-)
-```
-
-This will download Agent S2's knowledge base for Linux from release tag `v0.2.2` to the `kb_data` directory. Refer to our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases) or release tags that include the knowledge bases.
 
 ### OSWorld
 
