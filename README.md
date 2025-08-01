@@ -104,6 +104,8 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 ### Prerequisites
 - **Single Monitor**: Our agent is designed for single monitor screens
 - **Security**: The agent runs Python code to control your computer - use with care
+- **Supported Platforms**: Linux, Mac, and Windows
+
 
 ### Installation
 ```bash
