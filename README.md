@@ -103,7 +103,6 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 ### Prerequisites
 - **Single Monitor**: Our agent is designed for single monitor screens
-- **Linux Users**: Avoid `conda` environments as they interfere with `pyatspi`
 - **Security**: The agent runs Python code to control your computer - use with care
 
 ### Installation
