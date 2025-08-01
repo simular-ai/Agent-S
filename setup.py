@@ -35,8 +35,7 @@ setup(
     extras_require={"dev": ["black"]},  # Code formatter for linting
     entry_points={
         "console_scripts": [
-            "agent_s1=gui_agents.s1.cli_app:main",
-            "agent_s2=gui_agents.s2.cli_app:main",
+            "agent_s=gui_agents.s2_5.cli_app:main",
         ],
     },
     classifiers=[

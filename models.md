@@ -42,34 +42,31 @@ export OPEN_ROUTER_ENDPOINT_URL="https://openrouter.ai/api/v1"
 ```
 
 ```python
-from gui_agents.s2.agents.agent_s import AgentS2
+from gui_agents.s2_5.agents.agent_s import AgentS2_5
 
 engine_params = {
-    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
-    "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
+    "engine_type": 'openai', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
+    "model": 'o3-2025-04-16', # Allowed Values: Any Vision and Language Model from the supported APIs
 }
-agent = AgentS2(
+agent = AgentS2_5(
     engine_params,
     grounding_agent,
     platform=current_platform,
-    action_space="pyautogui",
-    observation_type="mixed",
-    search_engine="LLM"
 )
 ```
 
 To use the underlying Multimodal Agent (LMMAgent) which wraps LLMs with message handling functionality, you can use the following code snippet:
 
 ```python
-from gui_agents.core.mllm import LMMAgent
+from gui_agents.s2_5.core.mllm import LMMAgent
 
 engine_params = {
-    "engine_type": 'anthropic', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
-    "model": 'claude-3-5-sonnet-20240620', # Allowed Values: Any Vision and Language Model from the supported APIs
+    "engine_type": 'openai', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
+    "model": 'o3-2025-04-16', # Allowed Values: Any Vision and Language Model from the supported APIs
     }
 agent = LMMAgent(
     engine_params=engine_params,
 )
 ```
 
-The `AgentS2` also utilizes this `LMMAgent` internally.
+The `AgentS2_5` also utilizes this `LMMAgent` internally.
