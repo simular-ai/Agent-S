@@ -41,6 +41,11 @@
   <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=zh">中文</a>
 </div>
 
+<div align="center">
+  &nbsp;&nbsp;
+<p>Skip the setup? Try Agent S in <a href="https://cloud.simular.ai/">Simular Cloud</a>
+</div>
+
 ## 🥳 Updates
 - [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
