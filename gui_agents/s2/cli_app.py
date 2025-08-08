@@ -5,8 +5,11 @@ import logging
 import os
 import platform
 import pyautogui
+import signal
 import sys
+import termios
 import time
+import tty
 
 from PIL import Image
 
@@ -14,6 +17,63 @@ from gui_agents.s2.agents.grounding import OSWorldACI
 from gui_agents.s2.agents.agent_s import AgentS2
 
 current_platform = platform.system().lower()
+
+# Global flag to track pause state for debugging
+paused = False
+
+def get_char():
+    """Get a single character from stdin without pressing Enter"""
+    try:
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+    except:
+        return input()  # Fallback for non-terminal environments
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C signal for debugging during agent execution"""
+    global paused
+    
+    if not paused:
+        print("\n\n🔸 Agent-S Workflow Paused 🔸")
+        print("=" * 50)
+        print("Options:")
+        print("  • Press Ctrl+C again to quit")
+        print("  • Press Esc to resume workflow")
+        print("=" * 50)
+        
+        paused = True
+        
+        while paused:
+            try:
+                print("\n[PAUSED] Waiting for input... ", end="", flush=True)
+                char = get_char()
+                
+                if ord(char) == 3:  # Ctrl+C
+                    print("\n\n🛑 Exiting Agent-S...")
+                    sys.exit(0)
+                elif ord(char) == 27:  # Esc
+                    print("\n\n▶️  Resuming Agent-S workflow...")
+                    paused = False
+                    break
+                else:
+                    print(f"\n   Unknown command: '{char}' (ord: {ord(char)})")
+                    
+            except KeyboardInterrupt:
+                print("\n\n🛑 Exiting Agent-S...")
+                sys.exit(0)
+    else:
+        # Already paused, second Ctrl+C means quit
+        print("\n\n🛑 Exiting Agent-S...")
+        sys.exit(0)
+
+# Set up signal handler for Ctrl+C
+signal.signal(signal.SIGINT, signal_handler)
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
@@ -81,10 +141,15 @@ def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
 
 
 def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
+    global paused
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
-    for _ in range(15):
+    for step in range(15):
+        # Check if we're in paused state and wait
+        while paused:
+            time.sleep(0.1)
+            
         # Get screen shot using pyautogui
         screenshot = pyautogui.screenshot()
         screenshot = screenshot.resize((scaled_width, scaled_height), Image.LANCZOS)
@@ -98,6 +163,12 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         # Convert to base64 string.
         obs["screenshot"] = screenshot_bytes
 
+        # Check again for pause state before prediction
+        while paused:
+            time.sleep(0.1)
+
+        print(f"\n🔄 Step {step + 1}/15: Getting next action from agent...")
+        
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
 
@@ -118,12 +189,17 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
             continue
 
         if "wait" in code[0].lower():
+            print("⏳ Agent requested wait...")
             time.sleep(5)
             continue
 
         else:
             time.sleep(1.0)
             print("EXECUTING CODE:", code[0])
+
+            # Check for pause state before execution
+            while paused:
+                time.sleep(0.1)
 
             # Ask for permission before executing
             exec(code[0])
