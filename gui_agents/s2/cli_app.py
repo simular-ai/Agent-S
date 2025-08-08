@@ -7,9 +7,7 @@ import platform
 import pyautogui
 import signal
 import sys
-import termios
 import time
-import tty
 
 from PIL import Image
 
@@ -24,14 +22,22 @@ paused = False
 def get_char():
     """Get a single character from stdin without pressing Enter"""
     try:
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
+        # Import termios and tty on Unix-like systems
+        if platform.system() in ["Darwin", "Linux"]:
+            import termios
+            import tty
+            fd = sys.stdin.fileno()
+            old_settings = termios.tcgetattr(fd)
+            try:
+                tty.setraw(sys.stdin.fileno())
+                ch = sys.stdin.read(1)
+            finally:
+                termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            return ch
+        else:
+            # Windows fallback
+            import msvcrt
+            return msvcrt.getch().decode('utf-8', errors='ignore')
     except:
         return input()  # Fallback for non-terminal environments
 
