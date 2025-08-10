@@ -16,6 +16,7 @@ toml
 black
 pytesseract
 google-genai
+MemoryOS
 
 # Platform-specific dependencies
 pyobjc; platform_system == "Darwin"

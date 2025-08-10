@@ -82,6 +82,48 @@ class PROCEDURAL_MEMORY:
     """
     )
 
+    GENERATE_THOUGHTS_PROMPT = textwrap.dedent(
+        """
+        You are an expert computer agent. Based on the current state and the overall task, please generate a set of diverse and promising next actions or thoughts. These thoughts should represent different strategies to approach the problem. For each thought, provide a brief reasoning and the corresponding action.
+
+        Format your response as a numbered list of thoughts. Each thought should be a dictionary with "reasoning" and "action" keys.
+        Example:
+        [
+            {
+                "reasoning": "The first logical step is to open the start menu to find the application.",
+                "action": "agent.click('Start Menu')"
+            },
+            {
+                "reasoning": "Alternatively, I can use the search bar to find the application directly.",
+                "action": "agent.type('search bar', 'Application Name')"
+            }
+        ]
+
+        Current State: {current_state}
+        Task: {task_description}
+        History: {history}
+
+        Generate up to {num_thoughts} thoughts.
+        """
+    )
+
+    EVALUATE_THOUGHT_PROMPT = textwrap.dedent(
+        """
+        You are an expert evaluator. Given the current state, the overall task, and a proposed thought (action), evaluate its quality. The quality is a score from 0.0 to 1.0, where 1.0 is a perfect next step that is highly likely to lead to success, and 0.0 is a useless or harmful action.
+
+        Provide your evaluation as a single floating-point number.
+
+        Current State: {current_state}
+        Task: {task_description}
+        History: {history}
+        Proposed Thought:
+        Reasoning: {thought_reasoning}
+        Action: {thought_action}
+
+        Your evaluation (a single float):
+        """
+    )
+
     PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent(
         """
     You are an expert in graphical user interfaces. Your task is to process a phrase of text, and identify the most relevant word on the computer screen.
