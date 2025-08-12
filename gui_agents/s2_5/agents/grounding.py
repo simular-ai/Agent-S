@@ -400,7 +400,7 @@ class OSWorldACI(ACI):
 
     @agent_action
     def open(self, app_or_filename: str):
-        """Open any application or file with name app_or_filename. Use this action to open applications or files on the desktop, do not open manually.
+        """Open any application or file with name app_or_filename. This action should be used on Linux/Darwin systems instead of opening the file manually. Do not use on Windows.
         Args:
             app_or_filename:str, the name of the application or filename to open
         """
