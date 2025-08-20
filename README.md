@@ -117,8 +117,13 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 
 ### Installation
+To install Agent S2.5 without cloning the repository, run
 ```bash
 pip install gui-agents
+```
+If you would like to test Agent S2.5 while making changes, clone the repository and install using
+```
+pip install -e .
 ```
 
 ### API Configuration
@@ -147,7 +152,7 @@ For optimal performance, we recommend [UI-TARS-1.5-7B](https://huggingface.co/By
 
 
 > ⚡️ **Recommended Setup:**  
-> For the best configuration, we recommend using **OpenAI o3-2025-04-16** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
+> For the best configuration, we recommend using **OpenAI gpt-5-2025-08-07** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
 
 
 ### CLI
@@ -157,7 +162,7 @@ Run Agent S2.5 with the required parameters:
 ```bash
 agent_s \
     --provider openai \
-    --model o3-2025-04-16 \
+    --model gpt-5-2025-08-07 \
     --ground_provider huggingface \
     --ground_url http://localhost:8080 \
     --ground_model ui-tars-1.5-7b \
@@ -167,12 +172,15 @@ agent_s \
 
 #### Required Parameters
 - **`--provider`**: Main generation model provider (e.g., openai, anthropic, etc.) - Default: "openai"
-- **`--model`**: Main generation model name (e.g., o3-2025-04-16) - Default: "o3-2025-04-16"
+- **`--model`**: Main generation model name (e.g., gpt-5-2025-08-07) - Default: "gpt-5-2025-08-07"
 - **`--ground_provider`**: The provider for the grounding model - **Required**
 - **`--ground_url`**: The URL of the grounding model - **Required**
 - **`--ground_model`**: The model name for the grounding model - **Required**
 - **`--grounding_width`**: Width of the output coordinate resolution from the grounding model - **Required**
 - **`--grounding_height`**: Height of the output coordinate resolution from the grounding model - **Required**
+
+#### Optional Parameters
+- **`--model_temperature`**: The temperature to fix all model calls to (necessary to set to 1.0 for models like o3 but can be left blank for other models)
 
 #### Grounding Model Dimensions
 The grounding width and height should match the output coordinate resolution of your grounding model:
@@ -208,8 +216,9 @@ Next, we define our engine parameters. `engine_params` is used for the main agen
 engine_params = {
   "engine_type": provider,
   "model": model,
-  "base_url": model_url,     # Optional
-  "api_key": model_api_key,  # Optional
+  "base_url": model_url,           # Optional
+  "api_key": model_api_key,        # Optional
+  "temperature": model_temperature # Optional
 }
 
 # Load the grounding engine from a custom endpoint

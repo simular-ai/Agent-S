@@ -46,7 +46,7 @@ from gui_agents.s2_5.agents.agent_s import AgentS2_5
 
 engine_params = {
     "engine_type": 'openai', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
-    "model": 'o3-2025-04-16', # Allowed Values: Any Vision and Language Model from the supported APIs
+    "model": 'gpt-5-2025-08-07', # Allowed Values: Any Vision and Language Model from the supported APIs
 }
 agent = AgentS2_5(
     engine_params,
@@ -62,7 +62,7 @@ from gui_agents.s2_5.core.mllm import LMMAgent
 
 engine_params = {
     "engine_type": 'openai', # Allowed Values: 'openai', 'anthropic', 'gemini', 'azure_openai', 'vllm', 'open_router'
-    "model": 'o3-2025-04-16', # Allowed Values: Any Vision and Language Model from the supported APIs
+    "model": 'gpt-5-2025-08-07', # Allowed Values: Any Vision and Language Model from the supported APIs
     }
 agent = LMMAgent(
     engine_params=engine_params,

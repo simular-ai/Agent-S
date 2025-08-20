@@ -230,8 +230,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="o3-2025-04-16",
-        help="Specify the model to use (e.g., o3-2025-04-16)",
+        default="gpt-5-2025-08-07",
+        help="Specify the model to use (e.g., gpt-5-2025-08-07)",
     )
     parser.add_argument(
         "--model_url",
@@ -244,6 +244,12 @@ def main():
         type=str,
         default="",
         help="The API key of the main generation model.",
+    )
+    parser.add_argument(
+        "--model_temperature",
+        type=float,
+        default=None,
+        help="Temperature to fix the generation model at (e.g. o3 can only be run with 1.0)"
     )
 
     # Grounding model config: Self-hosted endpoint based (required)
@@ -312,6 +318,7 @@ def main():
         "model": args.model,
         "base_url": args.model_url,
         "api_key": args.model_api_key,
+        "temperature": getattr(args, 'model_temperature', None),
     }
 
     # Load the grounding engine from a custom endpoint
