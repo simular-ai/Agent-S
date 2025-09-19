@@ -4,7 +4,7 @@ import time
 from typing import Tuple
 
 
-def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -> str:
+def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False, **generation_kwargs) -> str:
     # Retry if fails
     max_retries = 3  # Set the maximum number of retries
     attempt = 0
@@ -12,7 +12,8 @@ def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -
     while attempt < max_retries:
         try:
             response = agent.get_response(
-                temperature=temperature, use_thinking=use_thinking
+                temperature=temperature, use_thinking=use_thinking,
+                **generation_kwargs
             )
             assert response is not None, "Response from agent should not be None"
             print("Response success!")

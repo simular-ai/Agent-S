@@ -251,7 +251,7 @@ class GraphSearchAgent(UIAgent):
             if "FAIL" in actions:
                 self.requires_replan = True
                 # set the failure feedback to the evaluator feedback
-                self.failure_feedback = f"Completed subtasks: {self.completed_tasks}. The subtask {self.current_subtask} cannot be completed. Please try another approach. {executor_info['plan_code']}. Please replan."
+                self.failure_feedback = f"Completed subtasks: {self.completed_tasks}. The subtask {self.current_subtask} cannot be completed. Please try another approach. {executor_info.get('executor_plan', '')}. Please replan."
                 self.needs_next_subtask = True
 
                 # reset the step count, executor, and evaluator
