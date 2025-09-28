@@ -1,0 +1,167 @@
+{
+  "metadata": {
+    "session_id": "accessibility_session_1759034509",
+    "generated_at": "2025-09-28T04:41:52.846431",
+    "start_time": "2025-09-28T04:41:49.083074",
+    "end_time": "2025-09-28T04:41:52.845924",
+    "url_or_app": "Demo Application",
+    "platform": "linux",
+    "test_configuration": {
+      "real_time_monitoring": true,
+      "keyboard_testing": true,
+      "compliance_checking": true,
+      "violation_detection": true,
+      "screenshot_capture": true,
+      "compliance_level": "AA",
+      "screenshot_dir": "demo_screenshots",
+      "report_dir": "demo_reports"
+    }
+  },
+  "summary": {
+    "compliance_score": 100.0,
+    "total_violations": 6,
+    "critical_violations": 3,
+    "major_violations": 2,
+    "minor_violations": 1,
+    "warning_violations": 0,
+    "keyboard_tests_passed": 0,
+    "keyboard_tests_failed": 2,
+    "evidence_captured": 0
+  },
+  "violations": [
+    {
+      "rule_id": "color_contrast_violation",
+      "severity": "major",
+      "description": "Low color contrast detected (ratio: 3.87)",
+      "location": {
+        "x": 49,
+        "y": 119,
+        "width": 37,
+        "height": 22
+      },
+      "screenshot_path": "demo_screenshots/violation_color_contrast_violation_1759034509260.png",
+      "suggestion": "Increase contrast ratio to at least 4.5:1",
+      "wcag_reference": "WCAG 2.1 SC 1.4.3 Contrast (Minimum)",
+      "section_508_reference": "1194.22(c)"
+    },
+    {
+      "rule_id": "missing_focus_indicator",
+      "severity": "major",
+      "description": "Interactive element may be missing focus indicator",
+      "location": {
+        "x": 49,
+        "y": 119,
+        "width": 37,
+        "height": 22
+      },
+      "screenshot_path": "demo_screenshots/violation_missing_focus_indicator_1759034509272.png",
+      "suggestion": "Ensure all interactive elements have visible focus indicators",
+      "wcag_reference": "WCAG 2.1 SC 2.4.7 Focus Visible",
+      "section_508_reference": "1194.22(c)"
+    },
+    {
+      "rule_id": "small_click_target",
+      "severity": "minor",
+      "description": "Click target too small (37x22px, should be at least 44x44px)",
+      "location": {
+        "x": 49,
+        "y": 119,
+        "width": 37,
+        "height": 22
+      },
+      "screenshot_path": "demo_screenshots/violation_small_click_target_1759034509283.png",
+      "suggestion": "Increase click target size to at least 44x44px",
+      "wcag_reference": "WCAG 2.1 SC 2.5.5 Target Size",
+      "section_508_reference": null
+    },
+    {
+      "rule_id": "missing_alt_text",
+      "severity": "critical",
+      "description": "Image detected without text alternative",
+      "location": {
+        "x": 0,
+        "y": 35,
+        "width": 237,
+        "height": 236
+      },
+      "screenshot_path": "demo_screenshots/violation_missing_alt_text_1759034509294.png",
+      "suggestion": "Add descriptive alt text for images",
+      "wcag_reference": "WCAG 2.1 SC 1.1.1 Non-text Content",
+      "section_508_reference": "1194.22(a)"
+    },
+    {
+      "rule_id": "keyboard_tab_navigation",
+      "severity": "critical",
+      "description": "Keyboard test failed: Test Tab key navigation through all focusable elements",
+      "location": null,
+      "screenshot_path": null,
+      "suggestion": "Fix keyboard accessibility issue: Focus moves sequentially through all interactive elements",
+      "wcag_reference": "WCAG 2.1 SC 2.1.1 Keyboard",
+      "section_508_reference": "1194.22(a)"
+    },
+    {
+      "rule_id": "keyboard_shift_tab_navigation",
+      "severity": "critical",
+      "description": "Keyboard test failed: Test Shift+Tab reverse navigation",
+      "location": null,
+      "screenshot_path": null,
+      "suggestion": "Fix keyboard accessibility issue: Focus moves in reverse order through interactive elements",
+      "wcag_reference": "WCAG 2.1 SC 2.1.1 Keyboard",
+      "section_508_reference": "1194.22(a)"
+    }
+  ],
+  "keyboard_tests": [
+    {
+      "test_id": "tab_navigation",
+      "description": "Test Tab key navigation through all focusable elements",
+      "keys_to_press": [
+        "tab"
+      ],
+      "expected_behavior": "Focus moves sequentially through all interactive elements",
+      "result": "fail",
+      "notes": "No focusable elements detected"
+    },
+    {
+      "test_id": "shift_tab_navigation",
+      "description": "Test Shift+Tab reverse navigation",
+      "keys_to_press": [
+        "shift+tab"
+      ],
+      "expected_behavior": "Focus moves in reverse order through interactive elements",
+      "result": "fail",
+      "notes": "Shift+Tab navigation not working"
+    },
+    {
+      "test_id": "enter_activation",
+      "description": "Test Enter key activation of buttons and links",
+      "keys_to_press": [
+        "enter"
+      ],
+      "expected_behavior": "Buttons and links activate when Enter is pressed",
+      "result": "skip",
+      "notes": "No buttons or links found to test"
+    },
+    {
+      "test_id": "keyboard_trapping",
+      "description": "Test focus trapping in modal dialogs",
+      "keys_to_press": [
+        "tab"
+      ],
+      "expected_behavior": "Focus stays within modal dialogs",
+      "result": "skip",
+      "notes": "No modal dialogs detected for testing"
+    },
+    {
+      "test_id": "skip_links",
+      "description": "Test skip link functionality for bypassing repetitive content",
+      "keys_to_press": [
+        "tab",
+        "enter"
+      ],
+      "expected_behavior": "Skip links allow bypassing repetitive navigation",
+      "result": "skip",
+      "notes": "Skip link detection not implemented"
+    }
+  ],
+  "evidence": []
+}

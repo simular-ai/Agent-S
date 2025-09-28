@@ -1,0 +1,653 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Accessibility Testing Report - accessibility_session_1759034509</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .report-header {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .report-header h1 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+        
+        .meta-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 10px;
+        }
+        
+        .summary {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .score-card {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+        }
+        
+        .score {
+            text-align: center;
+            min-width: 150px;
+        }
+        
+        .score-value {
+            display: block;
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .score-value.excellent { color: #27ae60; }
+        .score-value.good { color: #f39c12; }
+        .score-value.needs-improvement { color: #e67e22; }
+        .score-value.critical { color: #e74c3c; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            flex: 1;
+        }
+        
+        .stat {
+            text-align: center;
+            padding: 15px;
+            border-radius: 6px;
+            background: #ecf0f1;
+        }
+        
+        .stat.critical { background: #ffebee; }
+        .stat.major { background: #fff3e0; }
+        .stat.minor { background: #e8f5e8; }
+        
+        .stat-value {
+            display: block;
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .keyboard-tests, .violations {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .test-result {
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        
+        .test-result.pass { border-left: 4px solid #27ae60; }
+        .test-result.fail { border-left: 4px solid #e74c3c; }
+        .test-result.warning { border-left: 4px solid #f39c12; }
+        .test-result.skip { border-left: 4px solid #95a5a6; }
+        
+        .result-badge {
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        
+        .result-badge.pass { background: #d5f4e6; color: #27ae60; }
+        .result-badge.fail { background: #fdeaea; color: #e74c3c; }
+        .result-badge.warning { background: #fef9e7; color: #f39c12; }
+        .result-badge.skip { background: #ecf0f1; color: #95a5a6; }
+        
+        .severity-section {
+            margin-bottom: 30px;
+        }
+        
+        .severity-header {
+            padding: 15px;
+            border-radius: 6px 6px 0 0;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+        
+        .severity-header.critical { background: #e74c3c; color: white; }
+        .severity-header.major { background: #e67e22; color: white; }
+        .severity-header.minor { background: #f39c12; color: white; }
+        .severity-header.warning { background: #95a5a6; color: white; }
+        
+        .violation-card {
+            border: 1px solid #ddd;
+            border-top: none;
+            padding: 20px;
+            margin-bottom: 1px;
+        }
+        
+        .violation-card:last-child {
+            border-radius: 0 0 6px 6px;
+        }
+        
+        .violation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .severity-badge {
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+        
+        .severity-badge.critical { background: #e74c3c; color: white; }
+        .severity-badge.major { background: #e67e22; color: white; }
+        .severity-badge.minor { background: #f39c12; color: white; }
+        .severity-badge.warning { background: #95a5a6; color: white; }
+        
+        .violation-suggestion {
+            background: #e8f5e8;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        
+        .violation-references {
+            margin: 15px 0;
+        }
+        
+        .reference {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            margin-right: 8px;
+        }
+        
+        .reference.wcag { background: #3498db; color: white; }
+        .reference.section508 { background: #9b59b6; color: white; }
+        
+        .evidence-screenshot {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 15px;
+        }
+        
+        .report-footer {
+            text-align: center;
+            padding: 20px;
+            color: #7f8c8d;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 768px) {
+            .score-card {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .meta-info {
+                grid-template-columns: 1fr;
+            }
+        }
+        </style>
+</head>
+<body>
+    <div class="container">
+        <header class="report-header">
+            <h1>🔍 Accessibility Testing Report</h1>
+            <div class="meta-info">
+                <p><strong>Application/URL:</strong> Demo Application</p>
+                <p><strong>Platform:</strong> linux</p>
+                <p><strong>Test Date:</strong> 2025-09-28 04:41:49</p>
+                <p><strong>Session ID:</strong> accessibility_session_1759034509</p>
+            </div>
+        </header>
+
+        <section class="summary">
+            <h2>📊 Executive Summary</h2>
+            <div class="score-card">
+                <div class="score">
+                    <span class="score-value excellent">
+                        100.0/100
+                    </span>
+                    <span class="score-label">Compliance Score</span>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat">
+                        <span class="stat-value">6</span>
+                        <span class="stat-label">Total Violations</span>
+                    </div>
+                    <div class="stat critical">
+                        <span class="stat-value">3</span>
+                        <span class="stat-label">Critical</span>
+                    </div>
+                    <div class="stat major">
+                        <span class="stat-value">2</span>
+                        <span class="stat-label">Major</span>
+                    </div>
+                    <div class="stat minor">
+                        <span class="stat-value">1</span>
+                        <span class="stat-label">Minor</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="keyboard-tests">
+            <h2>⌨️ Keyboard Accessibility Tests</h2>
+            <div class="test-results">
+                
+                <div class="test-result fail">
+                    <h3>Test Tab key navigation through all focusable elements</h3>
+                    <p><strong>Result:</strong> <span class="result-badge fail">FAIL</span></p>
+                    <p><strong>Expected:</strong> Focus moves sequentially through all interactive elements</p>
+                    
+                    <p><strong>Notes:</strong> No focusable elements detected</p>
+                    
+                </div>
+                
+                <div class="test-result fail">
+                    <h3>Test Shift+Tab reverse navigation</h3>
+                    <p><strong>Result:</strong> <span class="result-badge fail">FAIL</span></p>
+                    <p><strong>Expected:</strong> Focus moves in reverse order through interactive elements</p>
+                    
+                    <p><strong>Notes:</strong> Shift+Tab navigation not working</p>
+                    
+                </div>
+                
+                <div class="test-result skip">
+                    <h3>Test Enter key activation of buttons and links</h3>
+                    <p><strong>Result:</strong> <span class="result-badge skip">SKIP</span></p>
+                    <p><strong>Expected:</strong> Buttons and links activate when Enter is pressed</p>
+                    
+                    <p><strong>Notes:</strong> No buttons or links found to test</p>
+                    
+                </div>
+                
+                <div class="test-result skip">
+                    <h3>Test focus trapping in modal dialogs</h3>
+                    <p><strong>Result:</strong> <span class="result-badge skip">SKIP</span></p>
+                    <p><strong>Expected:</strong> Focus stays within modal dialogs</p>
+                    
+                    <p><strong>Notes:</strong> No modal dialogs detected for testing</p>
+                    
+                </div>
+                
+                <div class="test-result skip">
+                    <h3>Test skip link functionality for bypassing repetitive content</h3>
+                    <p><strong>Result:</strong> <span class="result-badge skip">SKIP</span></p>
+                    <p><strong>Expected:</strong> Skip links allow bypassing repetitive navigation</p>
+                    
+                    <p><strong>Notes:</strong> Skip link detection not implemented</p>
+                    
+                </div>
+                
+            </div>
+        </section>
+
+        <section class="violations">
+            <h2>🚨 Accessibility Violations</h2>
+            
+            
+            
+            <div class="severity-section">
+                <h3 class="severity-header critical">
+                    Critical Issues (3)
+                </h3>
+                
+                
+                <div class="violation-card critical">
+                    <div class="violation-header">
+                        <h4>missing_alt_text</h4>
+                        <span class="severity-badge critical">Critical</span>
+                    </div>
+                    
+                    <p class="violation-description">Image detected without text alternative</p>
+                    
+                    
+                    <p class="violation-location">
+                        <strong>Location:</strong> (0, 35) 
+                        237×236px
+                    </p>
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Add descriptive alt text for images
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 1.1.1 Non-text Content</span>
+                        
+                        
+                        <span class="reference section508">Section 508: 1194.22(a)</span>
+                        
+                    </div>
+                    
+                    
+                    <div class="violation-evidence">
+                        <img src="demo_screenshots/violation_missing_alt_text_1759034509294.png" alt="Screenshot evidence for missing_alt_text" class="evidence-screenshot">
+                    </div>
+                    
+                </div>
+                
+                <div class="violation-card critical">
+                    <div class="violation-header">
+                        <h4>keyboard_tab_navigation</h4>
+                        <span class="severity-badge critical">Critical</span>
+                    </div>
+                    
+                    <p class="violation-description">Keyboard test failed: Test Tab key navigation through all focusable elements</p>
+                    
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Fix keyboard accessibility issue: Focus moves sequentially through all interactive elements
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 2.1.1 Keyboard</span>
+                        
+                        
+                        <span class="reference section508">Section 508: 1194.22(a)</span>
+                        
+                    </div>
+                    
+                    
+                </div>
+                
+                <div class="violation-card critical">
+                    <div class="violation-header">
+                        <h4>keyboard_shift_tab_navigation</h4>
+                        <span class="severity-badge critical">Critical</span>
+                    </div>
+                    
+                    <p class="violation-description">Keyboard test failed: Test Shift+Tab reverse navigation</p>
+                    
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Fix keyboard accessibility issue: Focus moves in reverse order through interactive elements
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 2.1.1 Keyboard</span>
+                        
+                        
+                        <span class="reference section508">Section 508: 1194.22(a)</span>
+                        
+                    </div>
+                    
+                    
+                </div>
+                
+            </div>
+            
+            
+            
+            <div class="severity-section">
+                <h3 class="severity-header major">
+                    Major Issues (2)
+                </h3>
+                
+                
+                <div class="violation-card major">
+                    <div class="violation-header">
+                        <h4>color_contrast_violation</h4>
+                        <span class="severity-badge major">Major</span>
+                    </div>
+                    
+                    <p class="violation-description">Low color contrast detected (ratio: 3.87)</p>
+                    
+                    
+                    <p class="violation-location">
+                        <strong>Location:</strong> (49, 119) 
+                        37×22px
+                    </p>
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Increase contrast ratio to at least 4.5:1
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 1.4.3 Contrast (Minimum)</span>
+                        
+                        
+                        <span class="reference section508">Section 508: 1194.22(c)</span>
+                        
+                    </div>
+                    
+                    
+                    <div class="violation-evidence">
+                        <img src="demo_screenshots/violation_color_contrast_violation_1759034509260.png" alt="Screenshot evidence for color_contrast_violation" class="evidence-screenshot">
+                    </div>
+                    
+                </div>
+                
+                <div class="violation-card major">
+                    <div class="violation-header">
+                        <h4>missing_focus_indicator</h4>
+                        <span class="severity-badge major">Major</span>
+                    </div>
+                    
+                    <p class="violation-description">Interactive element may be missing focus indicator</p>
+                    
+                    
+                    <p class="violation-location">
+                        <strong>Location:</strong> (49, 119) 
+                        37×22px
+                    </p>
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Ensure all interactive elements have visible focus indicators
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 2.4.7 Focus Visible</span>
+                        
+                        
+                        <span class="reference section508">Section 508: 1194.22(c)</span>
+                        
+                    </div>
+                    
+                    
+                    <div class="violation-evidence">
+                        <img src="demo_screenshots/violation_missing_focus_indicator_1759034509272.png" alt="Screenshot evidence for missing_focus_indicator" class="evidence-screenshot">
+                    </div>
+                    
+                </div>
+                
+            </div>
+            
+            
+            
+            <div class="severity-section">
+                <h3 class="severity-header minor">
+                    Minor Issues (1)
+                </h3>
+                
+                
+                <div class="violation-card minor">
+                    <div class="violation-header">
+                        <h4>small_click_target</h4>
+                        <span class="severity-badge minor">Minor</span>
+                    </div>
+                    
+                    <p class="violation-description">Click target too small (37x22px, should be at least 44x44px)</p>
+                    
+                    
+                    <p class="violation-location">
+                        <strong>Location:</strong> (49, 119) 
+                        37×22px
+                    </p>
+                    
+                    
+                    
+                    <div class="violation-suggestion">
+                        <strong>💡 Suggestion:</strong> Increase click target size to at least 44x44px
+                    </div>
+                    
+                    
+                    <div class="violation-references">
+                        
+                        <span class="reference wcag">WCAG 2.1 SC 2.5.5 Target Size</span>
+                        
+                        
+                    </div>
+                    
+                    
+                    <div class="violation-evidence">
+                        <img src="demo_screenshots/violation_small_click_target_1759034509283.png" alt="Screenshot evidence for small_click_target" class="evidence-screenshot">
+                    </div>
+                    
+                </div>
+                
+            </div>
+            
+            
+            
+            
+        </section>
+
+        <footer class="report-footer">
+            <p>Report generated on 2025-09-28 04:41:52 by Agent S Accessibility Testing System</p>
+        </footer>
+    </div>
+
+    <script>
+        // Add interactive features to the report
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add click to expand functionality for violation cards
+            const violationCards = document.querySelectorAll('.violation-card');
+            violationCards.forEach(card => {
+                const evidenceSection = card.querySelector('.violation-evidence');
+                if (evidenceSection) {
+                    const screenshot = evidenceSection.querySelector('.evidence-screenshot');
+                    if (screenshot) {
+                        screenshot.style.cursor = 'pointer';
+                        screenshot.addEventListener('click', function() {
+                            // Open screenshot in a modal or new window
+                            window.open(this.src, '_blank');
+                        });
+                    }
+                }
+            });
+            
+            // Add filtering functionality
+            const addFilterButtons = () => {
+                const container = document.querySelector('.violations');
+                if (!container) return;
+                
+                const filterDiv = document.createElement('div');
+                filterDiv.className = 'filter-controls';
+                filterDiv.style.marginBottom = '20px';
+                
+                const severities = ['all', 'critical', 'major', 'minor', 'warning'];
+                severities.forEach(severity => {
+                    const button = document.createElement('button');
+                    button.textContent = severity.charAt(0).toUpperCase() + severity.slice(1);
+                    button.className = `filter-btn ${severity === 'all' ? 'active' : ''}`;
+                    button.style.marginRight = '10px';
+                    button.style.padding = '8px 16px';
+                    button.style.border = '1px solid #ddd';
+                    button.style.borderRadius = '4px';
+                    button.style.background = severity === 'all' ? '#3498db' : 'white';
+                    button.style.color = severity === 'all' ? 'white' : '#333';
+                    button.style.cursor = 'pointer';
+                    
+                    button.addEventListener('click', function() {
+                        // Update active button
+                        document.querySelectorAll('.filter-btn').forEach(btn => {
+                            btn.style.background = 'white';
+                            btn.style.color = '#333';
+                            btn.classList.remove('active');
+                        });
+                        this.style.background = '#3498db';
+                        this.style.color = 'white';
+                        this.classList.add('active');
+                        
+                        // Filter violations
+                        const sections = document.querySelectorAll('.severity-section');
+                        sections.forEach(section => {
+                            if (severity === 'all') {
+                                section.style.display = 'block';
+                            } else {
+                                const header = section.querySelector('.severity-header');
+                                if (header && header.classList.contains(severity)) {
+                                    section.style.display = 'block';
+                                } else {
+                                    section.style.display = 'none';
+                                }
+                            }
+                        });
+                    });
+                    
+                    filterDiv.appendChild(button);
+                });
+                
+                container.insertBefore(filterDiv, container.firstChild.nextSibling);
+            };
+            
+            addFilterButtons();
+        });
+        </script>
+</body>
+</html>
+        
