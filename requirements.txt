@@ -16,6 +16,9 @@ toml
 black
 pytesseract
 google-genai
+opencv-python
+jinja2
+pillow
 
 # Platform-specific dependencies
 pyobjc; platform_system == "Darwin"
