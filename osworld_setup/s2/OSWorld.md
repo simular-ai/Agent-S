@@ -2,7 +2,7 @@
 
 # Step 1: Set up Agent S2
 
-Follow the [README.md](https://github.com/simular-ai/Agent-S/blob/main/README.md) to set up Agent S2.
+Follow the [README.md](https://github.com/jdgiles26/Agent-S/blob/main/README.md) to set up Agent S2.
 
 # Step 2: Copying Over Run Files
 

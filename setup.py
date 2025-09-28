@@ -6,8 +6,8 @@ setup(
     description="A library for creating general purpose GUI agents using multimodal LLMs.",
     long_description=open("README.md", encoding="utf-8").read(),
     long_description_content_type="text/markdown",
-    author="Simular AI",
-    author_email="eric@simular.ai",
+    author="jdgiles26",
+    author_email="",
     packages=find_packages(),
     install_requires=[
         "numpy",
@@ -49,8 +49,8 @@ setup(
     ],
     keywords="ai, llm, gui, agent, multimodal",
     project_urls={
-        "Source": "https://github.com/simular-ai/Agent-S",
-        "Bug Reports": "https://github.com/simular-ai/Agent-S/issues",
+        "Source": "https://github.com/jdgiles26/Agent-S",
+        "Bug Reports": "https://github.com/jdgiles26/Agent-S/issues",
     },
     python_requires=">=3.9",
 )

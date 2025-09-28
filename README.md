@@ -3,6 +3,10 @@
   <small>Use Computer Like a Human</small>
 </h1>
 
+> **Note**: This is a personal fork/copy of the original [Agent-S repository by Simular AI](https://github.com/simular-ai/Agent-S). This copy contains personal modifications and is maintained independently. 
+> 
+> **⚠️ Important**: This repository is configured as an independent copy and will not push changes back to the original repository. Knowledge base downloads and some features may not work exactly as in the original repository.
+
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper (COLM 2025)]</a>&nbsp;
@@ -32,17 +36,7 @@
   </a>
 </p>
 
-<div align="center">
-  <!-- Keep these links. Translations will automatically update with the README. -->
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=de">Deutsch</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=es">Español</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=fr">français</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ja">日本語</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ko">한국어</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=pt">Português</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=ru">Русский</a> | 
-  <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=zh">中文</a>
-</div>
+
 
 <div align="center">
   &nbsp;&nbsp;
@@ -50,14 +44,17 @@
 </div>
 
 ## 🥳 Updates
+
+> **Note**: The following updates are from the original Simular AI repository. This fork may not have all the same features or releases.
+
 - [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
 - [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
 - [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
-- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
+- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of gui-agents, the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
-- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
-- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
+- [x] **2025/01/21**: Released v0.1.2 of gui-agents library, with support for Linux and Windows!
+- [x] **2024/12/05**: Released v0.1.0 of gui-agents library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
 - [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
 
 ## Table of Contents
@@ -314,4 +311,4 @@ If you find this codebase useful, please cite:
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=simular-ai/Agent-S&type=Date)](https://star-history.com/#simular-ai/Agent-S&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=jdgiles26/Agent-S&type=Date)](https://star-history.com/#jdgiles26/Agent-S&Date)
