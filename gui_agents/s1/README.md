@@ -12,8 +12,8 @@
 
 ## 🥳 Updates
 - [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
-- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
-- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
+- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/jdgiles26/Agent-S) library, with support for Linux and Windows!
+- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/jdgiles26/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
 - [x] **2024/10/10**: Released [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
 
 ## Table of Contents
@@ -50,7 +50,7 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 
 Clone the repository:
 ```
-git clone https://github.com/simular-ai/Agent-S.git
+git clone https://github.com/jdgiles26/Agent-S.git
 ```
 
 Install the gui-agents package:
@@ -202,7 +202,7 @@ Refer to `cli_app.py` for more details on how the inference loop works.
 
 #### Downloading the Knowledege Base
 
-Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `GraphSearchAgent`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases). The `GraphSearchAgent` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
+Agent S2 uses a knowledge base that continually updates with new knowledge during inference. The knowledge base is initially downloaded when initializing `GraphSearchAgent`. The knowledge base is stored as assets under our [GitHub Releases](https://github.com/jdgiles26/Agent-S/releases). The `GraphSearchAgent` initialization will only download the knowledge base for your specified platform and agent version (e.g s1, s2). If you'd like to download the knowledge base programmatically, you can use the following code:
 
 ```
 download_kb_data(
@@ -213,7 +213,7 @@ download_kb_data(
 )
 ```
 
-This will download Agent S2's knowledge base for Linux from release tag `v0.2.2` to the `kb_data` directory. Refer to our [GitHub Releases](https://github.com/simular-ai/Agent-S/releases) or release tags that include the knowledge bases.
+This will download Agent S2's knowledge base for Linux from release tag `v0.2.2` to the `kb_data` directory. Refer to our [GitHub Releases](https://github.com/jdgiles26/Agent-S/releases) or release tags that include the knowledge bases.
 
 ### OSWorld
 
@@ -225,7 +225,7 @@ To deploy Agent S in WindowsAgentArena, follow the [WindowsAgentArena Deployment
 
 ## 🙌 Contributors
 
-We’re grateful to all the [amazing people](https://github.com/simular-ai/Agent-S/graphs/contributors) who have contributed to this project. Thank you! 🙏  
+We’re grateful to all the [amazing people](https://github.com/jdgiles26/Agent-S/graphs/contributors) who have contributed to this project. Thank you! 🙏  
 
 ## 💬 Citation
 ```

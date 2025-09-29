@@ -14,6 +14,11 @@ def download_kb_data(
     platform=platform.system().lower(),
 ):
     """Download and extract the appropriate KB ZIP file for the current OS.
+    
+    Note: This function has been updated to download from jdgiles26/Agent-S.
+    If the knowledge base files are not available in this repository's releases,
+    you may need to manually download them from the original simular-ai/Agent-S
+    repository or create your own knowledge base.
 
     Args:
         version (str): Prefix in the asset name (e.g., "s1" or "s2")
@@ -28,7 +33,7 @@ def download_kb_data(
     # Build asset filename, e.g. "s1_windows.zip" or "s1_darwin.zip"
     asset_name = f"{version}_{platform}.zip"
 
-    download_url = f"https://github.com/simular-ai/Agent-S/releases/download/{release_tag}/{asset_name}"
+    download_url = f"https://github.com/jdgiles26/Agent-S/releases/download/{release_tag}/{asset_name}"
 
     # Make sure our output directory exists
     os.makedirs(download_dir, exist_ok=True)

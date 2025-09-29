@@ -104,9 +104,9 @@ Double check all apps can be used and no unexpected pop-ups or issues are in the
 
 # Set up Agent S2 with WAA Locally
 
-Take the time to understand the [Agent-S repository](https://github.com/simular-ai/Agent-S "https://github.com/simular-ai/Agent-S").
+Take the time to understand the [Agent-S repository](https://github.com/jdgiles26/Agent-S "https://github.com/jdgiles26/Agent-S").
 
-1.  Instead of following the [README.md](https://github.com/simular-ai/Agent-S/blob/main/README.md "https://github.com/simular-ai/Agent-S/blob/main/README.md") for Agent S2, you need to clone the repository then `pip install -r requirements.txt`
+1.  Instead of following the [README.md](https://github.com/jdgiles26/Agent-S/blob/main/README.md "https://github.com/jdgiles26/Agent-S/blob/main/README.md") for Agent S2, you need to clone the repository then `pip install -r requirements.txt`
     
 2.  Move the s2 folder to the [mm_agents](https://github.com/microsoft/WindowsAgentArena/tree/main/src/win-arena-container/client/mm_agents "https://github.com/microsoft/WindowsAgentArena/tree/main/src/win-arena-container/client/mm_agents") folder in WAA. Follow the [Bring Your Own Agent guide](https://github.com/microsoft/WindowsAgentArena?tab=readme-ov-file#-byoa-bring-your-own-agent "https://github.com/microsoft/WindowsAgentArena?tab=readme-ov-file#-byoa-bring-your-own-agent").
     
