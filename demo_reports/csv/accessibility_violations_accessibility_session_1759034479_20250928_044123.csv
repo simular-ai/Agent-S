@@ -1,0 +1,7 @@
+Rule ID,Severity,Description,WCAG Reference,508 Reference,Location X,Location Y,Width,Height,Suggestion,Screenshot Path
+color_contrast_violation,major,Low color contrast detected (ratio: 3.87),WCAG 2.1 SC 1.4.3 Contrast (Minimum),1194.22(c),49,119,37,22,Increase contrast ratio to at least 4.5:1,demo_screenshots/violation_color_contrast_violation_1759034480107.png
+missing_focus_indicator,major,Interactive element may be missing focus indicator,WCAG 2.1 SC 2.4.7 Focus Visible,1194.22(c),49,119,37,22,Ensure all interactive elements have visible focus indicators,demo_screenshots/violation_missing_focus_indicator_1759034480119.png
+small_click_target,minor,"Click target too small (37x22px, should be at least 44x44px)",WCAG 2.1 SC 2.5.5 Target Size,,49,119,37,22,Increase click target size to at least 44x44px,demo_screenshots/violation_small_click_target_1759034480130.png
+missing_alt_text,critical,Image detected without text alternative,WCAG 2.1 SC 1.1.1 Non-text Content,1194.22(a),0,35,237,236,Add descriptive alt text for images,demo_screenshots/violation_missing_alt_text_1759034480141.png
+keyboard_tab_navigation,critical,Keyboard test failed: Test Tab key navigation through all focusable elements,WCAG 2.1 SC 2.1.1 Keyboard,1194.22(a),,,,,Fix keyboard accessibility issue: Focus moves sequentially through all interactive elements,
+keyboard_shift_tab_navigation,critical,Keyboard test failed: Test Shift+Tab reverse navigation,WCAG 2.1 SC 2.1.1 Keyboard,1194.22(a),,,,,Fix keyboard accessibility issue: Focus moves in reverse order through interactive elements,

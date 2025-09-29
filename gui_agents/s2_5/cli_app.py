@@ -13,6 +13,7 @@ from PIL import Image
 
 from gui_agents.s2_5.agents.grounding import OSWorldACI
 from gui_agents.s2_5.agents.agent_s import AgentS2_5
+from gui_agents.s2_5.agents.accessibility_agent import AccessibilityConfig
 
 current_platform = platform.system().lower()
 
@@ -151,6 +152,15 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
+    
+    # Start accessibility session if enabled
+    accessibility_session_id = None
+    if hasattr(agent, 'accessibility_agent') and agent.accessibility_agent:
+        accessibility_session_id = agent.start_accessibility_session(
+            f"Task: {instruction}"
+        )
+        print(f"🔍 Started accessibility session: {accessibility_session_id}")
+    
     for step in range(15):
         # Check if we're in paused state and wait
         while paused:
@@ -176,8 +186,49 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
+        
+        # Display accessibility information if available
+        if "accessibility_violations" in info and info["accessibility_violations"]:
+            violations_count = len(info["accessibility_violations"])
+            print(f"⚠️  Found {violations_count} accessibility violations")
+            
+            # Show critical violations
+            critical_violations = [
+                v for v in info["accessibility_violations"] 
+                if v.get("severity") == "critical"
+            ]
+            if critical_violations:
+                print(f"🚨 Critical accessibility issues:")
+                for violation in critical_violations[:3]:  # Show first 3
+                    print(f"   - {violation.get('description', 'Unknown violation')}")
+        
+        if "accessibility_score" in info:
+            score = info["accessibility_score"]
+            if score < 70:
+                print(f"📊 Accessibility Score: {score:.1f}/100 (Needs Improvement)")
+            elif score < 90:
+                print(f"📊 Accessibility Score: {score:.1f}/100 (Good)")
+            else:
+                print(f"📊 Accessibility Score: {score:.1f}/100 (Excellent)")
 
         if "done" in code[0].lower() or "fail" in code[0].lower():
+            # End accessibility session if active
+            if accessibility_session_id and hasattr(agent, 'end_accessibility_session'):
+                session_summary = agent.end_accessibility_session()
+                if session_summary:
+                    print("\n🔍 Accessibility Testing Complete")
+                    print(f"   - Violations Found: {session_summary['violations_found']}")
+                    print(f"   - Compliance Score: {session_summary['compliance_score']:.1f}/100")
+                    print(f"   - Keyboard Tests: {session_summary['keyboard_tests_run']}")
+                    print(f"   - Evidence Captured: {session_summary['evidence_captured']}")
+                    
+                    # Generate and display report paths
+                    report_paths = agent.generate_accessibility_report()
+                    if report_paths:
+                        print(f"   - Reports Generated:")
+                        for report_type, path in report_paths.items():
+                            print(f"     • {report_type.upper()}: {path}")
+                    
             if platform.system() == "Darwin":
                 os.system(
                     f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
@@ -303,6 +354,45 @@ def main():
         default=True,
         help="Enable reflection agent to assist the worker agent",
     )
+    
+    # Accessibility testing arguments
+    parser.add_argument(
+        "--enable_accessibility",
+        action="store_true",
+        default=False,
+        help="Enable accessibility and 508 compliance testing",
+    )
+    parser.add_argument(
+        "--accessibility_monitoring",
+        action="store_true",
+        default=True,
+        help="Enable real-time accessibility monitoring",
+    )
+    parser.add_argument(
+        "--accessibility_keyboard_tests",
+        action="store_true",
+        default=True,
+        help="Enable keyboard navigation testing",
+    )
+    parser.add_argument(
+        "--accessibility_compliance_level",
+        type=str,
+        default="AA",
+        choices=["AA", "AAA"],
+        help="WCAG compliance level to test against (AA or AAA)",
+    )
+    parser.add_argument(
+        "--accessibility_screenshots",
+        action="store_true",
+        default=True,
+        help="Capture screenshots for accessibility violations",
+    )
+    parser.add_argument(
+        "--accessibility_reports_dir",
+        type=str,
+        default="accessibility_reports",
+        help="Directory to save accessibility reports",
+    )
 
     args = parser.parse_args()
 
@@ -339,12 +429,33 @@ def main():
         height=screen_height,
     )
 
+    # Initialize accessibility configuration if enabled
+    accessibility_config = None
+    if args.enable_accessibility:
+        accessibility_config = AccessibilityConfig(
+            enable_real_time_monitoring=args.accessibility_monitoring,
+            enable_keyboard_testing=args.accessibility_keyboard_tests,
+            enable_compliance_checking=True,
+            enable_violation_detection=True,
+            capture_screenshots=args.accessibility_screenshots,
+            compliance_level=args.accessibility_compliance_level,
+            report_dir=args.accessibility_reports_dir
+        )
+        print("🔍 Accessibility testing enabled")
+        print(f"   - Compliance Level: WCAG {args.accessibility_compliance_level}")
+        print(f"   - Real-time Monitoring: {args.accessibility_monitoring}")
+        print(f"   - Keyboard Testing: {args.accessibility_keyboard_tests}")
+        print(f"   - Screenshot Capture: {args.accessibility_screenshots}")
+        print(f"   - Reports Directory: {args.accessibility_reports_dir}")
+
     agent = AgentS2_5(
         engine_params,
         grounding_agent,
         platform=current_platform,
         max_trajectory_length=args.max_trajectory_length,
         enable_reflection=args.enable_reflection,
+        enable_accessibility=args.enable_accessibility,
+        accessibility_config=accessibility_config,
     )
 
     while True:
