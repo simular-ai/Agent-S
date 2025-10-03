@@ -17,6 +17,7 @@ from gui_agents.s2_5.agents.agent_s import AgentS2_5
 from gui_agents.s2_5.agents.grounding import OSWorldACI
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Almost deprecated since it's not multi-env, use run_multienv_*.py instead
@@ -71,8 +72,10 @@ def config() -> argparse.Namespace:
     # environment config
     parser.add_argument("--path_to_vm", type=str, default=None)
     parser.add_argument(
-        "--provider_name", type=str, default="vmware",
-        help="Virtualization provider (vmware, docker, aws, azure, gcp, virtualbox)"
+        "--provider_name",
+        type=str,
+        default="vmware",
+        help="Virtualization provider (vmware, docker, aws, azure, gcp, virtualbox)",
     )
     parser.add_argument(
         "--headless", action="store_true", help="Run in headless machine"
@@ -115,11 +118,23 @@ def config() -> argparse.Namespace:
         default="",
         help="The API key of the main generation model.",
     )
-    parser.add_argument("--model_temperature", type=float, default=None, help="Temperature to fix the generation model at (e.g. o3 can only be run with 1.0)")
-    
+    parser.add_argument(
+        "--model_temperature",
+        type=float,
+        default=None,
+        help="Temperature to fix the generation model at (e.g. o3 can only be run with 1.0)",
+    )
+
     # grounding model config
-    parser.add_argument("--ground_provider", type=str, required=True, help="The provider for the grounding model")
-    parser.add_argument("--ground_url", type=str, required=True, help="The URL of the grounding model")
+    parser.add_argument(
+        "--ground_provider",
+        type=str,
+        required=True,
+        help="The provider for the grounding model",
+    )
+    parser.add_argument(
+        "--ground_url", type=str, required=True, help="The URL of the grounding model"
+    )
     parser.add_argument(
         "--ground_api_key",
         type=str,
@@ -127,7 +142,10 @@ def config() -> argparse.Namespace:
         help="The API key of the grounding model.",
     )
     parser.add_argument(
-        "--ground_model", type=str, required=True, help="The model name for the grounding model"
+        "--ground_model",
+        type=str,
+        required=True,
+        help="The model name for the grounding model",
     )
     parser.add_argument(
         "--grounding_width",
@@ -182,15 +200,15 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     engine_params = {
         "engine_type": args.model_provider,
         "model": args.model,
-        "base_url": getattr(args, 'model_url', ''),
-        "api_key": getattr(args, 'model_api_key', ''),
-        "temperature": getattr(args, 'model_temperature', None),
+        "base_url": getattr(args, "model_url", ""),
+        "api_key": getattr(args, "model_api_key", ""),
+        "temperature": getattr(args, "model_temperature", None),
     }
     engine_params_for_grounding = {
         "engine_type": args.ground_provider,
         "model": args.ground_model,
-        "base_url": getattr(args, 'ground_url', ''),
-        "api_key": getattr(args, 'ground_api_key', ''),
+        "base_url": getattr(args, "ground_url", ""),
+        "api_key": getattr(args, "ground_api_key", ""),
         "grounding_width": args.grounding_width,
         "grounding_height": args.grounding_height,
     }
@@ -217,11 +235,11 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         action_space=args.action_space,
         screen_size=(args.screen_width, args.screen_height),
         headless=args.headless,
-        os_type = "Ubuntu",
+        os_type="Ubuntu",
         require_a11y_tree=args.observation_type
         in ["a11y_tree", "screenshot_a11y_tree", "som"],
         enable_proxy=True,
-        snapshot_name="signed_in_state_1"
+        snapshot_name="signed_in_state_1",
     )
 
     for domain in tqdm(test_all_meta, desc="Domain"):
@@ -269,7 +287,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             except Exception as e:
                 logger.error(f"Exception in {domain}/{example_id}: {e}")
                 # Only attempt to end recording if controller exists (not Docker provider)
-                if hasattr(env, 'controller') and env.controller is not None:
+                if hasattr(env, "controller") and env.controller is not None:
                     env.controller.end_recording(
                         os.path.join(example_result_dir, "recording.mp4")
                     )
@@ -361,7 +379,7 @@ if __name__ == "__main__":
     ####### The complete version of the list of examples #######
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     args = config()
-    
+
     # save args to json in result_dir/action_space/observation_type/model/args.json
     path_to_args = os.path.join(
         args.result_dir,

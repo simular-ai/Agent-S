@@ -1,4 +1,3 @@
-
 import re
 from collections import defaultdict
 from io import BytesIO
@@ -215,11 +214,13 @@ class OSWorldACI(ACI):
             engine_params=engine_params_for_generation,
             system_prompt=PROCEDURAL_MEMORY.PHRASE_TO_WORD_COORDS_PROMPT,
         )
-        
+
         # Configure code agent
-        code_agent_engine_params = code_agent_engine_params or engine_params_for_generation
+        code_agent_engine_params = (
+            code_agent_engine_params or engine_params_for_generation
+        )
         self.code_agent = CodeAgent(code_agent_engine_params, code_agent_budget)
-        
+
         # Store task instruction for code agent
         self.current_task_instruction = None
         self.last_code_agent_result = None
@@ -382,7 +383,9 @@ class OSWorldACI(ACI):
         elif self.platform == "windows":
             return f"import pyautogui; import time; pyautogui.hotkey('win', 'd', interval=0.5); pyautogui.typewrite({repr(app_code)}); pyautogui.press('enter'); time.sleep(1.0)"
         else:
-            assert False, f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
+            assert (
+                False
+            ), f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
 
     @agent_action
     def open(self, app_or_filename: str):
@@ -434,7 +437,7 @@ class OSWorldACI(ACI):
 
         # Check if text contains Unicode characters that pyautogui.write() can't handle
         has_unicode = any(ord(char) > 127 for char in text)
-        
+
         if has_unicode:
             # Use clipboard method for Unicode characters
             command += f"pyperclip.copy({repr(text)}); "
@@ -486,14 +489,18 @@ class OSWorldACI(ACI):
         return command
 
     @agent_action
-    def highlight_text_span(self, starting_phrase: str, ending_phrase: str, button: str = "left"):
+    def highlight_text_span(
+        self, starting_phrase: str, ending_phrase: str, button: str = "left"
+    ):
         """Highlight a text span between a provided starting phrase and ending phrase. Use this to highlight words, lines, and paragraphs.
         Args:
             starting_phrase:str, the phrase that denotes the start of the text span you want to highlight. If you only want to highlight one word, just pass in that single word.
             ending_phrase:str, the phrase that denotes the end of the text span you want to highlight. If you only want to highlight one word, just pass in that single word.
             button:str, the button to use to highlight the text span. Defaults to "left". Can be "left", "right", or "middle".
         """
-        coords1 = self.generate_text_coords(starting_phrase, self.obs, alignment="start")
+        coords1 = self.generate_text_coords(
+            starting_phrase, self.obs, alignment="start"
+        )
         coords2 = self.generate_text_coords(ending_phrase, self.obs, alignment="end")
         x1, y1 = coords1
         x2, y2 = coords2
@@ -523,16 +530,16 @@ class OSWorldACI(ACI):
     @agent_action
     def call_code_agent(self, task: str = None):
         """Call the code agent to execute code for tasks or subtasks that can be completed solely with coding.
-        
+
         Args:
             task: str, the task or subtask to execute. If None, uses the current full task instruction.
-        
+
         **🚨 CRITICAL GUIDELINES:**
         - **ONLY pass a task parameter for SPECIFIC subtasks** (e.g., "Calculate sum of column B", "Filter data by date")
         - **NEVER pass a task parameter for full tasks** - let it default to the original task instruction
         - **NEVER rephrase or modify the original task** - this prevents hallucination corruption
         - **If unsure, omit the task parameter entirely** to use the original task instruction
-        
+
         Use this for tasks that can be fully accomplished through code execution, particularly for:
         - Spreadsheet applications (LibreOffice Calc, Excel): data processing, filtering, sorting, calculations, formulas, data analysis
         - Document editors (LibreOffice Writer, Word): text processing, content editing, formatting, document manipulation
@@ -544,7 +551,7 @@ class OSWorldACI(ACI):
         logger.info("=" * 50)
         logger.info("GROUNDING AGENT: Calling Code Agent")
         logger.info("=" * 50)
-        
+
         # **CRITICAL**: Only use provided task for specific subtasks, otherwise use original task instruction
         if task is not None:
             # This is a subtask - use the provided task
@@ -554,27 +561,29 @@ class OSWorldACI(ACI):
             # This is a full task - use the original task instruction to prevent hallucination
             task_to_execute = self.current_task_instruction
             logger.info(f"Executing FULL TASK: {task_to_execute}")
-        
+
         if task_to_execute:
             print("obs keys: ", self.obs.keys())
-            screenshot = self.obs.get('screenshot', '') if self.obs else ''
+            screenshot = self.obs.get("screenshot", "") if self.obs else ""
             logger.info(f"Screenshot available: {'Yes' if screenshot else 'No'}")
-            
+
             logger.info("Executing code agent...")
-            result = self.code_agent.execute(task_to_execute, screenshot, self.env.controller)
-            
+            result = self.code_agent.execute(
+                task_to_execute, screenshot, self.env.controller
+            )
+
             # Store the result for the worker to access
             self.last_code_agent_result = result
-            
+
             logger.info("Code agent execution completed")
             logger.info(f"Result - Completion reason: {result['completion_reason']}")
             logger.info(f"Steps executed: {result['steps_executed']}")
             logger.info(f"Summary: {result['summary']}")
-            
+
             logger.info("=" * 50)
             logger.info("GROUNDING AGENT: Code Agent Call Finished")
             logger.info("=" * 50)
-            
+
             # Return code to be executed in the environment
             return "import time; time.sleep(2.222)"
         else:

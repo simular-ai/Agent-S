@@ -6,37 +6,42 @@ from PIL import Image
 from typing import Optional, List
 import base64
 
-def image_to_openai_message_format(image_path: str, caption: str = None) -> Optional[dict]:
+
+def image_to_openai_message_format(
+    image_path: str, caption: str = None
+) -> Optional[dict]:
     """Convert an image file to OpenAI message format."""
     if not os.path.exists(image_path):
         print(f"Image file not found: {image_path}")
         return None
-    
+
     try:
         with open(image_path, "rb") as f:
             image_bytes = f.read()
-        
+
         if not image_bytes:
             print(f"Empty image file: {image_path}")
             return None
-        
+
         base64_image = base64.b64encode(image_bytes).decode("utf-8")
-        
+
         if not base64_image:
             print(f"Failed to encode image to base64: {image_path}")
             return None
-        
+
         content = []
         if caption:
             content.append({"type": "text", "text": caption})
-        
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{base64_image}"}
-        })
-        
+
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{base64_image}"},
+            }
+        )
+
         return {"role": "user", "content": content}
-        
+
     except Exception as e:
         print(f"Error processing image {image_path}: {e}")
         return None
@@ -45,11 +50,11 @@ def image_to_openai_message_format(image_path: str, caption: str = None) -> Opti
 def load_facts(task_dir: str) -> List[str]:
     """Load existing facts from facts.jsonl file."""
     fact_captions_file = os.path.join(task_dir, "fact_captions.jsonl")
-    
+
     if not os.path.exists(fact_captions_file):
         print(f"fact_captions.jsonl not found at {fact_captions_file}")
         return []
-    
+
     fact_captions = []
     with open(fact_captions_file, "r") as f:
         for line in f:
@@ -60,39 +65,40 @@ def load_facts(task_dir: str) -> List[str]:
 
     return fact_captions
 
+
 def load_task_instruction(task: str, examples_path: str) -> Optional[str]:
     """
     Load task instruction from examples path.
-    
+
     Args:
         task: Task ID in format "domain/example_id"
         examples_path: Path to the examples directory (e.g., "/home/ubuntu/Simular/OSWorld/evaluation_examples/examples")
-    
+
     Returns:
         Task instruction string or None if not found
     """
     domain, example_id = task.split("/", 1)
-    
+
     # Construct path to the JSON file
     json_file_path = os.path.join(examples_path, domain, f"{example_id}.json")
-    
+
     if not os.path.exists(json_file_path):
         logging.warning(f"Example file not found: {json_file_path}")
         return None
-    
+
     try:
         with open(json_file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-            
+
         # Extract instruction from the JSON
         if "instruction" in data:
             instruction = data["instruction"]
             if instruction and instruction.strip():
                 return instruction.strip()
-        
+
         logging.warning(f"No 'instruction' key found in {json_file_path}")
         return None
-        
+
     except Exception as e:
         logging.warning(f"Error reading example file {json_file_path}: {e}")
         return None
@@ -109,7 +115,7 @@ def get_final_screenshot_file(result_dir: str) -> str:
     # First, collect all valid step files with their indices
     step_files = {}
     pattern = re.compile(r"step[_\-]?(\d+)", re.IGNORECASE)
-    
+
     for fname in os.listdir(result_dir):
         if not fname.lower().endswith(".png"):
             continue
@@ -129,8 +135,11 @@ def get_final_screenshot_file(result_dir: str) -> str:
         if os.path.exists(file_path) and is_valid_image(file_path):
             return fname
         else:
-            print(f"Invalid or corrupted image at step {idx}: {fname}, trying previous step...")
+            print(
+                f"Invalid or corrupted image at step {idx}: {fname}, trying previous step..."
+            )
     return None
+
 
 def is_valid_image(file_path: str) -> bool:
     """
@@ -141,7 +150,7 @@ def is_valid_image(file_path: str) -> bool:
         # Check file size first (quick check)
         if os.path.getsize(file_path) == 0:
             return False
-        
+
         # Try to open and verify the image
         with Image.open(file_path) as img:
             img.verify()  # This will raise an exception if image is corrupted
@@ -171,7 +180,7 @@ def get_new_tasks_classification(results_dirs: [str]):
 
     constant_tasks = []
     variance_tasks = []
-    constant_tasks_scores = [] 
+    constant_tasks_scores = []
     optimal_sum = 0.0
     expected_value = 0.0
 
@@ -207,12 +216,15 @@ def get_new_tasks_classification(results_dirs: [str]):
         expected_value += sum(results) / len(results)
 
     return {
-        "constant": constant_tasks, #We dont evaluate constant tasks
-        "variance": variance_tasks, #We evaluate variance tasks
-        "minimum": sum(constant_tasks_scores), #sum of constant tasks scores (easy + hard)
-        "optimal": optimal_sum, #If we get the best score, we get the optimal score
-        "expected_value": expected_value, #If we get the average score across all tasks for all trajectories, we get the expected value
+        "constant": constant_tasks,  # We dont evaluate constant tasks
+        "variance": variance_tasks,  # We evaluate variance tasks
+        "minimum": sum(
+            constant_tasks_scores
+        ),  # sum of constant tasks scores (easy + hard)
+        "optimal": optimal_sum,  # If we get the best score, we get the optimal score
+        "expected_value": expected_value,  # If we get the average score across all tasks for all trajectories, we get the expected value
     }
+
 
 def check_selected_trajectory(results_dirs: [str], selected_trajectory: str, task: str):
     """
@@ -226,7 +238,8 @@ def check_selected_trajectory(results_dirs: [str], selected_trajectory: str, tas
     all_results = []
 
     if not any(
-        os.path.commonpath([os.path.abspath(selected_trajectory), os.path.abspath(rd)]) == os.path.abspath(rd)
+        os.path.commonpath([os.path.abspath(selected_trajectory), os.path.abspath(rd)])
+        == os.path.abspath(rd)
         for rd in results_dirs
     ):
         return None, None
@@ -251,9 +264,10 @@ def check_selected_trajectory(results_dirs: [str], selected_trajectory: str, tas
     optimal_val = max(all_results) if all_results else selected_val
     return selected_val, optimal_val
 
+
 def evaluate_comparative_results(results_dirs: [str], json_path: str = None):
     """
-    Opens comparative_judge_results.json (default) or a given path, 
+    Opens comparative_judge_results.json (default) or a given path,
     evaluates each task, and returns results.
 
     Args:
@@ -275,9 +289,13 @@ def evaluate_comparative_results(results_dirs: [str], json_path: str = None):
     for task, info in data.items():
         selected_trajectory = info.get("selected_trajectory")
         if selected_trajectory:
-            selected_val, optimal_val = check_selected_trajectory(results_dirs, selected_trajectory, task)
+            selected_val, optimal_val = check_selected_trajectory(
+                results_dirs, selected_trajectory, task
+            )
             if selected_val is not None and optimal_val is not None:
-                print(f"task: {task}, selected_val: {selected_val}, optimal_val: {optimal_val}")
+                print(
+                    f"task: {task}, selected_val: {selected_val}, optimal_val: {optimal_val}"
+                )
                 judge_score += selected_val
                 optimal_score += optimal_val
     return judge_score, optimal_score

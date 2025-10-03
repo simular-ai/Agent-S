@@ -17,6 +17,7 @@ current_platform = platform.system().lower()
 # Global flag to track pause state for debugging
 paused = False
 
+
 def get_char():
     """Get a single character from stdin without pressing Enter"""
     try:
@@ -24,6 +25,7 @@ def get_char():
         if platform.system() in ["Darwin", "Linux"]:
             import termios
             import tty
+
             fd = sys.stdin.fileno()
             old_settings = termios.tcgetattr(fd)
             try:
@@ -35,14 +37,16 @@ def get_char():
         else:
             # Windows fallback
             import msvcrt
-            return msvcrt.getch().decode('utf-8', errors='ignore')
+
+            return msvcrt.getch().decode("utf-8", errors="ignore")
     except:
         return input()  # Fallback for non-terminal environments
+
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C signal for debugging during agent execution"""
     global paused
-    
+
     if not paused:
         print("\n\n🔸 Agent-S Workflow Paused 🔸")
         print("=" * 50)
@@ -50,14 +54,14 @@ def signal_handler(signum, frame):
         print("  • Press Ctrl+C again to quit")
         print("  • Press Esc to resume workflow")
         print("=" * 50)
-        
+
         paused = True
-        
+
         while paused:
             try:
                 print("\n[PAUSED] Waiting for input... ", end="", flush=True)
                 char = get_char()
-                
+
                 if ord(char) == 3:  # Ctrl+C
                     print("\n\n🛑 Exiting Agent-S...")
                     sys.exit(0)
@@ -67,7 +71,7 @@ def signal_handler(signum, frame):
                     break
                 else:
                     print(f"\n   Unknown command: '{char}' (ord: {ord(char)})")
-                    
+
             except KeyboardInterrupt:
                 print("\n\n🛑 Exiting Agent-S...")
                 sys.exit(0)
@@ -75,6 +79,7 @@ def signal_handler(signum, frame):
         # Already paused, second Ctrl+C means quit
         print("\n\n🛑 Exiting Agent-S...")
         sys.exit(0)
+
 
 # Set up signal handler for Ctrl+C
 signal.signal(signal.SIGINT, signal_handler)
@@ -175,7 +180,7 @@ def run_agent(agent: UIAgent, instruction: str):
             time.sleep(0.1)
 
         print(f"\n🔄 Step {step + 1}/15: Getting next action from agent...")
-        
+
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
 

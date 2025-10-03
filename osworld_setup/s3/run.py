@@ -19,6 +19,7 @@ import lib_run_single
 from desktop_env.desktop_env import DesktopEnv
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 
@@ -51,6 +52,7 @@ active_environments = []
 processes = []
 is_terminating = False
 
+
 def distribute_tasks(test_all_meta: dict) -> list:
     all_tasks = []
     for domain, examples in test_all_meta.items():
@@ -58,10 +60,11 @@ def distribute_tasks(test_all_meta: dict) -> list:
             all_tasks.append((domain, example_id))
     return all_tasks
 
+
 def process_signal_handler(signum, frame, env_idx):
     logger.info(f"Process {env_idx + 1} received signal {signum}. Shutting down...")
     local_vars = frame.f_locals
-    active_environments = local_vars.get('active_environments', [])
+    active_environments = local_vars.get("active_environments", [])
     for env in active_environments:
         if env is not None:
             try:
@@ -73,23 +76,34 @@ def process_signal_handler(signum, frame, env_idx):
     logger.info(f"Process {env_idx + 1} shutdown complete. Exiting.")
     sys.exit(0)
 
-def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: list, engine_params, engine_params_for_grounding):
+
+def run_env_tasks(
+    task_queue: Queue,
+    args: argparse.Namespace,
+    shared_scores: list,
+    engine_params,
+    engine_params_for_grounding,
+):
     active_environments = []
     env = None
     try:
         # Use IMAGE_ID_MAP for AWS provider to get snapshot_name
         snapshot_name = None
-        region = getattr(args, 'region', None)
-        if args.provider_name == 'aws' and region is not None:
+        region = getattr(args, "region", None)
+        if args.provider_name == "aws" and region is not None:
             try:
                 from desktop_env.providers.aws.manager import IMAGE_ID_MAP
+
                 screen_size = (args.screen_width, args.screen_height)
-                snapshot_name = IMAGE_ID_MAP[region].get(screen_size, IMAGE_ID_MAP[region][(1920, 1080)])
+                snapshot_name = IMAGE_ID_MAP[region].get(
+                    screen_size, IMAGE_ID_MAP[region][(1920, 1080)]
+                )
             except Exception as e:
                 logger.error(f"Failed to get snapshot_name from IMAGE_ID_MAP: {e}")
                 snapshot_name = None
         from gui_agents.s3.agents.agent_s import AgentS3
         from gui_agents.s3.agents.grounding import OSWorldACI
+
         env = DesktopEnv(
             path_to_vm=args.path_to_vm,
             action_space=args.action_space,
@@ -98,10 +112,11 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
             snapshot_name=snapshot_name,
             screen_size=(args.screen_width, args.screen_height),
             headless=args.headless,
-            os_type = "Ubuntu",
-            require_a11y_tree=args.observation_type in ["a11y_tree", "screenshot_a11y_tree", "som"],
+            os_type="Ubuntu",
+            require_a11y_tree=args.observation_type
+            in ["a11y_tree", "screenshot_a11y_tree", "som"],
             enable_proxy=True,
-            client_password=getattr(args, 'client_password', ''),
+            client_password=getattr(args, "client_password", ""),
         )
         grounding_agent = OSWorldACI(
             env=env,
@@ -157,7 +172,10 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     )
                 except Exception as e:
                     import traceback
-                    logger.error(f"Exception in {current_process().name} {domain}/{example_id}: {e}")
+
+                    logger.error(
+                        f"Exception in {current_process().name} {domain}/{example_id}: {e}"
+                    )
                     logger.error(traceback.format_exc())
                     try:
                         env.controller.end_recording(
@@ -166,19 +184,17 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                     except Exception as rec_e:
                         logger.error(f"Failed to end recording: {rec_e}")
                     with open(os.path.join(example_result_dir, "traj.jsonl"), "a") as f:
-                        f.write(
-                            json.dumps(
-                                {"Error": f"{domain}/{example_id} - {e}"}
-                            )
-                        )
+                        f.write(json.dumps({"Error": f"{domain}/{example_id} - {e}"}))
                         f.write("\n")
             except Exception as e:
                 logger.error(f"Task-level error in {current_process().name}: {e}")
                 import traceback
+
                 logger.error(traceback.format_exc())
     except Exception as e:
         logger.error(f"Process-level error in {current_process().name}: {e}")
         import traceback
+
         logger.error(traceback.format_exc())
     finally:
         logger.info(f"{current_process().name} cleaning up environment...")
@@ -187,7 +203,10 @@ def run_env_tasks(task_queue: Queue, args: argparse.Namespace, shared_scores: li
                 env.close()
                 logger.info(f"{current_process().name} environment closed successfully")
         except Exception as e:
-            logger.error(f"{current_process().name} error during environment cleanup: {e}")
+            logger.error(
+                f"{current_process().name} error during environment cleanup: {e}"
+            )
+
 
 def signal_handler(signum, frame):
     global is_terminating, active_environments, processes
@@ -215,11 +234,13 @@ def signal_handler(signum, frame):
             try:
                 logger.info(f"Forcefully terminating process {p.name}...")
                 import signal as sig
+
                 os.kill(p.pid, sig.SIGKILL)
             except Exception as e:
                 logger.error(f"Error forcefully terminating process: {e}")
     logger.info("Shutdown complete. Exiting.")
     sys.exit(0)
+
 
 def config() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -229,8 +250,10 @@ def config() -> argparse.Namespace:
     # environment config
     parser.add_argument("--path_to_vm", type=str, default=None)
     parser.add_argument(
-        "--provider_name", type=str, default="vmware",
-        help="Virtualization provider (vmware, docker, aws, azure, gcp, virtualbox)"
+        "--provider_name",
+        type=str,
+        default="vmware",
+        help="Virtualization provider (vmware, docker, aws, azure, gcp, virtualbox)",
     )
     parser.add_argument(
         "--headless", action="store_true", help="Run in headless machine"
@@ -244,7 +267,12 @@ def config() -> argparse.Namespace:
         default="screenshot",
         help="Observation type",
     )
-    parser.add_argument("--num_envs", type=int, default=1, help="Number of environments to run in parallel")  
+    parser.add_argument(
+        "--num_envs",
+        type=int,
+        default=1,
+        help="Number of environments to run in parallel",
+    )
     parser.add_argument("--screen_width", type=int, default=1920)
     parser.add_argument("--screen_height", type=int, default=1080)
     parser.add_argument("--sleep_after_execution", type=float, default=1.0)
@@ -269,7 +297,6 @@ def config() -> argparse.Namespace:
     # agent config
     parser.add_argument("--max_trajectory_length", type=int, default=8)
 
-
     # lm config
     parser.add_argument("--model_provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-4o")
@@ -285,11 +312,23 @@ def config() -> argparse.Namespace:
         default="",
         help="The API key of the main generation model.",
     )
-    parser.add_argument("--model_temperature", type=float, default=None, help="Temperature to fix the generation model at (e.g. o3 can only be run with 1.0)")
-    
+    parser.add_argument(
+        "--model_temperature",
+        type=float,
+        default=None,
+        help="Temperature to fix the generation model at (e.g. o3 can only be run with 1.0)",
+    )
+
     # grounding model config
-    parser.add_argument("--ground_provider", type=str, required=True, help="The provider for the grounding model")
-    parser.add_argument("--ground_url", type=str, required=True, help="The URL of the grounding model")
+    parser.add_argument(
+        "--ground_provider",
+        type=str,
+        required=True,
+        help="The provider for the grounding model",
+    )
+    parser.add_argument(
+        "--ground_url", type=str, required=True, help="The URL of the grounding model"
+    )
     parser.add_argument(
         "--ground_api_key",
         type=str,
@@ -297,7 +336,10 @@ def config() -> argparse.Namespace:
         help="The API key of the grounding model.",
     )
     parser.add_argument(
-        "--ground_model", type=str, required=True, help="The model name for the grounding model"
+        "--ground_model",
+        type=str,
+        required=True,
+        help="The model name for the grounding model",
     )
     parser.add_argument(
         "--grounding_width",
@@ -326,15 +368,15 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
     engine_params = {
         "engine_type": args.model_provider,
         "model": args.model,
-        "base_url": getattr(args, 'model_url', ''),
-        "api_key": getattr(args, 'model_api_key', ''),
-        "temperature": getattr(args, 'model_temperature', None),
+        "base_url": getattr(args, "model_url", ""),
+        "api_key": getattr(args, "model_api_key", ""),
+        "temperature": getattr(args, "model_temperature", None),
     }
     engine_params_for_grounding = {
         "engine_type": args.ground_provider,
         "model": args.ground_model,
-        "base_url": getattr(args, 'ground_url', ''),
-        "api_key": getattr(args, 'ground_api_key', ''),
+        "base_url": getattr(args, "ground_url", ""),
+        "api_key": getattr(args, "ground_api_key", ""),
         "grounding_width": args.grounding_width,
         "grounding_height": args.grounding_height,
     }
@@ -349,8 +391,14 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         for i in range(num_envs):
             p = Process(
                 target=run_env_tasks,
-                args=(task_queue, args, shared_scores, engine_params, engine_params_for_grounding),
-                name=f"EnvProcess-{i+1}"
+                args=(
+                    task_queue,
+                    args,
+                    shared_scores,
+                    engine_params,
+                    engine_params_for_grounding,
+                ),
+                name=f"EnvProcess-{i+1}",
             )
             p.daemon = True
             p.start()
@@ -364,13 +412,21 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
                         logger.warning(f"Process {p.name} died, restarting...")
                         new_p = Process(
                             target=run_env_tasks,
-                            args=(task_queue, args, shared_scores, engine_params, engine_params_for_grounding),
-                            name=f"EnvProcess-Restart-{idx+1}"
+                            args=(
+                                task_queue,
+                                args,
+                                shared_scores,
+                                engine_params,
+                                engine_params_for_grounding,
+                            ),
+                            name=f"EnvProcess-Restart-{idx+1}",
                         )
                         new_p.daemon = True
                         new_p.start()
                         processes[idx] = new_p
-                        logger.info(f"Restarted process {new_p.name} with PID {new_p.pid}")
+                        logger.info(
+                            f"Restarted process {new_p.name} with PID {new_p.pid}"
+                        )
                     else:
                         alive_count += 1
                 if task_queue.empty():
@@ -383,10 +439,14 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             for p in processes:
                 p.join()
         except KeyboardInterrupt:
-            logger.info("Main process received KeyboardInterrupt. Initiating graceful shutdown...")
+            logger.info(
+                "Main process received KeyboardInterrupt. Initiating graceful shutdown..."
+            )
             raise
         except Exception as e:
-            logger.error(f"Unexpected error while waiting for processes: {e}", exc_info=True)
+            logger.error(
+                f"Unexpected error while waiting for processes: {e}", exc_info=True
+            )
             for p in processes:
                 if p.is_alive():
                     try:
@@ -477,7 +537,7 @@ if __name__ == "__main__":
     ####### The complete version of the list of examples #######
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     args = config()
-    
+
     # save args to json in result_dir/action_space/observation_type/model/args.json
     path_to_args = os.path.join(
         args.result_dir,

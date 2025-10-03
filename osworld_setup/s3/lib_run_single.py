@@ -24,18 +24,17 @@ def run_single_example(
 
     with open(os.path.join(example_result_dir, f"step_0.png"), "wb") as _f:
         _f.write(obs["screenshot"])
-    
-    with open(os.path.join(example_result_dir, "instruction.txt"), "w", encoding="utf-8") as f:
+
+    with open(
+        os.path.join(example_result_dir, "instruction.txt"), "w", encoding="utf-8"
+    ) as f:
         f.write(instruction)
-    
+
     done = False
     step_idx = 0
     # env.controller.start_recording()
     while not done and step_idx < max_steps:
-        response, actions = agent.predict(
-            instruction,
-            obs
-        )
+        response, actions = agent.predict(instruction, obs)
         for action in actions:
             action_timestamp = datetime.datetime.now().strftime("%Y%m%d@%H%M%S")
             logger.info("Step %d: %s", step_idx + 1, action)
@@ -63,7 +62,9 @@ def run_single_example(
                     "screenshot_file": f"step_{step_idx + 1}_{action_timestamp}.png",
                 }
             )
-            with open(os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8") as f:
+            with open(
+                os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8"
+            ) as f:
                 f.write(json.dumps(response, ensure_ascii=False))
                 f.write("\n")
             if done:
@@ -87,4 +88,3 @@ def setup_logger(example, example_result_dir):
         logging.FileHandler(os.path.join(example_result_dir, "runtime.log"))
     )
     return runtime_logger
-

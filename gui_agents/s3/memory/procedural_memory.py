@@ -4,12 +4,13 @@ import textwrap
 
 class PROCEDURAL_MEMORY:
 
-    FORMATTING_FEEDBACK_PROMPT = textwrap.dedent("""
+    FORMATTING_FEEDBACK_PROMPT = textwrap.dedent(
+        """
     Your previous response was not formatted correctly. You must respond again to replace your previous response. Do not make reference to this message while fixing the response. Please address the following issues below to improve the previous response:
     FORMATTING_FEEDBACK
     """
     )
-    
+
     @staticmethod
     def construct_simple_worker_procedural_memory(agent_class, skipped_actions):
         procedural_memory = textwrap.dedent(
@@ -153,7 +154,8 @@ class PROCEDURAL_MEMORY:
     """
     )
 
-    CODE_AGENT_PROMPT = textwrap.dedent("""\
+    CODE_AGENT_PROMPT = textwrap.dedent(
+        """\
     You are a code execution agent with a limited step budget to complete tasks.
 
     # Core Guidelines:
@@ -260,9 +262,11 @@ class PROCEDURAL_MEMORY:
     - After in-place modifications, close/reopen files via GUI to show changes
 
     Focus on progress within your step budget.
-    """)
+    """
+    )
 
-    CODE_SUMMARY_AGENT_PROMPT = textwrap.dedent("""\
+    CODE_SUMMARY_AGENT_PROMPT = textwrap.dedent(
+        """\
     You are a code execution summarizer. Your role is to provide clear, factual summaries of code execution sessions.
 
     Key responsibilities:
@@ -282,9 +286,11 @@ class PROCEDURAL_MEMORY:
     - This helps the GUI agent understand what to expect and verify your work properly
 
     Always maintain a factual, non-judgmental tone.
-    """)
+    """
+    )
 
-    BEHAVIOR_NARRATOR_SYSTEM_PROMPT = textwrap.dedent("""\
+    BEHAVIOR_NARRATOR_SYSTEM_PROMPT = textwrap.dedent(
+        """\
     You are an expert in computer usage responsible for analyzing what happened after a computer action is taken. 
 
     **Reasoning Guidelines:**
@@ -311,9 +317,11 @@ class PROCEDURAL_MEMORY:
     <answer>
     [An unordered list of the relevant changes induced by the action]
     </answer>
-    """)
+    """
+    )
 
-    VLM_EVALUATOR_PROMPT_COMPARATIVE_BASELINE = textwrap.dedent("""\
+    VLM_EVALUATOR_PROMPT_COMPARATIVE_BASELINE = textwrap.dedent(
+        """\
     You are a meticulous and impartial evaluator, tasked with judging <NUMBER OF TRAJECTORIES> sequences of OS desktop actions to determine which one better completes the user's request. Your evaluation must be strict, detailed, and adhere to the provided criteria.
 
     **User Request:** 
@@ -364,4 +372,5 @@ class PROCEDURAL_MEMORY:
     <answer>
     [The index of the better sequence, a single integer from 1 to <NUMBER OF TRAJECTORIES>]
     </answer>
-    """)
+    """
+    )
