@@ -279,6 +279,16 @@ To deploy Agent S3 in OSWorld, follow the [OSWorld Deployment instructions](oswo
 If you find this codebase useful, please cite:
 
 ```
+@misc{Agent-S3,
+      title={The Unreasonable Effectiveness of Scaling Agents for Computer Use}, 
+      author={Gonzalo Gonzalez-Pumariega and Vincent Tu and Chih-Lun Lee and Jiachen Yang and Ang Li and Xin Eric Wang},
+      year={2025},
+      eprint={2510.02250},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2510.02250}, 
+}
+
 @misc{Agent-S2,
       title={Agent S2: A Compositional Generalist-Specialist Framework for Computer Use Agents}, 
       author={Saaket Agashe and Kyle Wong and Vincent Tu and Jiachen Yang and Ang Li and Xin Eric Wang},
