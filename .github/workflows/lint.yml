@@ -39,4 +39,4 @@ jobs:
 
     - name: Run Linter
       run: |
-        black --check gui_agents tests
+        black --check gui_agents

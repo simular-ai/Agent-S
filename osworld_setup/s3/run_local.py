@@ -11,10 +11,10 @@ import sys
 
 from tqdm import tqdm
 
-import lib_run_single_local
+import lib_run_single
 from desktop_env.desktop_env import DesktopEnv
-from gui_agents.s2_5.agents.agent_s import AgentS2_5
-from gui_agents.s2_5.agents.grounding import OSWorldACI
+from gui_agents.s3.agents.agent_s import AgentS3
+from gui_agents.s3.agents.grounding import OSWorldACI
 
 from dotenv import load_dotenv
 
@@ -213,22 +213,6 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         "grounding_height": args.grounding_height,
     }
 
-    # Create grounding agent
-    grounding_agent = OSWorldACI(
-        platform="linux",
-        engine_params_for_generation=engine_params,
-        engine_params_for_grounding=engine_params_for_grounding,
-        width=args.screen_width,
-        height=args.screen_height,
-    )
-
-    # Create AgentS2 worker
-    agent = AgentS2_5(
-        engine_params,
-        grounding_agent,
-        platform="linux",
-    )
-
     env = DesktopEnv(
         provider_name=args.provider_name,
         path_to_vm=args.path_to_vm,
@@ -239,7 +223,20 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
         require_a11y_tree=args.observation_type
         in ["a11y_tree", "screenshot_a11y_tree", "som"],
         enable_proxy=True,
-        snapshot_name="signed_in_state_1",
+    )
+
+    grounding_agent = OSWorldACI(
+        env=env,
+        platform="linux",
+        engine_params_for_generation=engine_params,
+        engine_params_for_grounding=engine_params_for_grounding,
+        width=args.screen_width,
+        height=args.screen_height,
+    )
+    agent = AgentS3(
+        engine_params,
+        grounding_agent,
+        platform="linux",
     )
 
     for domain in tqdm(test_all_meta, desc="Domain"):
@@ -274,7 +271,7 @@ def test(args: argparse.Namespace, test_all_meta: dict) -> None:
             os.makedirs(example_result_dir, exist_ok=True)
             # example start running
             try:
-                lib_run_single_local.run_single_example(
+                lib_run_single.run_single_example(
                     agent,
                     env,
                     example,

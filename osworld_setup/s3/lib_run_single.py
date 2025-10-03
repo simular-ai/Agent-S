@@ -32,9 +32,8 @@ def run_single_example(
 
     done = False
     step_idx = 0
-    env.controller.start_recording()
+    # env.controller.start_recording()
     while not done and step_idx < max_steps:
-        time.sleep(0.5)
         response, actions = agent.predict(instruction, obs)
         for action in actions:
             action_timestamp = datetime.datetime.now().strftime("%Y%m%d@%H%M%S")
@@ -63,8 +62,10 @@ def run_single_example(
                     "screenshot_file": f"step_{step_idx + 1}_{action_timestamp}.png",
                 }
             )
-            with open(os.path.join(example_result_dir, "traj.jsonl"), "a") as f:
-                f.write(json.dumps(response))
+            with open(
+                os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8"
+            ) as f:
+                f.write(json.dumps(response, ensure_ascii=False))
                 f.write("\n")
             if done:
                 logger.info("The episode is done.")
@@ -77,7 +78,7 @@ def run_single_example(
         os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8"
     ) as f:
         f.write(f"{result}\n")
-    env.controller.end_recording(os.path.join(example_result_dir, "recording.mp4"))
+    # env.controller.end_recording(os.path.join(example_result_dir, "recording.mp4"))
 
 
 def setup_logger(example, example_result_dir):

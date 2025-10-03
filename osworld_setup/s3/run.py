@@ -1,4 +1,8 @@
-"""OSWorld's run.py with AgentS2_5."""
+"""OSWorld's run.py with AgentS2."""
+
+"""Script to run end-to-end evaluation on the benchmark.
+Utils and basic architecture credit to https://github.com/web-arena-x/webarena/blob/main/run.py.
+"""
 
 import argparse
 import datetime
@@ -97,21 +101,9 @@ def run_env_tasks(
             except Exception as e:
                 logger.error(f"Failed to get snapshot_name from IMAGE_ID_MAP: {e}")
                 snapshot_name = None
-        from gui_agents.s2_5.agents.agent_s import AgentS2_5
-        from gui_agents.s2_5.agents.grounding import OSWorldACI
+        from gui_agents.s3.agents.agent_s import AgentS3
+        from gui_agents.s3.agents.grounding import OSWorldACI
 
-        grounding_agent = OSWorldACI(
-            platform="linux",
-            engine_params_for_generation=engine_params,
-            engine_params_for_grounding=engine_params_for_grounding,
-            width=args.screen_width,
-            height=args.screen_height,
-        )
-        agent = AgentS2_5(
-            engine_params,
-            grounding_agent,
-            platform="linux",
-        )
         env = DesktopEnv(
             path_to_vm=args.path_to_vm,
             action_space=args.action_space,
@@ -126,6 +118,20 @@ def run_env_tasks(
             enable_proxy=True,
             client_password=getattr(args, "client_password", ""),
         )
+        grounding_agent = OSWorldACI(
+            env=env,
+            platform="linux",
+            engine_params_for_generation=engine_params,
+            engine_params_for_grounding=engine_params_for_grounding,
+            width=args.screen_width,
+            height=args.screen_height,
+        )
+        agent = AgentS3(
+            engine_params,
+            grounding_agent,
+            platform="linux",
+        )
+
         active_environments.append(env)
         logger.info(f"Process {current_process().name} started.")
         while True:
