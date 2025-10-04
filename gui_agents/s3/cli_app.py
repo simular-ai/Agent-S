@@ -13,6 +13,7 @@ from PIL import Image
 
 from gui_agents.s3.agents.grounding import OSWorldACI
 from gui_agents.s3.agents.agent_s import AgentS3
+from gui_agents.s3.utils.local_env import LocalEnv
 
 current_platform = platform.system().lower()
 
@@ -308,6 +309,12 @@ def main():
         default=True,
         help="Enable reflection agent to assist the worker agent",
     )
+    parser.add_argument(
+        "--enable_local_env",
+        action="store_true",
+        default=False,
+        help="Enable local coding environment for code execution (WARNING: Executes arbitrary code locally)",
+    )
 
     args = parser.parse_args()
 
@@ -336,7 +343,16 @@ def main():
         "grounding_height": args.grounding_height,
     }
 
+    # Initialize environment based on user preference
+    local_env = None
+    if args.enable_local_env:
+        print(
+            "⚠️  WARNING: Local coding environment enabled. This will execute arbitrary code locally!"
+        )
+        local_env = LocalEnv()
+
     grounding_agent = OSWorldACI(
+        env=local_env,
         platform=current_platform,
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,

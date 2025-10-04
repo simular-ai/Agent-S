@@ -72,9 +72,13 @@ def call_llm_formatted(generator, format_checkers, **kwargs):
     max_retries = 3  # Set the maximum number of retries
     attempt = 0
     response = ""
-    messages = (
-        generator.messages.copy()
-    )  # Copy messages to avoid modifying the original
+    if kwargs.get("messages") is None:
+        messages = (
+            generator.messages.copy()
+        )  # Copy messages to avoid modifying the original
+    else:
+        messages = kwargs["messages"]
+        del kwargs["messages"]  # Remove messages from kwargs to avoid passing it twice
     while attempt < max_retries:
         response = call_llm_safe(generator, messages=messages, **kwargs)
 

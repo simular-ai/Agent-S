@@ -65,6 +65,12 @@ class Worker(BaseModule):
         else:
             skipped_actions = []
 
+        # Hide code agent action entirely if no env/controller is available
+        if not getattr(self.grounding_agent, "env", None) or not getattr(
+            getattr(self.grounding_agent, "env", None), "controller", None
+        ):
+            skipped_actions.append("call_code_agent")
+
         sys_prompt = PROCEDURAL_MEMORY.construct_simple_worker_procedural_memory(
             type(self.grounding_agent), skipped_actions=skipped_actions
         ).replace("CURRENT_OS", self.platform)

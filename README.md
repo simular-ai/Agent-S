@@ -56,7 +56,7 @@
 </div>
 
 ## 🥳 Updates
-- [x] **2025/10/02**: Released the [Agent S3 paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld, with strong performance on WindowsAgentArena, and AndroidWorld!
+- [x] **2025/10/02**: Released the [Agent S3 paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld!
 - [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
 - [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
@@ -110,6 +110,8 @@ If you would like to test Agent S3 while making changes, clone the repository an
 pip install -e .
 ```
 
+Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
+
 ### API Configuration
 
 #### Option 1: Environment Variables
@@ -156,6 +158,23 @@ agent_s \
     --grounding_height 1080
 ```
 
+#### Local Coding Environment (Optional)
+For tasks that require code execution (e.g., data processing, file manipulation, system automation), you can enable the local coding environment:
+
+```bash
+agent_s \
+    --provider openai \
+    --model gpt-5-2025-08-07 \
+    --ground_provider huggingface \
+    --ground_url http://localhost:8080 \
+    --ground_model ui-tars-1.5-7b \
+    --grounding_width 1920 \
+    --grounding_height 1080 \
+    --enable_local_env
+```
+
+⚠️ **WARNING**: The local coding environment executes arbitrary Python and Bash code locally on your machine. Only use this feature in trusted environments and with trusted inputs.
+
 #### Required Parameters
 - **`--provider`**: Main generation model provider (e.g., openai, anthropic, etc.) - Default: "openai"
 - **`--model`**: Main generation model name (e.g., gpt-5-2025-08-07) - Default: "gpt-5-2025-08-07"
@@ -179,6 +198,30 @@ The grounding width and height should match the output coordinate resolution of 
 - **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
 - **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
+- **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
+
+#### Local Coding Environment Details
+The local coding environment enables Agent S3 to execute Python and Bash code directly on your machine. This is particularly useful for:
+
+- **Data Processing**: Manipulating spreadsheets, CSV files, or databases
+- **File Operations**: Bulk file processing, content extraction, or file organization
+- **System Automation**: Configuration changes, system setup, or automation scripts
+- **Code Development**: Writing, editing, or executing code files
+- **Text Processing**: Document manipulation, content editing, or formatting
+
+When enabled, the agent can use the `call_code_agent` action to execute code blocks for tasks that can be completed through programming rather than GUI interaction.
+
+**Requirements:**
+- **Python**: The same Python interpreter used to run Agent S3 (automatically detected)
+- **Bash**: Available at `/bin/bash` (standard on macOS and Linux)
+- **System Permissions**: The agent runs with the same permissions as the user executing it
+
+**Security Considerations:**
+- The local environment executes arbitrary code with the same permissions as the user running the agent
+- Only enable this feature in trusted environments
+- Be cautious when the agent generates code for system-level operations
+- Consider running in a sandboxed environment for untrusted tasks
+- Bash scripts are executed with a 30-second timeout to prevent hanging processes
 
 ### `gui_agents` SDK
 
@@ -188,6 +231,7 @@ import pyautogui
 import io
 from gui_agents.s3.agents.agent_s import AgentS3
 from gui_agents.s3.agents.grounding import OSWorldACI
+from gui_agents.s3.utils.local_env import LocalEnv  # Optional: for local coding environment
 
 # Load in your API keys.
 from dotenv import load_dotenv
@@ -232,7 +276,12 @@ engine_params_for_grounding = {
 Then, we define our grounding agent and Agent S3.
 
 ```python
+# Optional: Enable local coding environment
+enable_local_env = False  # Set to True to enable local code execution
+local_env = LocalEnv() if enable_local_env else None
+
 grounding_agent = OSWorldACI(
+    env=local_env,  # Pass local_env for code execution capability
     platform=current_platform,
     engine_params_for_generation=engine_params,
     engine_params_for_grounding=engine_params_for_grounding,
