@@ -112,6 +112,9 @@ class CodeAgent:
 
     def execute(self, task_instruction: str, screenshot: str, env_controller) -> Dict:
         """Execute code for the given task with a budget of steps."""
+        if env_controller is None:
+            raise ValueError("env_controller is required for code execution")
+
         logger.info(f"Starting code execution for task: {task_instruction}")
         logger.info(f"Budget: {self.budget} steps")
 
