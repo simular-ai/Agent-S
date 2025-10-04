@@ -110,6 +110,8 @@ If you would like to test Agent S3 while making changes, clone the repository an
 pip install -e .
 ```
 
+Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
+
 ### API Configuration
 
 #### Option 1: Environment Variables

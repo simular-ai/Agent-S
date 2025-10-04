@@ -73,7 +73,9 @@ def call_llm_formatted(generator, format_checkers, **kwargs):
     attempt = 0
     response = ""
     if kwargs.get("messages") is None:
-        messages = generator.messages.copy()  # Copy messages to avoid modifying the original
+        messages = (
+            generator.messages.copy()
+        )  # Copy messages to avoid modifying the original
     else:
         messages = kwargs["messages"]
         del kwargs["messages"]  # Remove messages from kwargs to avoid passing it twice
