@@ -337,6 +337,7 @@ def main():
     }
 
     grounding_agent = OSWorldACI(
+        env=None,
         platform=current_platform,
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,
