@@ -45,7 +45,11 @@ async def generate_single_fact_caption(
 
     # Generate fact caption using behavior narrator
     result = await asyncio.to_thread(
-        judge.judge, before_bytes, after_bytes, pyautogui_action
+        judge.judge,
+        screenshot_num=i + 1,
+        before_img_bytes=before_bytes,
+        after_img_bytes=after_bytes,
+        pyautogui_action=pyautogui_action,
     )
     result["screenshot_num"] = i + 1
 
