@@ -115,6 +115,12 @@ class CodeAgent:
         if env_controller is None:
             raise ValueError("env_controller is required for code execution")
 
+        print(f"\n🚀 STARTING CODE EXECUTION")
+        print("=" * 60)
+        print(f"Task: {task_instruction}")
+        print(f"Budget: {self.budget} steps")
+        print("=" * 60)
+
         logger.info(f"Starting code execution for task: {task_instruction}")
         logger.info(f"Budget: {self.budget} steps")
 
@@ -134,6 +140,12 @@ class CodeAgent:
 
             # Get assistant response (thoughts and code)
             response = call_llm_safe(self.agent, temperature=1)
+
+            # Print to terminal for immediate visibility
+            print(f"\n🤖 CODING AGENT RESPONSE - Step {step_count + 1}/{self.budget}")
+            print("=" * 60)
+            print(response)
+            print("=" * 60)
 
             # Log the latest message from the coding agent (untruncated)
             logger.info(
@@ -156,10 +168,18 @@ class CodeAgent:
             # Check for completion signals
             action_upper = action.upper().strip()
             if action_upper == "DONE":
+                print(f"\n✅ TASK COMPLETED - Step {step_count + 1}")
+                print("=" * 60)
+                print("Agent signaled task completion")
+                print("=" * 60)
                 logger.info(f"Step {step_count + 1}: Task completed successfully")
                 completion_reason = "DONE"
                 break
             elif action_upper == "FAIL":
+                print(f"\n❌ TASK FAILED - Step {step_count + 1}")
+                print("=" * 60)
+                print("Agent signaled task failure")
+                print("=" * 60)
                 logger.info(f"Step {step_count + 1}: Task failed by agent request")
                 completion_reason = "FAIL"
                 break
@@ -174,6 +194,18 @@ class CodeAgent:
                 error = result.get("error", "")
                 message = result.get("message", "")
                 status = result.get("status", "")
+
+                # Print execution result to terminal for immediate visibility
+                print(f"\n⚡ CODE EXECUTION RESULT - Step {step_count + 1}")
+                print("-" * 50)
+                print(f"Status: {status}")
+                if output:
+                    print(f"Output:\n{output}")
+                if error:
+                    print(f"Error:\n{error}")
+                if message and not output and not error:
+                    print(f"Message:\n{message}")
+                print("-" * 50)
 
                 log_lines = [
                     f"CODING_AGENT_EXECUTION_RESULT - Step {step_count + 1}:",
@@ -197,6 +229,11 @@ class CodeAgent:
                 formatted_log = "\n".join([line for line in log_lines if line])
                 logger.info(formatted_log)
             else:
+                print(f"\n⚠️  NO CODE BLOCK FOUND - Step {step_count + 1}")
+                print("-" * 50)
+                print("Action did not contain executable code")
+                print("-" * 50)
+
                 logger.warning(f"Step {step_count + 1}: No code block found in action")
                 result = {"status": "skipped", "message": "No code block found"}
                 logger.info(
@@ -215,6 +252,10 @@ class CodeAgent:
 
         # Handle budget exhaustion
         if "completion_reason" not in locals():
+            print(f"\n⏰ BUDGET EXHAUSTED - {step_count} steps completed")
+            print("=" * 60)
+            print(f"Maximum budget of {self.budget} steps reached")
+            print("=" * 60)
             logger.info(f"Budget exhausted after {step_count} steps")
             completion_reason = f"BUDGET_EXHAUSTED_AFTER_{step_count}_STEPS"
 
