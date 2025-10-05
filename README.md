@@ -56,7 +56,7 @@
 </div>
 
 ## 🥳 Updates
-- [x] **2025/10/02**: Released the [Agent S3 paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld!
+- [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
 - [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
 - [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
