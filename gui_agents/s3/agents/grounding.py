@@ -179,8 +179,7 @@ set_cell_values(new_cell_values={cell_values}, app_name="{app_name}", sheet_name
 class OSWorldACI(ACI):
     def __init__(
         self,
-        env=None,
-        *,
+        env,
         platform: str,
         engine_params_for_generation: Dict,
         engine_params_for_grounding: Dict,
@@ -564,29 +563,13 @@ class OSWorldACI(ACI):
             logger.info(f"Executing FULL TASK: {task_to_execute}")
 
         if task_to_execute:
-            controller = getattr(self.env, "controller", None) if self.env else None
-
-            if controller is None:
-                logger.warning(
-                    "Environment controller unavailable; skipping code agent execution."
-                )
-                self.last_code_agent_result = {
-                    "task_instruction": task_to_execute,
-                    "completion_reason": "NO_ENV_CONTROLLER",
-                    "summary": "Code agent execution skipped because no environment controller was provided.",
-                    "execution_history": [],
-                    "steps_executed": 0,
-                    "budget": self.code_agent.budget,
-                }
-                return "import time; time.sleep(1)"
-
             print("obs keys: ", self.obs.keys())
             screenshot = self.obs.get("screenshot", "") if self.obs else ""
             logger.info(f"Screenshot available: {'Yes' if screenshot else 'No'}")
 
             logger.info("Executing code agent...")
             result = self.code_agent.execute(
-                task_to_execute, screenshot, controller
+                task_to_execute, screenshot, self.env.controller
             )
 
             # Store the result for the worker to access
