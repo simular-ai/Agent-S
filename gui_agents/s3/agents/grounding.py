@@ -397,6 +397,17 @@ class OSWorldACI(ACI):
             return f"import pyautogui; pyautogui.hotkey('win'); time.sleep(0.5); pyautogui.write({repr(app_or_filename)}); time.sleep(1.0); pyautogui.hotkey('enter'); time.sleep(0.5)"
         elif self.platform == "darwin":
             return f"import pyautogui; import time; pyautogui.hotkey('command', 'space', interval=0.5); pyautogui.typewrite({repr(app_or_filename)}); pyautogui.press('enter'); time.sleep(1.0)"
+        elif self.platform == "windows":
+            return (
+                "import pyautogui; import time; "
+                "pyautogui.hotkey('win'); time.sleep(0.5); "
+                f"pyautogui.write({repr(app_or_filename)}); time.sleep(1.0); "
+                "pyautogui.press('enter'); time.sleep(0.5)"
+            )
+        else:
+            assert (
+                False
+            ), f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
 
     @agent_action
     def type(
