@@ -9,6 +9,7 @@ setup(
     author="Simular AI",
     author_email="eric@simular.ai",
     packages=find_packages(),
+    py_modules=["self_check"],
     install_requires=[
         "numpy",
         "backoff",
@@ -36,6 +37,7 @@ setup(
     entry_points={
         "console_scripts": [
             "agent_s=gui_agents.s3.cli_app:main",
+            "agent-s_doctor=self_check:main",
         ],
     },
     classifiers=[
