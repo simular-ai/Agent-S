@@ -1,0 +1,120 @@
+[tool.poetry]
+name = "gui-agents"
+version = "0.3.1"
+description = "A library for creating general purpose GUI agents using multimodal LLMs."
+authors = ["Simular AI <eric@simular.ai>"]
+readme = "README.md"
+license = "Apache-2.0"
+keywords = ["ai", "llm", "gui", "agent", "multimodal"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS :: MacOS X",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+packages = [{include = "gui_agents"}]
+
+[tool.poetry.urls]
+"Source" = "https://github.com/simular-ai/Agent-S"
+"Bug Reports" = "https://github.com/simular-ai/Agent-S/issues"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<=3.12"
+numpy = "*"
+backoff = "*"
+pandas = "*"
+openai = "*"
+anthropic = "*"
+fastapi = "*"
+uvicorn = "*"
+paddleocr = "*"
+paddlepaddle = "*"
+together = "*"
+scikit-learn = "*"
+websockets = "*"
+tiktoken = "*"
+pyautogui = "*"
+toml = "*"
+pytesseract = "*"
+google-genai = "*"
+selenium = "*"
+pyobjc = {version = "*", markers = "sys_platform == 'darwin'"}
+pywinauto = {version = "*", markers = "sys_platform == 'win32'"}
+pywin32 = {version = "*", markers = "sys_platform == 'win32'"}
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+pytest = "^8.0.0"
+pytest-cov = "^6.0.0"
+pytest-mock = "^3.14.0"
+
+[tool.poetry.scripts]
+agent_s = "gui_agents.s3.cli_app:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--strict-config",
+    "--cov=gui_agents",
+    "--cov-report=html",
+    "--cov-report=xml",
+    "--cov-report=term-missing",
+    "--cov-fail-under=80",
+]
+markers = [
+    "unit: Unit tests that test individual components in isolation",
+    "integration: Integration tests that test multiple components together",
+    "slow: Tests that take a long time to run",
+]
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.coverage.run]
+source = ["gui_agents"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+    "*/osworld_setup/*",
+]
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+    "@abc.abstractmethod",
+]
+
+[tool.coverage.html]
+directory = "htmlcov"
+
+[tool.coverage.xml]
+output = "coverage.xml"
