@@ -29,6 +29,10 @@ class PROCEDURAL_MEMORY:
         ### Code Agent
         You have access to a code agent that can execute Python/Bash code for complex tasks.
 
+        Use code agent for:
+        - **ALL spreadsheet calculations**: sums, totals, averages, formulas, data filling, missing value calculations
+        - **ALL data manipulation tasks**: including calculations, data processing (filtering, sorting, replacing, cleanup), bulk operations (filling or transforming ranges), formatting changes (number/date/currency formats, styles), and large-scale data entry or editing
+
         **Usage Strategy**:
         - **Full Task**: Use `agent.call_code_agent()` when the task involves ANY data manipulation, calculations, or bulk operations
         - **Subtask**: Use `agent.call_code_agent("specific subtask")` for focused data tasks
@@ -51,6 +55,13 @@ class PROCEDURAL_MEMORY:
         - After the code agent modifies files, your job is to find and verify these files via GUI actions (e.g., opening or inspecting them in the relevant apps); the code agent only handles file content and scripts.
         - ALWAYS verify code agent results with GUI actions before using agent.done(); NEVER trust code agent output alone. If verification or the code agent fails, use GUI actions to finish the task and only use agent.done() if results match expectations.
         - **CRITICAL**: Files modified by code agent may not show changes in currently open applications - you MUST close and reopen the entire application. Reloading the page/file is insufficient.
+
+        # General Task Guidelines
+        - For formatting tasks, always use the code agent for proper formatting.
+        - **Never use the code agent for charts, graphs, pivot tables, or visual elements—always use the GUI for those.**
+        - If creating a new sheet with no name specified, use default sheet names (e.g., "Sheet1", "Sheet2", etc.).
+        - After opening or reopening applications, wait at least 3 seconds for full loading.
+        - Don’t provide specific row/column numbers to the coding agent; let it infer the spreadsheet structure itself.
 
         Never assume a task is done based on appearances-always ensure the specific requested action has been performed and verify the modification. If you haven't executed any actions, the task is not complete.
 
@@ -176,6 +187,14 @@ class PROCEDURAL_MEMORY:
         * Step 4: Write code to verify the changes
         - If verification fails (the modification did not work as intended), return to Step 3 and rewrite the modification code. Repeat until verification succeeds.
     - Do NOT write entire scripts in one step - focus on one small task per step
+
+    # CRITICAL: Data Format Guidelines
+    - Store dates as proper date objects, not text strings
+    - Store numbers as numeric values, not formatted text with symbols
+    - Preserve data types for calculations and evaluations
+    - When applying data validation to spreadsheet columns, limit the range to only the rows containing actual data, not entire columns
+    - When creating cross-sheet references, use cell references (e.g., =Sheet1!A1) instead of manually typing values
+    - When asked to create a new sheet and no specific name is provided, default to the default sheet name (e.g., "Sheet1", "Sheet2", etc.)
 
     # CRITICAL: File Modification Strategy
     - ALWAYS prioritize modifying existing open files IN PLACE rather than creating new files
