@@ -134,6 +134,15 @@ We support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. See
 ### Grounding Models (Required)
 For optimal performance, we recommend [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) hosted on Hugging Face Inference Endpoints or another provider. See [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for setup instructions.
 
+### 🔍 Self-check (Recommended)
+Before running the agent, you can verify that your environment has the right dependencies, permissions, and API keys by running:
+
+```bash
+agent-s_doctor
+```
+
+The tool highlights anything missing and suggests fixes. Use `agent-s_doctor --json` if you want to parse the results programmatically, and `agent-s_doctor --skip-screenshot` when running in a headless environment.
+
 ## 🚀 Usage
 
 
