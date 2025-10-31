@@ -254,44 +254,6 @@ class Worker(BaseModule):
                         generator_message += f"Step {i+1}: \n{action}\n"
             generator_message += "\n"
 
-            # Save code agent result to text file
-            try:
-                import os
-                from datetime import datetime
-
-                # Create logs directory if it doesn't exist
-                logs_dir = "logs"
-                if not os.path.exists(logs_dir):
-                    os.makedirs(logs_dir)
-
-                # Generate filename with timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                filename = (
-                    f"logs/code_agent_result_step_{self.turn_count + 1}_{timestamp}.txt"
-                )
-
-                with open(filename, "w") as f:
-                    f.write(f"CODE AGENT RESULT - Step {self.turn_count + 1}\n")
-                    f.write(f"Timestamp: {datetime.now().isoformat()}\n")
-                    f.write(
-                        f"Task/Subtask Instruction: {code_result['task_instruction']}\n"
-                    )
-                    f.write(f"Steps Completed: {code_result['steps_executed']}\n")
-                    f.write(f"Max Steps: {code_result['budget']}\n")
-                    f.write(f"Completion Reason: {code_result['completion_reason']}\n")
-                    f.write(f"Summary: {code_result['summary']}\n")
-                    if code_result["execution_history"]:
-                        f.write(f"\nExecution History:\n")
-                        for i, step in enumerate(code_result["execution_history"]):
-                            f.write(f"\nStep {i+1}:\n")
-                            f.write(f"Action: {step['action']}\n")
-                            if "thoughts" in step:
-                                f.write(f"Thoughts: {step['thoughts']}\n")
-
-                logger.info(f"Code agent result saved to: {filename}")
-            except Exception as e:
-                logger.error(f"Failed to save code agent result to file: {e}")
-
             # Log the code agent result section for debugging (truncated execution history)
             log_message = f"\nCODE AGENT RESULT:\n"
             log_message += (
