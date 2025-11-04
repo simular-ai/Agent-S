@@ -256,7 +256,8 @@ class AgentS2(UIAgent):
                     self.subtask_status = "Done"
                     executor_info = {
                         "executor_plan": "agent.done()",
-                        "plan_code": "agent.done()",
+                        "action": {"type": "done"},
+                        "parse_error": None,
                         "reflection": "agent.done()",
                     }
                     actions = ["DONE"]

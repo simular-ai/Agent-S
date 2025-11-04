@@ -11,6 +11,25 @@ from openai import (
     RateLimitError,
 )
 
+def _message_to_text(message):
+    content = getattr(message, "content", message)
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(text)
+                elif item.get("type") == "output_text" and item.get("text"):
+                    parts.append(item["text"])
+            elif hasattr(item, "text") and getattr(item, "text"):
+                parts.append(getattr(item, "text"))
+        return "".join(parts)
+    return str(content)
+
+
 
 class LMMEngine:
     pass
@@ -53,21 +72,16 @@ class LMMEngineOpenAI(LMMEngine):
                 self.llm_client = OpenAI(
                     base_url=self.base_url, api_key=api_key, organization=organization
                 )
-        return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=(
-                    temperature if self.temperature is None else self.temperature
-                ),
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+        completion = self.llm_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
+            temperature=(
+                temperature if self.temperature is None else self.temperature
+            ),
+            **kwargs,
         )
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEngineAnthropic(LMMEngine):
     def __init__(
         self,
@@ -182,21 +196,15 @@ class LMMEngineGemini(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
-        # Use the temperature passed to generate, otherwise use the instance's temperature, otherwise default to 0.0
         temp = self.temperature if temperature is None else temperature
-        return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temp,
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+        completion = self.llm_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_new_tokens if max_new_tokens else 4096,
+            temperature=temp,
+            **kwargs,
         )
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEngineOpenRouter(LMMEngine):
     def __init__(
         self,
@@ -219,33 +227,22 @@ class LMMEngineOpenRouter(LMMEngine):
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
     )
     def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
-        api_key = self.api_key or os.getenv("OPENROUTER_API_KEY")
+        api_key = self.api_key or os.getenv("OPEN_ROUTER_API_KEY")
         if api_key is None:
             raise ValueError(
-                "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENROUTER_API_KEY"
-            )
-        base_url = self.base_url or os.getenv("OPEN_ROUTER_ENDPOINT_URL")
-        if base_url is None:
-            raise ValueError(
-                "An endpoint URL needs to be provided in either the endpoint_url parameter or as an environment variable named OPEN_ROUTER_ENDPOINT_URL"
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPEN_ROUTER_API_KEY"
             )
         if not self.llm_client:
-            self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
-        # Use self.temperature if set, otherwise use the temperature argument
-        temp = self.temperature if self.temperature is not None else temperature
-        return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temp,
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+            self.llm_client = OpenAI(base_url=self.base_url, api_key=api_key)
+        temp = self.temperature if temperature is None else temperature
+        completion = self.llm_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_new_tokens if max_new_tokens else 4096,
+            temperature=temp,
+            **kwargs,
         )
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEngineAzureOpenAI(LMMEngine):
     def __init__(
         self,
@@ -293,7 +290,6 @@ class LMMEngineAzureOpenAI(LMMEngine):
                 api_key=api_key,
                 api_version=api_version,
             )
-        # Use self.temperature if set, otherwise use the temperature argument
         temp = self.temperature if self.temperature is not None else temperature
         completion = self.llm_client.chat.completions.create(
             model=self.model,
@@ -304,9 +300,7 @@ class LMMEngineAzureOpenAI(LMMEngine):
         )
         total_tokens = completion.usage.total_tokens
         self.cost += 0.02 * ((total_tokens + 500) / 1000)
-        return completion.choices[0].message.content
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEnginevLLM(LMMEngine):
     def __init__(
         self,
@@ -349,7 +343,6 @@ class LMMEnginevLLM(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
-        # Use self.temperature if set, otherwise use the temperature argument
         temp = self.temperature if self.temperature is not None else temperature
         completion = self.llm_client.chat.completions.create(
             model=self.model,
@@ -359,9 +352,7 @@ class LMMEnginevLLM(LMMEngine):
             top_p=top_p,
             extra_body={"repetition_penalty": repetition_penalty},
         )
-        return completion.choices[0].message.content
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEngineHuggingFace(LMMEngine):
     def __init__(self, base_url=None, api_key=None, rate_limit=-1, **kwargs):
         self.base_url = base_url
@@ -385,19 +376,14 @@ class LMMEngineHuggingFace(LMMEngine):
             )
         if not self.llm_client:
             self.llm_client = OpenAI(base_url=base_url, api_key=api_key)
-        return (
-            self.llm_client.chat.completions.create(
-                model="tgi",
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+        completion = self.llm_client.chat.completions.create(
+            model="tgi",
+            messages=messages,
+            max_tokens=max_new_tokens if max_new_tokens else 4096,
+            temperature=temperature,
+            **kwargs,
         )
-
-
+        return _message_to_text(completion.choices[0].message)
 class LMMEngineParasail(LMMEngine):
     def __init__(
         self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
@@ -428,14 +414,11 @@ class LMMEngineParasail(LMMEngine):
                 base_url=base_url if base_url else "https://api.parasail.io/v1",
                 api_key=api_key,
             )
-        return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+        completion = self.llm_client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            max_tokens=max_new_tokens if max_new_tokens else 4096,
+            temperature=temperature,
+            **kwargs,
         )
+        return _message_to_text(completion.choices[0].message)
