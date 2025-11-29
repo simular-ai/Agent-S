@@ -315,6 +315,11 @@ def main():
         default=False,
         help="Enable local coding environment for code execution (WARNING: Executes arbitrary code locally)",
     )
+    parser.add_argument(
+        "--task",
+        type=str,
+        help="The task instruction for Agent-S3 to perform.",
+    )
 
     args = parser.parse_args()
 
@@ -367,19 +372,24 @@ def main():
         max_trajectory_length=args.max_trajectory_length,
         enable_reflection=args.enable_reflection,
     )
+    task = args.task
+    if task is None or not isinstance(task, str) or len(task.strip())==0:
+        while True:
+            query = input("Query: ")
 
-    while True:
-        query = input("Query: ")
+            agent.reset()
 
+            # Run the agent on your own device
+            run_agent(agent, query, scaled_width, scaled_height)
+
+            response = input("Would you like to provide another query? (y/n): ")
+            if response.lower() != "y":
+                break
+    else:
         agent.reset()
-
+        
         # Run the agent on your own device
-        run_agent(agent, query, scaled_width, scaled_height)
-
-        response = input("Would you like to provide another query? (y/n): ")
-        if response.lower() != "y":
-            break
-
+        run_agent(agent, task, scaled_width, scaled_height)
 
 if __name__ == "__main__":
     main()
