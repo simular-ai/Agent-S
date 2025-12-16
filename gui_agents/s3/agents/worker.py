@@ -52,6 +52,7 @@ class Worker(BaseModule):
             "claude-sonnet-4-20250514",
             "claude-3-7-sonnet-20250219",
             "claude-sonnet-4-5-20250929",
+            "claude-opus-4-5-20251101",
         ]
         self.grounding_agent = grounding_agent
         self.max_trajectory_length = max_trajectory_length

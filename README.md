@@ -3,6 +3,8 @@
   <small>Use Computer Like a Human</small>
 </h1>
 
+<h2 align="center">🏆 Agent S3: First to Surpass Human Performance on OSWorld (72.60%)</h2>
+
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s3">[S3 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper]</a>&nbsp;
@@ -56,6 +58,7 @@
 </div>
 
 ## 🥳 Updates
+- [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
 - [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
 - [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 - [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
@@ -85,12 +88,12 @@ Whether you're interested in AI, automation, or contributing to cutting-edge age
 ## 🎯 Current Results
 
 <p align="center">
-  <img src="images/s3_results.png" alt="Agent S3 Results" width="700"/>
+  <img src="images/s3_results_new.png" alt="Agent S3 Results" width="700"/>
 </p>
 
-On OSWorld, Agent S3 alone reaches 62.6% in the 100-step setting, already exceeding the previous state of the art of 61.4% (Claude Sonnet 4.5). With the addition of Behavior Best-of-N, performance climbs even higher to 69.9%, bringing computer-use agents to within just a few points of human-level accuracy (72%).
+On OSWorld, Agent S3 alone reaches 66% in the 100-step setting, already exceeding the previous state of the art of 63.4% (GTA1 w/ GPT-5). With the addition of Behavior Best-of-N, performance climbs even higher to 72.6%, *surpassing* human-level performance on OSWorld (~72%)!
 
-Agent S3 also demonstrates strong zero-shot generalization. On WindowsAgentArena, accuracy rises from 50.2% using only Agent S3 to 56.6% by selecting from 3 rollouts. Similarly on AndroidWorld, performance improves from 68.1% to 71.6%
+Agent S3 also demonstrates strong zero-shot generalization! On WindowsAgentArena, accuracy rises from 50.2% using only Agent S3 to 56.6% by selecting from 3 rollouts. Similarly on AndroidWorld, performance improves from 68.1% to 71.6%
 
 ## 🛠️ Installation & Setup
 
