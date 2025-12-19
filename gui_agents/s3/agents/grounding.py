@@ -240,9 +240,23 @@ class OSWorldACI(ACI):
         # Generate and parse coordinates
         response = call_llm_safe(self.grounding_model)
         print("RAW GROUNDING MODEL RESPONSE:", response)
-        numericals = re.findall(r"\d+", response)
+        
+        # Regex to find floating point numbers (0.xxxx) or integers
+        numericals = re.findall(r"\d+\.?\d*", response)
         assert len(numericals) >= 2
-        return [int(numericals[0]), int(numericals[1])]
+        
+        x = float(numericals[0])
+        y = float(numericals[1])
+        
+        # If coordinates are normalized (0-1), scale them up
+        if x <= 1.0 and y <= 1.0:
+            x = int(x * self.engine_params_for_grounding["grounding_width"])
+            y = int(y * self.engine_params_for_grounding["grounding_height"])
+        else:
+            x = int(x)
+            y = int(y)
+            
+        return [x, y]
 
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:
