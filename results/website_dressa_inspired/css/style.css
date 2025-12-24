@@ -1,0 +1,21 @@
+/* Minimal responsive styles for Dressa-inspired MVP */
+:root{--accent:#ff6b6b;--muted:#333}
+*{box-sizing:border-box}
+body{font-family:Inter, Arial, sans-serif;margin:0;color:#222;background:#fff}
+.header{display:flex;justify-content:space-between;align-items:center;padding:1rem 2rem;border-bottom:1px solid #eee}
+.header h1{margin:0;font-size:1.2rem}
+.nav a{margin-left:1rem;color:var(--muted);text-decoration:none}
+.hero{background:#f8f6f4;padding:3rem 2rem;display:flex;gap:2rem;align-items:center}
+.hero .lead{max-width:620px}
+.btn{background:var(--accent);color:#fff;padding:.6rem 1rem;border-radius:999px;text-decoration:none}
+.container{max-width:1100px;margin:0 auto;padding:2rem}
+.catalog-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1rem}
+.card{border:1px solid #eee;padding:1rem;border-radius:8px;background:#fff}
+.card img{width:100%;height:160px;object-fit:cover;border-radius:6px}
+.footer{padding:2rem;text-align:center;color:#666;border-top:1px solid #eee}
+/* modal (reserve) */
+.modal{position:fixed;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);opacity:0;pointer-events:none;transition:opacity .15s}
+.modal.open{opacity:1;pointer-events:auto}
+.modal .box{background:#fff;padding:1rem;border-radius:8px;min-width:280px}
+/* responsive */
+@media(max-width:720px){.hero{flex-direction:column;text-align:center}.nav{display:none}}
