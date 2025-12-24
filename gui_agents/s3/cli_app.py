@@ -145,6 +145,15 @@ def show_permission_dialog(code: str, action_description: str):
     return False
 
 
+def execute_code(code_str: str):
+    """Execute the provided code string in a controlled namespace.
+
+    This helper centralizes code execution so it can be mocked in tests.
+    """
+    # Execute in globals so that imports persist if needed by subsequent steps.
+    exec(code_str, globals())
+
+
 def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
     scale_factor = min(max_dim_size / width, max_dim_size / height, 1)
     safe_width = int(width * scale_factor)
@@ -152,7 +161,7 @@ def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
     return safe_width, safe_height
 
 
-def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
+def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int, require_exec_confirmation: bool = True):
     global paused
     obs = {}
     traj = "Task:\n" + instruction
@@ -182,8 +191,42 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
+        print('DEBUG: agent.predict returned code:', repr(code))
 
-        if "done" in code[0].lower() or "fail" in code[0].lower():
+        # Normalize to (code_str, status) form. Some agents return [code, status]
+        code_str = None
+        status = None
+        try:
+            if isinstance(code, (list, tuple)) and len(code) >= 1:
+                code_str = code[0]
+                if len(code) > 1:
+                    status = str(code[1]).lower().strip()
+            elif isinstance(code, str):
+                code_str = code
+        except Exception:
+            code_str = str(code)
+
+        # Interpret explicit status when present, or exact token in code_str
+        # Semantics: if code_str itself is a terminal token ("done"/"fail"), stop without executing.
+        # If an explicit status is provided (e.g., [code, "done"]), execute the provided code_str once, then stop.
+        if isinstance(code_str, str) and code_str.strip().lower() in ("done", "fail"):
+            break
+        if status in ("done", "fail"):
+            # Execute the final code, then stop
+            execute_final = code_str
+            # fall through to execution branch below
+            final_exit_after_exec = True
+        else:
+            execute_final = None
+            final_exit_after_exec = False
+
+        # If execute_final is set, we want to execute it once and then exit the loop
+        if execute_final is not None:
+            code_to_run = execute_final
+            do_exit_after = True
+        else:
+            code_to_run = code_str
+            do_exit_after = False
             if platform.system() == "Darwin":
                 os.system(
                     f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
@@ -205,14 +248,36 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
         else:
             time.sleep(1.0)
-            print("EXECUTING CODE:", code[0])
+            print("EXECUTING CODE:", code_to_run)
 
             # Check for pause state before execution
             while paused:
                 time.sleep(0.1)
 
             # Ask for permission before executing
-            exec(code[0])
+            allowed = True
+            if require_exec_confirmation:
+                # Try platform GUI confirmation first
+                try:
+                    allowed = show_permission_dialog(code_to_run, "execute this action")
+                except Exception:
+                    allowed = False
+
+                if not allowed:
+                    try:
+                        print("Agent proposes to execute the following code:\n")
+                        print(code_to_run)
+                        resp = input("Execute this code? (y/N): ")
+                        if resp.lower().strip() == "y":
+                            allowed = True
+                    except Exception:
+                        allowed = False
+
+            if not allowed:
+                print("Execution denied by user; skipping this action.")
+            else:
+                execute_code(code_to_run)
+
             time.sleep(1.0)
 
             # Update task and subtask trajectories
@@ -223,6 +288,10 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
                     + "\n\n----------------------\n\nPlan:\n"
                     + info["executor_plan"]
                 )
+
+            # If this was a final command (status indicated done/fail), exit after executing
+            if do_exit_after:
+                break
 
 
 def main():
@@ -316,6 +385,13 @@ def main():
         help="Enable local coding environment for code execution (WARNING: Executes arbitrary code locally)",
     )
 
+    parser.add_argument(
+        "--allow_exec",
+        action="store_true",
+        default=False,
+        help="Allow executing agent-generated code without confirmation (dangerous).",
+    )
+
     args = parser.parse_args()
 
     # Re-scales screenshot size to ensure it fits in UI-TARS context limit
@@ -368,13 +444,16 @@ def main():
         enable_reflection=args.enable_reflection,
     )
 
+    # Determine whether user approval is required before executing agent code
+    require_exec_confirmation = not getattr(args, "allow_exec", False)
+
     while True:
         query = input("Query: ")
 
         agent.reset()
 
         # Run the agent on your own device
-        run_agent(agent, query, scaled_width, scaled_height)
+        run_agent(agent, query, scaled_width, scaled_height, require_exec_confirmation=require_exec_confirmation)
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":
