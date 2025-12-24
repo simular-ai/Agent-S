@@ -82,6 +82,9 @@ import gui_agents.s3.agents.code_agent as _code_agent
 _code_agent.LMMAgent = FakeLMMAgent
 import gui_agents.s3.agents.grounding as _grounding
 _grounding.LMMAgent = FakeLMMAgent
+# Ensure module-level uses of LMMAgent are also patched
+import gui_agents.s3.core.module as _module
+_module.LMMAgent = FakeLMMAgent
 
 
 def _create_screenshot_bytes():

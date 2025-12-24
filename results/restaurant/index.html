@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ресторан "У моря"</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #333 }
+    header { background: linear-gradient(90deg,#0066cc,#33aaff); color: #fff; padding: 3rem 1rem; text-align:center }
+    .container { max-width: 900px; margin: 1rem auto; padding: 1rem }
+    .hero { display:flex; gap: 1rem; align-items:center }
+    .hero img { width:50%; border-radius:8px }
+    .menu { display:flex; gap:1rem; flex-wrap:wrap }
+    .menu-item { flex:1 1 200px; border:1px solid #eee; padding:1rem; border-radius:6px }
+    footer { text-align:center; padding:1rem; color:#666 }
+    @media (max-width:600px){ .hero{flex-direction:column} .hero img{width:100%} }
+  </style>
+</head>
+<body>
+<header>
+  <h1>Ресторан "У моря"</h1>
+  <p>Свежая еда, уютная атмосфера и вид на море</p>
+</header>
+<main class="container">
+  <section class="hero">
+    <img src="https://images.unsplash.com/photo-1498654896293-37aacf113fd9?w=800&q=80" alt="restaurant">
+    <div>
+      <h2>Добро пожаловать!</h2>
+      <p>Мы предлагаем блюда из местных продуктов, авторские закуски и широкий выбор напитков.</p>
+      <p><strong>Часы работы:</strong> 10:00 — 23:00</p>
+    </div>
+  </section>
+
+  <section>
+    <h3>Меню</h3>
+    <div class="menu">
+      <div class="menu-item"><h4>Салат из лосося</h4><p>Свежий лосось, микс салатов, цитрусовая заправка — 320 ₴</p></div>
+      <div class="menu-item"><h4>Паста морская</h4><p>Паста с морепродуктами в сливочном соусе — 380 ₴</p></div>
+      <div class="menu-item"><h4>Стейк</h4><p>Говяжий стейк с овощами — 420 ₴</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h3>Контакты</h3>
+    <p>Адрес: Одесса, набережная, 1</p>
+    <p>Телефон: +38 0XX XXX XX XX</p>
+  </section>
+</main>
+<footer>
+  © Ресторан "У моря" — Приятного аппетита!
+</footer>
+</body>
+</html>
