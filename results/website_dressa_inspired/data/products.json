@@ -1,0 +1,22 @@
+[
+  {"id":1,"title":"Літня сукня в квітковий принт","price":899,"image":"https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80"},
+  {"id":2,"title":"Тренч класичний беґкі","price":1299,"image":"https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80"},
+  {"id":3,"title":"Джинси скінні","price":649,"image":"https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80"},
+  {"id":4,"title":"В'язаний кардиган світлий","price":499,"image":"https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80"},
+  {"id":5,"title":"Бавовняна блузка","price":349,"image":"https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?w=800&q=80"},
+  {"id":6,"title":"Спідниця-олівець","price":579,"image":"https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80"},
+  {"id":7,"title":"Класичне пальто","price":2399,"image":"https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80"},
+  {"id":8,"title":"Спортивний костюм","price":899,"image":"https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80"},
+  {"id":9,"title":"Льняні шорти","price":399,"image":"https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80"},
+  {"id":10,"title":"Короткий жакет","price":699,"image":"https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?w=800&q=80"},
+  {"id":11,"title":"Плаття міді","price":1099,"image":"https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80"},
+  {"id":12,"title":"Светр оверсайз","price":559,"image":"https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80"},
+  {"id":13,"title":"Кашеміровий шарф","price":299,"image":"https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80"},
+  {"id":14,"title":"Платформа сабо","price":799,"image":"https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80"},
+  {"id":15,"title":"Легка туніка","price":429,"image":"https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?w=800&q=80"},
+  {"id":16,"title":"Базова футболка","price":199,"image":"https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80"},
+  {"id":17,"title":"Пляжний сарафан","price":499,"image":"https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80"},
+  {"id":18,"title":"Класичні брюки","price":699,"image":"https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80"},
+  {"id":19,"title":"Блейзер у клітинку","price":1299,"image":"https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80"},
+  {"id":20,"title":"Джинси широкі","price":799,"image":"https://images.unsplash.com/photo-1503341455253-b2e723bb3dbb?w=800&q=80"}
+]

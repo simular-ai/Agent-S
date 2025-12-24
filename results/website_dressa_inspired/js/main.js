@@ -1,10 +1,16 @@
 // Minimal catalog, cart and modal logic
-const PRODUCTS = [
-  {id:1,title:'Літня сукня',price:899,image:'https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80'},
-  {id:2,title:'Тренч класичний',price:1299,image:'https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80'},
-  {id:3,title:'Джинси',price:649,image:'https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80'},
-  {id:4,title:'В'язаний кардиган',price:499,image:'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80'}
-];
+let PRODUCTS = [];
+
+// Try to fetch products.json, fallback to inline default if network disabled
+fetch('data/products.json').then(r=>r.json()).then(d=>{ PRODUCTS = d; renderCatalog(); }).catch(()=>{
+  PRODUCTS = [
+    {id:1,title:'Літня сукня',price:899,image:'https://images.unsplash.com/photo-1520975925553-66f1d6a9c4b1?w=800&q=80'},
+    {id:2,title:'Тренч класичний',price:1299,image:'https://images.unsplash.com/photo-1495121605193-b116b5b09d0b?w=800&q=80'},
+    {id:3,title:'Джинси',price:649,image:'https://images.unsplash.com/photo-1514996937319-344454492b37?w=800&q=80'},
+    {id:4,title:'В'язаний кардиган',price:499,image:'https://images.unsplash.com/photo-1541099649105-f69ad21f3246?w=800&q=80'}
+  ];
+  renderCatalog();
+});
 
 function renderCatalog(filter=''){
   const container = document.getElementById('catalog');
