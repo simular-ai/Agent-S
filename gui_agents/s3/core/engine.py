@@ -487,6 +487,7 @@ class LMMEngineDeepSeek(LMMEngine):
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
             temperature=temp,
+            **kwargs,
         )
         return completion.choices[0].message.content
 
@@ -533,5 +534,6 @@ class LMMEngineQwen(LMMEngine):
             messages=messages,
             max_tokens=max_new_tokens if max_new_tokens else 4096,
             temperature=temp,
+            **kwargs,
         )
         return completion.choices[0].message.content
