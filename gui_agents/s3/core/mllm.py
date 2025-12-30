@@ -5,10 +5,12 @@ import numpy as np
 from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
+    LMMEngineDeepSeek,
     LMMEngineHuggingFace,
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
     LMMEngineParasail,
+    LMMEngineQwen,
     LMMEnginevLLM,
     LMMEngineGemini,
 )
@@ -35,6 +37,10 @@ class LMMAgent:
                     self.engine = LMMEngineOpenRouter(**engine_params)
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
+                elif engine_type == "deepseek":
+                    self.engine = LMMEngineDeepSeek(**engine_params)
+                elif engine_type == "qwen":
+                    self.engine = LMMEngineQwen(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -125,10 +131,12 @@ class LMMAgent:
             (
                 LMMEngineOpenAI,
                 LMMEngineAzureOpenAI,
+                LMMEngineDeepSeek,
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
+                LMMEngineQwen,
             ),
         ):
             # infer role from previous message
