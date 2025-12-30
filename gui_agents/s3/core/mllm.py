@@ -6,6 +6,7 @@ from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineHuggingFace,
+    LMMEngineOllama,
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
     LMMEngineParasail,
@@ -35,6 +36,8 @@ class LMMAgent:
                     self.engine = LMMEngineOpenRouter(**engine_params)
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
+                elif engine_type == "ollama":
+                    self.engine = LMMEngineOllama(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -129,6 +132,7 @@ class LMMAgent:
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
+                LMMEngineOllama,
             ),
         ):
             # infer role from previous message
