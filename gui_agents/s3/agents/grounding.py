@@ -187,6 +187,7 @@ class OSWorldACI(ACI):
         height: int = 1080,
         code_agent_budget: int = 20,
         code_agent_engine_params: Dict = None,
+        y_offset: int = 0,
     ):
         super().__init__()
 
@@ -198,6 +199,9 @@ class OSWorldACI(ACI):
         # Configure scaling
         self.width = width
         self.height = height
+
+        # Configure Y-axis offset for click coordinates (negative moves up)
+        self.y_offset = y_offset
 
         # Maintain state for save_to_knowledge
         self.notes = []
@@ -339,7 +343,7 @@ class OSWorldACI(ACI):
 
         return [
             round(coordinates[0] * self.width / grounding_width),
-            round(coordinates[1] * self.height / grounding_height),
+            round(coordinates[1] * self.height / grounding_height) + self.y_offset,
         ]
 
     @agent_action
