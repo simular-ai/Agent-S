@@ -1,0 +1,33 @@
+From bd11c7fff67d0667527f5480bc2a71e8fbd197f9 Mon Sep 17 00:00:00 2001
+From: Vasyl198 <ananiivasilii@gmail.com>
+Date: Wed, 24 Dec 2025 14:29:28 +0200
+Subject: [PATCH 2/2] ci: use pre-commit mirrors for flake8 and add basic hooks
+
+---
+ .pre-commit-config.yaml | 11 ++++++++---
+ 1 file changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 8665a49..7e0e7f6 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -8,8 +8,13 @@ repos:
+     rev: 5.12.0
+     hooks:
+       - id: isort
+-  - repo: https://gitlab.com/pycqa/flake8
+-    rev: 6.0.0
++  - repo: https://github.com/pre-commit/mirrors-flake8
++    rev: 7.1.0
+     hooks:
+       - id: flake8
+-        args: ["--max-line-length=120"]
++        args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
++  - repo: https://github.com/pre-commit/pre-commit-hooks
++    rev: v4.6.0
++    hooks:
++      - id: end-of-file-fixer
++      - id: trailing-whitespace
+-- 
+2.49.0.windows.1
+
