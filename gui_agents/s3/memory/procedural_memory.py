@@ -61,7 +61,7 @@ class PROCEDURAL_MEMORY:
         - **Never use the code agent for charts, graphs, pivot tables, or visual elements—always use the GUI for those.**
         - If creating a new sheet with no name specified, use default sheet names (e.g., "Sheet1", "Sheet2", etc.).
         - After opening or reopening applications, wait at least 3 seconds for full loading.
-        - Don’t provide specific row/column numbers to the coding agent; let it infer the spreadsheet structure itself.
+        - Don't provide specific row/column numbers to the coding agent; let it infer the spreadsheet structure itself.
 
         Never assume a task is done based on appearances-always ensure the specific requested action has been performed and verify the modification. If you haven't executed any actions, the task is not complete.
 
