@@ -6,7 +6,7 @@ from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineHuggingFace,
-    LMMEngineOllama,
+
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
     LMMEngineParasail,
@@ -37,7 +37,12 @@ class LMMAgent:
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
                 elif engine_type == "ollama":
-                    self.engine = LMMEngineOllama(**engine_params)
+                    # Reuse LMMEngineOpenAI for Ollama, defaulting to localhost if not specified
+                    if "base_url" not in engine_params:
+                        engine_params["base_url"] = "http://localhost:11434/v1"
+                    if "api_key" not in engine_params:
+                        engine_params["api_key"] = "ollama"
+                    self.engine = LMMEngineOpenAI(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -132,7 +137,7 @@ class LMMAgent:
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
-                LMMEngineOllama,
+
             ),
         ):
             # infer role from previous message
