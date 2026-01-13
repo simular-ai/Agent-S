@@ -39,7 +39,14 @@ class LMMAgent:
                 elif engine_type == "ollama":
                     # Reuse LMMEngineOpenAI for Ollama, defaulting to localhost if not specified
                     if "base_url" not in engine_params:
-                        engine_params["base_url"] = "http://localhost:11434/v1"
+                        import os
+                        base_url = os.getenv("OLLAMA_HOST")
+                        if base_url:
+                            if not base_url.endswith("/v1"):
+                                base_url = base_url.rstrip("/") + "/v1"
+                            engine_params["base_url"] = base_url
+                        else:
+                            engine_params["base_url"] = "http://localhost:11434/v1"
                     if "api_key" not in engine_params:
                         engine_params["api_key"] = "ollama"
                     self.engine = LMMEngineOpenAI(**engine_params)
