@@ -378,7 +378,7 @@ def main():
     # handle query from command line
     if isinstance(task, str) and task.strip():
         agent.reset()
-        run_agent(agent, query, scaled_width, scaled_height)
+        run_agent(agent, task, scaled_width, scaled_height)
         return
 
     while True:
