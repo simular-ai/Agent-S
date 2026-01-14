@@ -372,24 +372,26 @@ def main():
         max_trajectory_length=args.max_trajectory_length,
         enable_reflection=args.enable_reflection,
     )
+
     task = args.task
-    if task is None or not isinstance(task, str) or len(task.strip())==0:
-        while True:
-            query = input("Query: ")
 
-            agent.reset()
-
-            # Run the agent on your own device
-            run_agent(agent, query, scaled_width, scaled_height)
-
-            response = input("Would you like to provide another query? (y/n): ")
-            if response.lower() != "y":
-                break
-    else:
+    # handle query from command line
+    if isinstance(task, str) and task.strip():
         agent.reset()
-        
+        run_agent(agent, query, scaled_width, scaled_height)
+        return
+
+    while True:
+        query = input("Query: ")
+
+        agent.reset()
+
         # Run the agent on your own device
-        run_agent(agent, task, scaled_width, scaled_height)
+        run_agent(agent, query, scaled_width, scaled_height)
+
+        response = input("Would you like to provide another query? (y/n): ")
+        if response.lower() != "y":
+            break
 
 if __name__ == "__main__":
     main()
