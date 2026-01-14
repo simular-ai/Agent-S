@@ -315,6 +315,11 @@ def main():
         default=False,
         help="Enable local coding environment for code execution (WARNING: Executes arbitrary code locally)",
     )
+    parser.add_argument(
+        "--task",
+        type=str,
+        help="The task instruction for Agent-S3 to perform.",
+    )
 
     args = parser.parse_args()
 
@@ -368,6 +373,14 @@ def main():
         enable_reflection=args.enable_reflection,
     )
 
+    task = args.task
+
+    # handle query from command line
+    if isinstance(task, str) and task.strip():
+        agent.reset()
+        run_agent(agent, query, scaled_width, scaled_height)
+        return
+
     while True:
         query = input("Query: ")
 
@@ -379,7 +392,6 @@ def main():
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":
             break
-
 
 if __name__ == "__main__":
     main()
