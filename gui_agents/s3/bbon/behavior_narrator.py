@@ -48,31 +48,31 @@ class BehaviorNarrator:
             width = max(0, min(img.width - 1, width))
             height = max(0, min(img.height - 1, height))
 
-            def place_text(label, color):
+            def place_text(label, color, x, y):
                 bbox = draw.textbbox((0, 0), label, font=font)
                 text_w, text_h = (
                     bbox[2] - bbox[0],
                     bbox[3] - bbox[1],
                 )  # Measure text size
                 offset_x, offset_y = -5, 5  # Default offset
-                if width + offset_x + text_w > img.width:  # Out of bounds on right
+                if x + offset_x + text_w > img.width:  # Out of bounds on right
                     offset_x = -text_w - 5
-                if height + offset_y + text_h > img.height:  # Out of bounds on bottom
+                if y + offset_y + text_h > img.height:  # Out of bounds on bottom
                     offset_y = -text_h - 5
-                if width + offset_x < 0:  # Out of bounds on left
+                if x + offset_x < 0:  # Out of bounds on left
                     offset_x = 5
-                if height + offset_y < 0:  # Out of bounds on top
+                if y + offset_y < 0:  # Out of bounds on top
                     offset_y = 5
                 draw.text(
-                    (width + offset_x, height + offset_y), label, fill=color, font=font
+                    (x + offset_x, y + offset_y), label, fill=color, font=font
                 )
 
             if mouse_action.startswith("pyautogui.click"):
                 draw.circle((width, height), radius=3, fill=(255, 0, 0))
-                place_text("Click", (255, 0, 0))
+                place_text("Click", (255, 0, 0), width, height)
             if mouse_action.startswith("pyautogui.moveTo"):
                 draw.circle((width, height), radius=3, fill=(0, 0, 255))
-                place_text("MoveTo", (0, 0, 255))
+                place_text("MoveTo", (0, 0, 255), width, height)
                 drag_start_height, drag_start_width = height, width
             if mouse_action.startswith("pyautogui.dragTo"):
                 draw.line(
@@ -81,7 +81,7 @@ class BehaviorNarrator:
                     width=2,
                 )
                 draw.circle((width, height), radius=3, fill=(0, 255, 0))
-                place_text("DragTo", (0, 255, 0))
+                place_text("DragTo", (0, 255, 0), width, height)
 
     @staticmethod
     def get_mouse_action_representation(mouse_actions: list[str]) -> str:
