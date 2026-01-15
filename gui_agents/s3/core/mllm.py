@@ -12,6 +12,8 @@ from gui_agents.s3.core.engine import (
     LMMEngineParasail,
     LMMEnginevLLM,
     LMMEngineGemini,
+    LMMEngineDeepSeek,
+    LMMEngineQwen,
 )
 
 
@@ -37,7 +39,7 @@ class LMMAgent:
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
                 elif engine_type == "ollama":
-                    # Reuse LMMEngineOpenAI for Ollama, defaulting to localhost if not specified
+                    # Reuse LMMEngineOpenAI for Ollama
                     if "base_url" not in engine_params:
                         import os
                         base_url = os.getenv("OLLAMA_HOST")
@@ -46,10 +48,17 @@ class LMMAgent:
                                 base_url = base_url.rstrip("/") + "/v1"
                             engine_params["base_url"] = base_url
                         else:
-                            engine_params["base_url"] = "http://localhost:11434/v1"
+                            # RAISE ERROR instead of default
+                            raise ValueError(
+                                "Ollama endpoint must be provided via 'base_url' parameter or 'OLLAMA_HOST' environment variable."
+                            )
                     if "api_key" not in engine_params:
                         engine_params["api_key"] = "ollama"
                     self.engine = LMMEngineOpenAI(**engine_params)
+                elif engine_type == "deepseek":
+                    self.engine = LMMEngineDeepSeek(**engine_params)
+                elif engine_type == "qwen":
+                    self.engine = LMMEngineQwen(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -144,7 +153,8 @@ class LMMAgent:
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
-
+                LMMEngineDeepSeek,
+                LMMEngineQwen,
             ),
         ):
             # infer role from previous message
