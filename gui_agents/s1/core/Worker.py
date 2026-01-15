@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import re
@@ -8,7 +9,13 @@ from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.BaseModule import BaseModule
 from gui_agents.s1.core.Knowledge import KnowledgeBase
 from gui_agents.s1.core.ProceduralMemory import PROCEDURAL_MEMORY
-from gui_agents.s1.utils import common_utils
+from gui_agents.common import (
+    AGENT_ACTION_RESPONSE_FORMAT,
+    AgentActionParseError,
+    agent_action_to_dict,
+    execute_agent_action,
+    parse_agent_action,
+)
 from gui_agents.s1.utils.common_utils import Node, calculate_tokens, call_llm_safe
 
 logger = logging.getLogger("desktopenv.agent")
@@ -208,7 +215,11 @@ class Worker(BaseModule):
             generator_message, image_content=obs["screenshot"]
         )
 
-        plan = call_llm_safe(self.generator_agent)
+        response_kwargs = {}
+        engine_type = self.engine_params.get("engine_type")
+        if engine_type in {"openai", "azure"}:
+            response_kwargs["response_format"] = AGENT_ACTION_RESPONSE_FORMAT
+        plan = call_llm_safe(self.generator_agent, **response_kwargs)
         self.planner_history.append(plan)
         logger.info("PLAN: %s", plan)
 
@@ -222,19 +233,25 @@ class Worker(BaseModule):
         self.cost_this_turn += cost
         logger.info("EXECTUOR COST: %s", self.cost_this_turn)
 
-        # Extract code block from the plan
-        plan_code = common_utils.parse_single_code_from_string(
-            plan.split("Grounded Action")[-1]
-        )
-        plan_code = common_utils.sanitize_code(plan_code)
-        plan_code = common_utils.extract_first_agent_function(plan_code)
-        exec_code = eval(plan_code)
+        action_payload = None
+        action_json = None
+        parse_error = None
+        try:
+            agent_action = parse_agent_action(plan)
+            action_payload = agent_action_to_dict(agent_action)
+            action_json = json.dumps(action_payload, ensure_ascii=False)
+            exec_code = execute_agent_action(agent, agent_action, obs)
+        except AgentActionParseError as err:
+            parse_error = str(err)
+            logger.error("Error parsing AgentAction: %s", err)
+            exec_code = agent.wait(1.0)
+        except Exception as err:
+            parse_error = str(err)
+            logger.error("Error executing AgentAction: %s", err)
+            exec_code = agent.wait(1.0)
 
-        # If agent selects an element that was out of range, it should not be executed just send a WAIT command.
-        # TODO: should provide this as code feedback to the agent?
         if agent.index_out_of_range_flag:
-            plan_code = "agent.wait(1.0)"
-            exec_code = eval(plan_code)
+            exec_code = agent.wait(1.0)
             agent.index_out_of_range_flag = False
 
         executor_info = {
@@ -242,7 +259,9 @@ class Worker(BaseModule):
             "current_subtask_info": subtask_info,
             "executor_plan": plan,
             "linearized_accessibility_tree": tree_input,
-            "plan_code": plan_code,
+            "action": action_payload,
+            "action_json": action_json,
+            "parse_error": parse_error,
             "reflection": reflection,
             "num_input_tokens_executor": input_tokens,
             "num_output_tokens_executor": output_tokens,

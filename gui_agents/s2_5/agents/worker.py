@@ -1,3 +1,4 @@
+import json
 import logging
 import textwrap
 from typing import Dict, List, Tuple
@@ -5,11 +6,15 @@ from typing import Dict, List, Tuple
 from gui_agents.s2_5.agents.grounding import ACI
 from gui_agents.s2_5.core.module import BaseModule
 from gui_agents.s2_5.memory.procedural_memory import PROCEDURAL_MEMORY
+from gui_agents.common import (
+    AGENT_ACTION_RESPONSE_FORMAT,
+    AgentActionParseError,
+    agent_action_to_dict,
+    execute_agent_action,
+    parse_agent_action,
+)
 from gui_agents.s2_5.utils.common_utils import (
     call_llm_safe,
-    extract_first_agent_function,
-    parse_single_code_from_string,
-    sanitize_code,
     split_thinking_response,
 )
 
@@ -167,10 +172,15 @@ class Worker(BaseModule):
             generator_message, image_content=obs["screenshot"], role="user"
         )
 
+        response_kwargs = {}
+        engine_type = self.engine_params.get("engine_type")
+        if engine_type in {"openai", "azure"}:
+            response_kwargs["response_format"] = AGENT_ACTION_RESPONSE_FORMAT
         full_plan = call_llm_safe(
             self.generator_agent,
             temperature=self.temperature,
             use_thinking=self.use_thinking,
+            **response_kwargs,
         )
         plan, plan_thoughts = split_thinking_response(full_plan)
         # NOTE: currently dropping thinking tokens from context
@@ -178,23 +188,30 @@ class Worker(BaseModule):
         logger.info("FULL PLAN:\n %s", full_plan)
         self.generator_agent.add_message(plan, role="assistant")
 
-        # Use the grounding agent to convert agent_action("desc") into agent_action([x, y])
+        action_payload = None
+        action_json = None
+        parse_error = None
         try:
-            agent.assign_coordinates(plan, obs)
-            plan_code = parse_single_code_from_string(plan.split("Grounded Action")[-1])
-            plan_code = sanitize_code(plan_code)
-            plan_code = extract_first_agent_function(plan_code)
-            exec_code = eval(plan_code)
-        except Exception as e:
-            logger.error("Error in parsing plan code: %s", e)
-            plan_code = "agent.wait(1.0)"
-            exec_code = eval(plan_code)
+            agent_action = parse_agent_action(plan)
+            action_payload = agent_action_to_dict(agent_action)
+            action_json = json.dumps(action_payload, ensure_ascii=False)
+            exec_code = execute_agent_action(agent, agent_action, obs)
+        except AgentActionParseError as err:
+            parse_error = str(err)
+            logger.error("Error parsing AgentAction: %s", err)
+            exec_code = agent.wait(1.0)
+        except Exception as err:  # Dispatch errors
+            parse_error = str(err)
+            logger.error("Error executing AgentAction: %s", err)
+            exec_code = agent.wait(1.0)
 
         executor_info = {
             "full_plan": full_plan,
             "executor_plan": plan,
             "plan_thoughts": plan_thoughts,
-            "plan_code": plan_code,
+            "action": action_payload,
+            "action_json": action_json,
+            "parse_error": parse_error,
             "reflection": reflection,
             "reflection_thoughts": reflection_thoughts,
         }
