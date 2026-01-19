@@ -14,6 +14,10 @@ class TestProviders(unittest.TestCase):
             del os.environ["DEEPSEEK_API_KEY"]
         if "QWEN_API_KEY" in os.environ:
             del os.environ["QWEN_API_KEY"]
+        if "DEEPSEEK_ENDPOINT_URL" in os.environ:
+            del os.environ["DEEPSEEK_ENDPOINT_URL"]
+        if "QWEN_ENDPOINT_URL" in os.environ:
+            del os.environ["QWEN_ENDPOINT_URL"]
 
     def test_ollama_missing_config(self):
         """Test that Ollama raises ValueError if no endpoint is provided"""

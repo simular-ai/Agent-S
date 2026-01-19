@@ -37,7 +37,7 @@ class LMMAgent:
                     self.engine = LMMEngineParasail(**engine_params)
                 elif engine_type == "ollama":
                     # Reuse LMMEngineOpenAI for Ollama
-                    if "base_url" not in engine_params:
+                    if not engine_params.get("base_url"):
                         import os
 
                         base_url = os.getenv("OLLAMA_HOST")
@@ -50,7 +50,7 @@ class LMMAgent:
                             raise ValueError(
                                 "Ollama endpoint must be provided via 'base_url' parameter or 'OLLAMA_HOST' environment variable."
                             )
-                    if "api_key" not in engine_params:
+                    if not engine_params.get("api_key"):
                         engine_params["api_key"] = "ollama"
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "deepseek":
