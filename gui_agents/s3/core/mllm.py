@@ -6,14 +6,11 @@ from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
     LMMEngineHuggingFace,
-
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
     LMMEngineParasail,
     LMMEnginevLLM,
     LMMEngineGemini,
-    LMMEngineDeepSeek,
-    LMMEngineQwen,
 )
 
 
@@ -42,6 +39,7 @@ class LMMAgent:
                     # Reuse LMMEngineOpenAI for Ollama
                     if "base_url" not in engine_params:
                         import os
+
                         base_url = os.getenv("OLLAMA_HOST")
                         if base_url:
                             if not base_url.endswith("/v1"):
@@ -56,9 +54,44 @@ class LMMAgent:
                         engine_params["api_key"] = "ollama"
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "deepseek":
-                    self.engine = LMMEngineDeepSeek(**engine_params)
+                    if "base_url" not in engine_params:
+                        import os
+
+                        base_url = os.getenv("DEEPSEEK_ENDPOINT_URL")
+                        if not base_url:
+                            base_url = "https://api.deepseek.com"
+                        engine_params["base_url"] = base_url
+                    if "api_key" not in engine_params:
+                        import os
+
+                        api_key = os.getenv("DEEPSEEK_API_KEY")
+                        if not api_key:
+                            raise ValueError(
+                                "DeepSeek API key must be provided via 'api_key' parameter or 'DEEPSEEK_API_KEY' environment variable."
+                            )
+                        engine_params["api_key"] = api_key
+
+                    self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "qwen":
-                    self.engine = LMMEngineQwen(**engine_params)
+                    if "base_url" not in engine_params:
+                        import os
+
+                        base_url = os.getenv("QWEN_ENDPOINT_URL")
+                        if not base_url:
+                            base_url = (
+                                "https://dashscope.aliyuncs.com/compatible-mode/v1"
+                            )
+                        engine_params["base_url"] = base_url
+                    if "api_key" not in engine_params:
+                        import os
+
+                        api_key = os.getenv("QWEN_API_KEY")
+                        if not api_key:
+                            raise ValueError(
+                                "Qwen API key must be provided via 'api_key' parameter or 'QWEN_API_KEY' environment variable."
+                            )
+                        engine_params["api_key"] = api_key
+                    self.engine = LMMEngineOpenAI(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -153,8 +186,7 @@ class LMMAgent:
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
-                LMMEngineDeepSeek,
-                LMMEngineQwen,
+                LMMEngineParasail,
             ),
         ):
             # infer role from previous message
