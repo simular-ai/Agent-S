@@ -1,6 +1,8 @@
 import inspect
 import textwrap
 
+from gui_agents.common import SCHEMA_PROMPT_FRAGMENT
+
 
 class PROCEDURAL_MEMORY:
     @staticmethod
@@ -30,7 +32,7 @@ class PROCEDURAL_MEMORY:
         """
 
         procedural_memory += textwrap.dedent(
-            """
+            f"""
         Your response should be formatted like this:
         (Previous action verification)
         Carefully analyze based on the screenshot and the accessibility tree if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
@@ -42,21 +44,21 @@ class PROCEDURAL_MEMORY:
         Based on the current screenshot, the accessibility tree and the history of your previous interaction with the UI, decide on the next action in natural language to accomplish the given task.
 
         (Grounded Action)
-        Translate the next action into code using the provided API methods. Format the code like this:
-        ```python
-        agent.click(123, 1, "left")
-        ```
-        Note for the code:
+        Translate the next action into a JSON object that conforms to the shared AgentAction schema.
+        {SCHEMA_PROMPT_FRAGMENT}
+        Additional requirements:
         1. Only perform one action at a time.
-        2. Do not put anything other than python code in the block. You can only use one function call at a time. Do not put more than one function call in the block.
-        3. You must use only the available methods provided above to interact with the UI, do not invent new methods.
-        3. Only return one code block every time. There must be a single line of code in the code block.
-        4. Please only use the available methods provided above to interact with the UI.
-        5. If you think the task is already completed, you can return `agent.done()` in the code block.
-        6. If you think the task cannot be completed, you can return `agent.fail()` in the code block.
-        7. Do not do anything other than the exact specified task. Return with `agent.done()` immediately after the task is completed or `agent.fail()` if it cannot be completed.
-        8. Whenever possible use hot-keys or typing rather than mouse clicks.
-        9. My computer's password is 'password', feel free to use it when you need sudo rights
+        2. Emit exactly one ```json fenced block without any commentary before or after it.
+        3. Set `type` to the precise UI skill you intend to execute (e.g. "click", "drag_and_drop", "wait", "done", "fail").
+        4. Populate `args` with the minimal fields required by the schema. Prefer `target.a11y_id`, fall back to a tight `bbox` or a high-confidence description only when necessary.
+        5. Populate `meta.idempotency_key` with a unique value for this turn so the executor can safely deduplicate retries.
+        6. Summarize the intent in `meta.explanation` (<=280 characters) so humans can audit the trajectory quickly.
+        7. Use `hotkey` or `hold_and_press` instead of mouse interactions whenever a reliable shortcut exists.
+        8. Emit `done` when the task is fully complete and `fail` when it is impossible to continue.
+        9. Use `wait` with a small positive `seconds` value whenever the UI needs time to respond.
+        10. Use `save_to_knowledge` when you need to persist text for later turns.
+        11. My computer's password is 'password'; feel free to use it when sudo rights are required.
+        12. Do not use the "command" + "tab" hotkey on MacOS.
         """
         )
         return procedural_memory.strip()
