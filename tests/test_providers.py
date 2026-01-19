@@ -49,7 +49,7 @@ class TestProviders(unittest.TestCase):
             )
             self.assertIsInstance(agent.engine, LMMEngineOpenAI)
             # Default URL
-            self.assertEqual(agent.engine.base_url, "https://api.deepseek.com")
+            self.assertEqual(agent.engine.base_url, "https://api.deepseek.com/v1")
             # (Note: engine.py logic resolves default at generate() time or if client created,
             # but init just stores what's passed. Let's verify prompt generation to ensure it doesn't crash on init)
 

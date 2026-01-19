@@ -60,8 +60,11 @@ class LMMAgent:
                         base_url = os.getenv("DEEPSEEK_ENDPOINT_URL")
                         if not base_url:
                             base_url = "https://api.deepseek.com"
+                        if not base_url.endswith("/v1"):
+                            base_url = base_url.rstrip("/") + "/v1"
                         engine_params["base_url"] = base_url
-                    if "api_key" not in engine_params:
+
+                    if not engine_params.get("api_key"):
                         import os
 
                         api_key = os.getenv("DEEPSEEK_API_KEY")
@@ -73,7 +76,7 @@ class LMMAgent:
 
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "qwen":
-                    if "base_url" not in engine_params:
+                    if not engine_params.get("base_url"):
                         import os
 
                         base_url = os.getenv("QWEN_ENDPOINT_URL")
@@ -81,8 +84,11 @@ class LMMAgent:
                             base_url = (
                                 "https://dashscope.aliyuncs.com/compatible-mode/v1"
                             )
+                        if not base_url.endswith("/v1"):
+                            base_url = base_url.rstrip("/") + "/v1"
                         engine_params["base_url"] = base_url
-                    if "api_key" not in engine_params:
+
+                    if not engine_params.get("api_key"):
                         import os
 
                         api_key = os.getenv("QWEN_API_KEY")
@@ -185,7 +191,6 @@ class LMMAgent:
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
                 LMMEngineOpenRouter,
-                LMMEngineParasail,
                 LMMEngineParasail,
             ),
         ):
