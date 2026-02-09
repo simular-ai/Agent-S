@@ -233,8 +233,8 @@ class OSWorldACI(ACI):
         
         Returns None if parsing fails.
         """
-        # Match both integer and floating point numbers
-        numericals = re.findall(r"\d+\.?\d*", response)
+        # Match both integer and floating point numbers (including .45 format without leading zero)
+        numericals = re.findall(r"\d+\.?\d*|\.\d+", response)
         
         if len(numericals) < 2:
             return None
