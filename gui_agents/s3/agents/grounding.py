@@ -3,6 +3,7 @@ from collections import defaultdict
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pytesseract
 from PIL import Image
 from pytesseract import Output
@@ -225,24 +226,103 @@ class OSWorldACI(ACI):
         self.current_task_instruction = None
         self.last_code_agent_result = None
 
+    def _parse_coordinates(self, response: str) -> Optional[Tuple[float, float]]:
+        """
+        Parse coordinates from grounding model response.
+        Handles both integer (e.g., "523, 847") and normalized (e.g., "0.45, 0.72") formats.
+        
+        Returns None if parsing fails.
+        """
+        # Match both integer and floating point numbers
+        numericals = re.findall(r"\d+\.?\d*", response)
+        
+        if len(numericals) < 2:
+            return None
+        
+        x, y = float(numericals[0]), float(numericals[1])
+        return (x, y)
+
+    def _normalize_coordinates(self, x: float, y: float) -> Tuple[int, int]:
+        """
+        Convert coordinates to absolute pixels, handling normalized (0-1) format.
+        """
+        grounding_width = self.engine_params_for_grounding.get("grounding_width", 1920)
+        grounding_height = self.engine_params_for_grounding.get("grounding_height", 1080)
+        
+        # Detect and scale normalized coordinates (0-1 range)
+        if x <= 1.0 and y <= 1.0:
+            x = x * grounding_width
+            y = y * grounding_height
+        
+        return (int(round(x)), int(round(y)))
+
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
-    def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
-
-        # Reset the grounding model state
-        self.grounding_model.reset()
-
-        # Configure the context, UI-TARS demo does not use system prompt
-        prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
-        self.grounding_model.add_message(
-            text_content=prompt, image_content=obs["screenshot"], put_text_last=True
-        )
-
-        # Generate and parse coordinates
-        response = call_llm_safe(self.grounding_model)
-        print("RAW GROUNDING MODEL RESPONSE:", response)
-        numericals = re.findall(r"\d+", response)
-        assert len(numericals) >= 2
-        return [int(numericals[0]), int(numericals[1])]
+    def generate_coords(self, ref_expr: str, obs: Dict, n_samples: int = 1) -> List[int]:
+        """
+        Generate coordinates for an element using the grounding model.
+        
+        Args:
+            ref_expr: Natural language description of the element to locate
+            obs: Dictionary containing 'screenshot' key with the screen image
+            n_samples: Number of samples for multi-sample voting (default=1 for backward compat)
+                       Set to 3 or 5 for improved accuracy on small elements
+        
+        Returns:
+            [x, y] coordinates in grounding model resolution
+        
+        Notes:
+            - When n_samples > 1, takes median of multiple predictions for robustness
+            - Median is more robust to outliers than mean
+        """
+        if n_samples <= 1:
+            # Original single-sample behavior for backward compatibility
+            self.grounding_model.reset()
+            prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
+            self.grounding_model.add_message(
+                text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+            )
+            
+            response = call_llm_safe(self.grounding_model)
+            print("RAW GROUNDING MODEL RESPONSE:", response)
+            
+            coords = self._parse_coordinates(response)
+            if coords is None:
+                raise ValueError(f"Failed to parse coordinates from response: {response}")
+            
+            x, y = self._normalize_coordinates(coords[0], coords[1])
+            return [x, y]
+        
+        # Multi-sample voting for improved accuracy
+        samples = []
+        
+        for i in range(n_samples):
+            self.grounding_model.reset()
+            prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
+            self.grounding_model.add_message(
+                text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+            )
+            
+            response = call_llm_safe(self.grounding_model)
+            print(f"GROUNDING SAMPLE {i+1}/{n_samples}: {response}")
+            
+            coords = self._parse_coordinates(response)
+            if coords is not None:
+                x, y = self._normalize_coordinates(coords[0], coords[1])
+                samples.append((x, y))
+        
+        if not samples:
+            raise ValueError(f"Failed to get valid coordinates after {n_samples} attempts")
+        
+        # Use median for robustness to outliers
+        x_coords = [s[0] for s in samples]
+        y_coords = [s[1] for s in samples]
+        
+        final_x = int(round(np.median(x_coords)))
+        final_y = int(round(np.median(y_coords)))
+        
+        print(f"MULTI-SAMPLE RESULT: samples={samples}, median=({final_x}, {final_y})")
+        
+        return [final_x, final_y]
 
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:
