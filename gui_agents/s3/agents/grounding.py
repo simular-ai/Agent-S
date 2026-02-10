@@ -231,15 +231,28 @@ class OSWorldACI(ACI):
         Parse coordinates from grounding model response.
         Handles both integer (e.g., "523, 847") and normalized (e.g., "0.45, 0.72") formats.
         
+        Uses the LAST two numeric values to handle model prefixes like "Point 1: (523, 847)".
+        
         Returns None if parsing fails.
         """
+        # First try to find parenthesized pair like "(x, y)" or "[x, y]"
+        paren_match = re.search(r"[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]", response)
+        if paren_match:
+            try:
+                x, y = float(paren_match.group(1)), float(paren_match.group(2))
+                return (x, y)
+            except ValueError:
+                pass
+        
+        # Fall back to extracting last two numeric values
         # Match both integer and floating point numbers (including .45 format without leading zero)
         numericals = re.findall(r"\d+\.?\d*|\.\d+", response)
         
         if len(numericals) < 2:
             return None
         
-        x, y = float(numericals[0]), float(numericals[1])
+        # Use last two numbers to handle prefixes like "Point 1: (523, 847)"
+        x, y = float(numericals[-2]), float(numericals[-1])
         return (x, y)
 
     def _normalize_coordinates(self, x: float, y: float) -> Tuple[int, int]:
@@ -250,7 +263,8 @@ class OSWorldACI(ACI):
         grounding_height = self.engine_params_for_grounding.get("grounding_height", 1080)
         
         # Detect and scale normalized coordinates (0-1 range)
-        if x <= 1.0 and y <= 1.0:
+        # Use < 1.0 to avoid treating tiny pixel coords like (1, 0) as normalized
+        if x < 1.0 and y < 1.0:
             x = x * grounding_width
             y = y * grounding_height
         
@@ -283,7 +297,7 @@ class OSWorldACI(ACI):
             )
             
             response = call_llm_safe(self.grounding_model)
-            print("RAW GROUNDING MODEL RESPONSE:", response)
+            logger.debug("RAW GROUNDING MODEL RESPONSE: %s", response)
             
             coords = self._parse_coordinates(response)
             if coords is None:
@@ -293,6 +307,7 @@ class OSWorldACI(ACI):
             return [x, y]
         
         # Multi-sample voting for improved accuracy
+        # Collect raw float coordinates to preserve sub-pixel precision during aggregation
         samples = []
         
         for i in range(n_samples):
@@ -304,24 +319,27 @@ class OSWorldACI(ACI):
             
             # Use temperature > 0 to get variance across samples
             response = call_llm_safe(self.grounding_model, temperature=0.3)
-            print(f"GROUNDING SAMPLE {i+1}/{n_samples}: {response}")
+            logger.debug("GROUNDING SAMPLE %d/%d: %s", i + 1, n_samples, response)
             
             coords = self._parse_coordinates(response)
             if coords is not None:
-                x, y = self._normalize_coordinates(coords[0], coords[1])
-                samples.append((x, y))
+                # Store raw float coords to preserve precision for median calculation
+                samples.append(coords)
         
         if not samples:
             raise ValueError(f"Failed to get valid coordinates after {n_samples} attempts")
         
-        # Use median for robustness to outliers
+        # Use median for robustness to outliers, then normalize once at the end
         x_coords = [s[0] for s in samples]
         y_coords = [s[1] for s in samples]
         
-        final_x = int(round(np.median(x_coords)))
-        final_y = int(round(np.median(y_coords)))
+        median_x = float(np.median(x_coords))
+        median_y = float(np.median(y_coords))
         
-        print(f"MULTI-SAMPLE RESULT: samples={samples}, median=({final_x}, {final_y})")
+        # Normalize (scale + round) only once after aggregation
+        final_x, final_y = self._normalize_coordinates(median_x, median_y)
+        
+        logger.debug("MULTI-SAMPLE RESULT: samples=%s, median=(%d, %d)", samples, final_x, final_y)
         
         return [final_x, final_y]
 
