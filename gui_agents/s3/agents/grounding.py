@@ -254,7 +254,7 @@ class OSWorldACI(ACI):
             x = x * grounding_width
             y = y * grounding_height
         
-        return (int(round(x)), int(round(y)))
+        return (round(x), round(y))
 
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
     def generate_coords(self, ref_expr: str, obs: Dict, n_samples: int = 1) -> List[int]:
@@ -302,7 +302,8 @@ class OSWorldACI(ACI):
                 text_content=prompt, image_content=obs["screenshot"], put_text_last=True
             )
             
-            response = call_llm_safe(self.grounding_model)
+            # Use temperature > 0 to get variance across samples
+            response = call_llm_safe(self.grounding_model, temperature=0.3)
             print(f"GROUNDING SAMPLE {i+1}/{n_samples}: {response}")
             
             coords = self._parse_coordinates(response)
