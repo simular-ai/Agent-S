@@ -28,7 +28,7 @@ async def generate_single_fact_caption(
         try:
             data = json.loads(trajectory_lines[i])
             pyautogui_action = data.get("exec_code")
-        except:
+        except Exception:
             pass
 
     if pyautogui_action is None:
@@ -74,7 +74,7 @@ async def generate_fact_captions_parallel(
     def extract_step_num(filename):
         try:
             return int(filename.split("_")[1].split(".")[0])
-        except:
+        except Exception:
             return 0
 
     screenshot_files.sort(key=extract_step_num)
@@ -90,7 +90,7 @@ async def generate_fact_captions_parallel(
         try:
             with open(trajectory_file, "r") as f:
                 trajectory_lines = f.readlines()
-        except:
+        except Exception:
             pass
 
     # Use shared semaphore to limit concurrent judge calls

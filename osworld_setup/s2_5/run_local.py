@@ -364,7 +364,7 @@ def get_result(action_space, use_model, observation_type, result_dir, total_file
                                     ).read()
                                 )
                             )
-                        except:
+                        except Exception:
                             all_result.append(0.0)
 
     if not all_result:

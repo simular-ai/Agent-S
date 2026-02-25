@@ -75,7 +75,7 @@ def set_cell_values(new_cell_values: dict[str, str], app_name: str = "Untitled 1
     for k, v in new_cell_values.items():
         try:
             col, row = cell_ref_to_indices(k)
-        except:
+        except Exception:
             col = row = None
 
         if col is not None and row is not None:
@@ -127,7 +127,7 @@ def set_cell_values(new_cell_values: dict[str, str], app_name: str = "Untitled 1
                 spreadsheet = spreadsheet[0][1]
 
             sheet = spreadsheet.Sheets.getByName(sheet_name)
-        except:
+        except Exception:
             raise ValueError(f"Could not find sheet {{sheet_name}} in {{app_name}}.")
 
         for (col, row), value in new_cell_values_idx.items():

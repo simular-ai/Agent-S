@@ -88,7 +88,7 @@ class KnowledgeBase(BaseModule):
         try:
             with open(query_path, "r") as f:
                 formulate_query = json.load(f)
-        except:
+        except Exception:
             formulate_query = {}
 
         if instruction in formulate_query:
@@ -129,7 +129,7 @@ class KnowledgeBase(BaseModule):
         try:
             with open(file, "r") as f:
                 exist_search_results = json.load(f)
-        except:
+        except Exception:
             exist_search_results = {}
 
         if instruction in exist_search_results:
@@ -271,7 +271,7 @@ class KnowledgeBase(BaseModule):
 
         try:
             kb = load_knowledge_base(self.episodic_memory_path)
-        except:
+        except Exception:
             kb = {}
 
         if subtask_key not in kb:
@@ -296,7 +296,7 @@ class KnowledgeBase(BaseModule):
 
         try:
             kb = load_knowledge_base(self.narrative_memory_path)
-        except:
+        except Exception:
             kb = {}
 
         if task_key not in kb:

@@ -82,7 +82,7 @@ class KnowledgeBase(BaseModule):
         try:
             with open(query_path, "r") as f:
                 formulate_query = json.load(f)
-        except:
+        except Exception:
             formulate_query = {}
 
         if instruction in formulate_query:
@@ -123,7 +123,7 @@ class KnowledgeBase(BaseModule):
         try:
             with open(file, "r") as f:
                 exist_search_results = json.load(f)
-        except:
+        except Exception:
             exist_search_results = {}
 
         if instruction in exist_search_results:

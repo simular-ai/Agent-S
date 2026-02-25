@@ -344,7 +344,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def find_element(self, element_id):
         try:
             selected_element = self.nodes[int(element_id)]
-        except:
+        except Exception:
             print("The index of the selected element was out of range.")
             selected_element = self.nodes[0]
             self.index_out_of_range_flag = True
@@ -414,7 +414,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         try:
             # Use the provided element_id or default to None
             node = self.find_element(element_id) if element_id is not None else None
-        except:
+        except Exception:
             node = None
 
         if node is not None:
@@ -516,7 +516,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         """
         try:
             node = self.find_element(element_id)
-        except:
+        except Exception:
             node = self.find_element(0)
         # print(node.attrib)
         coordinates = eval(
@@ -669,7 +669,7 @@ def _create_atspi_node(
         ]:
             try:
                 attribute_dict[f"{value_key}{attr_name}"] = str(attr_func())
-            except:
+            except Exception:
                 pass
     except NotImplementedError:
         pass
@@ -748,7 +748,7 @@ def _create_atspi_node(
                     logger.warning("Max width reached")
                     break
                 xml_node.append(_create_atspi_node(ch, depth + 1, flag))
-        except:
+        except Exception:
             logger.warning(
                 "Error occurred during children traversing. Has Ignored. Node: %s",
                 lxml.etree.tostring(xml_node, encoding="unicode"),

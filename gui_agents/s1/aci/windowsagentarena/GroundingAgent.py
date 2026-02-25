@@ -307,7 +307,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     def find_element(self, element_id):
         try:
             selected_element = self.nodes[int(element_id)]
-        except:
+        except Exception:
             print("The index of the selected element was out of range.")
             selected_element = self.nodes[0]
             self.index_out_of_range_flag = True
@@ -375,7 +375,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         try:
             # Use the provided element_id or default to None
             node = self.find_element(element_id) if element_id is not None else None
-        except:
+        except Exception:
             node = None
 
         if node is not None:
@@ -432,7 +432,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     #     '''
     #     try:
     #         node = self.find_element(element_id)
-    #     except:
+    #     except Exception:
     #         node = self.find_element(0)
     #     # print(node.attrib)
     #     coordinates = eval(
@@ -457,7 +457,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     #     '''
     #     try:
     #         node = self.find_element(element_id)
-    #     except:
+    #     except Exception:
     #         node = self.find_element(0)
 
     #     self.clipboard = node.text
@@ -471,7 +471,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
     #     '''
     #     try:
     #         node = self.find_element(element_id)
-    #     except:
+    #     except Exception:
     #         node = self.find_element(0)
 
     #     coordinates = eval(
@@ -547,7 +547,7 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         """
         try:
             node = self.find_element(element_id)
-        except:
+        except Exception:
             node = self.find_element(0)
         # print(node.attrib)
         coordinates = eval(

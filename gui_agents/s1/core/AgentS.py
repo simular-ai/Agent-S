@@ -305,7 +305,7 @@ class GraphSearchAgent(UIAgent):
             )
             try:
                 reflections = json.load(open(reflection_path))
-            except:
+            except Exception:
                 reflections = {}
 
             if self.search_query not in reflections:
@@ -344,7 +344,7 @@ class GraphSearchAgent(UIAgent):
                         self.local_kb_path, self.platform, "episodic_memory.json"
                     )
                     kb = json.load(open(subtask_path))
-                except:
+                except Exception:
                     kb = {}
                 if subtask_key not in kb.keys():
                     subtask_summarization = self.planner.summarize_episode(

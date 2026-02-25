@@ -21,7 +21,7 @@ def get_final_screenshot_file(task_dir: str) -> str:
     def extract_step_num(filename):
         try:
             return int(filename.split("_")[1].split(".")[0])
-        except:
+        except Exception:
             return 0
 
     screenshot_files.sort(key=extract_step_num)

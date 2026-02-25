@@ -308,7 +308,7 @@ class MacOSACI(ACI):
         try:
             # Use the provided element_id or default to None
             node = self.find_element(element_id) if element_id is not None else None
-        except:
+        except Exception:
             node = None
 
         if node is not None:
@@ -402,7 +402,7 @@ class MacOSACI(ACI):
         """
         try:
             node = self.find_element(element_id)
-        except:
+        except Exception:
             node = self.find_element(0)
         # print(node.attrib)
         coordinates = node["position"]

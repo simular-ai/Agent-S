@@ -39,7 +39,7 @@ def get_char():
             import msvcrt
 
             return msvcrt.getch().decode("utf-8", errors="ignore")
-    except:
+    except Exception:
         return input()  # Fallback for non-terminal environments
 
 

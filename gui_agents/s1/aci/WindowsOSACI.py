@@ -302,7 +302,7 @@ class WindowsACI(ACI):
         """
         try:
             node = self.find_element(element_id) if element_id is not None else None
-        except:
+        except Exception:
             node = None
 
         if node is not None:
@@ -386,7 +386,7 @@ class WindowsACI(ACI):
         """
         try:
             node = self.find_element(element_id)
-        except:
+        except Exception:
             node = self.find_element(0)
 
         coordinates = node["position"]
