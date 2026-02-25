@@ -3,6 +3,7 @@ from collections import defaultdict
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
 import pytesseract
 from PIL import Image
 from pytesseract import Output
@@ -225,24 +226,122 @@ class OSWorldACI(ACI):
         self.current_task_instruction = None
         self.last_code_agent_result = None
 
+    def _parse_coordinates(self, response: str) -> Optional[Tuple[float, float]]:
+        """
+        Parse coordinates from grounding model response.
+        Handles both integer (e.g., "523, 847") and normalized (e.g., "0.45, 0.72") formats.
+        
+        Uses the LAST two numeric values to handle model prefixes like "Point 1: (523, 847)".
+        
+        Returns None if parsing fails.
+        """
+        # First try to find parenthesized pair like "(x, y)" or "[x, y]"
+        paren_match = re.search(r"[\(\[]\s*([\d.]+)\s*,\s*([\d.]+)\s*[\)\]]", response)
+        if paren_match:
+            try:
+                x, y = float(paren_match.group(1)), float(paren_match.group(2))
+                return (x, y)
+            except ValueError:
+                pass
+        
+        # Fall back to extracting last two numeric values
+        # Match both integer and floating point numbers (including .45 format without leading zero)
+        numericals = re.findall(r"\d+\.?\d*|\.\d+", response)
+        
+        if len(numericals) < 2:
+            return None
+        
+        # Use last two numbers to handle prefixes like "Point 1: (523, 847)"
+        x, y = float(numericals[-2]), float(numericals[-1])
+        return (x, y)
+
+    def _normalize_coordinates(self, x: float, y: float) -> Tuple[int, int]:
+        """
+        Convert coordinates to absolute pixels, handling normalized (0-1) format.
+        """
+        grounding_width = self.engine_params_for_grounding.get("grounding_width", 1920)
+        grounding_height = self.engine_params_for_grounding.get("grounding_height", 1080)
+        
+        # Detect and scale normalized coordinates (0-1 range)
+        # Use < 1.0 to avoid treating tiny pixel coords like (1, 0) as normalized
+        if x < 1.0 and y < 1.0:
+            x = x * grounding_width
+            y = y * grounding_height
+        
+        return (round(x), round(y))
+
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
-    def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
-
-        # Reset the grounding model state
-        self.grounding_model.reset()
-
-        # Configure the context, UI-TARS demo does not use system prompt
-        prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
-        self.grounding_model.add_message(
-            text_content=prompt, image_content=obs["screenshot"], put_text_last=True
-        )
-
-        # Generate and parse coordinates
-        response = call_llm_safe(self.grounding_model)
-        print("RAW GROUNDING MODEL RESPONSE:", response)
-        numericals = re.findall(r"\d+", response)
-        assert len(numericals) >= 2
-        return [int(numericals[0]), int(numericals[1])]
+    def generate_coords(self, ref_expr: str, obs: Dict, n_samples: int = 1) -> List[int]:
+        """
+        Generate coordinates for an element using the grounding model.
+        
+        Args:
+            ref_expr: Natural language description of the element to locate
+            obs: Dictionary containing 'screenshot' key with the screen image
+            n_samples: Number of samples for multi-sample voting (default=1 for backward compat)
+                       Set to 3 or 5 for improved accuracy on small elements
+        
+        Returns:
+            [x, y] coordinates in grounding model resolution
+        
+        Notes:
+            - When n_samples > 1, takes median of multiple predictions for robustness
+            - Median is more robust to outliers than mean
+        """
+        if n_samples <= 1:
+            # Original single-sample behavior for backward compatibility
+            self.grounding_model.reset()
+            prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
+            self.grounding_model.add_message(
+                text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+            )
+            
+            response = call_llm_safe(self.grounding_model)
+            logger.debug("RAW GROUNDING MODEL RESPONSE: %s", response)
+            
+            coords = self._parse_coordinates(response)
+            if coords is None:
+                raise ValueError(f"Failed to parse coordinates from response: {response}")
+            
+            x, y = self._normalize_coordinates(coords[0], coords[1])
+            return [x, y]
+        
+        # Multi-sample voting for improved accuracy
+        # Collect raw float coordinates to preserve sub-pixel precision during aggregation
+        samples = []
+        
+        for i in range(n_samples):
+            self.grounding_model.reset()
+            prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
+            self.grounding_model.add_message(
+                text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+            )
+            
+            # Use temperature > 0 to get variance across samples
+            response = call_llm_safe(self.grounding_model, temperature=0.3)
+            logger.debug("GROUNDING SAMPLE %d/%d: %s", i + 1, n_samples, response)
+            
+            coords = self._parse_coordinates(response)
+            if coords is not None:
+                # Store raw float coords to preserve precision for median calculation
+                samples.append(coords)
+        
+        if not samples:
+            raise ValueError(f"Failed to get valid coordinates after {n_samples} attempts")
+        
+        # Use median for robustness to outliers, then normalize once at the end
+        x_coords = [s[0] for s in samples]
+        y_coords = [s[1] for s in samples]
+        
+        median_x = float(np.median(x_coords))
+        median_y = float(np.median(y_coords))
+        
+        # Normalize (scale + round) only once after aggregation
+        final_x, final_y = self._normalize_coordinates(median_x, median_y)
+        
+        logger.debug("MULTI-SAMPLE RESULT: samples=%s, median=(%d, %d)", samples, final_x, final_y)
+        
+        return [final_x, final_y]
 
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:
