@@ -21,3 +21,4 @@ google-genai
 pyobjc; platform_system == "Darwin"
 pywinauto; platform_system == "Windows"
 pywin32; platform_system == "Windows" 
+pydantic>=2.6,<3

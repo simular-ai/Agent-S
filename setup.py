@@ -28,6 +28,7 @@ setup(
         "pyautogui",
         "toml",
         "pytesseract",
+        "pydantic>=2.6,<3",
         "google-genai",
         'pywinauto; platform_system == "Windows"',  # Only for Windows
         'pywin32; platform_system == "Windows"',  # Only for Windows
@@ -54,3 +55,4 @@ setup(
     },
     python_requires=">=3.9, <=3.12",
 )
+
