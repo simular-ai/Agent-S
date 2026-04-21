@@ -11,6 +11,7 @@ from gui_agents.s3.core.engine import (
     LMMEngineParasail,
     LMMEnginevLLM,
     LMMEngineGemini,
+    LMMEngineMiniMax,
 )
 
 
@@ -35,6 +36,8 @@ class LMMAgent:
                     self.engine = LMMEngineOpenRouter(**engine_params)
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
+                elif engine_type == "minimax":
+                    self.engine = LMMEngineMiniMax(**engine_params)
                 else:
                     raise ValueError(f"engine_type '{engine_type}' is not supported")
             else:
@@ -180,8 +183,8 @@ class LMMAgent:
 
             self.messages.append(message)
 
-        # For API-style inference from Anthropic
-        elif isinstance(self.engine, LMMEngineAnthropic):
+        # For API-style inference from Anthropic or MiniMax (Anthropic-compatible)
+        elif isinstance(self.engine, (LMMEngineAnthropic, LMMEngineMiniMax)):
             # infer role from previous message
             if role != "user":
                 if self.messages[-1]["role"] == "system":
