@@ -443,3 +443,73 @@ class LMMEngineParasail(LMMEngine):
             .choices[0]
             .message.content
         )
+
+
+class LMMEngineMiniMax(LMMEngine):
+    _UNSUPPORTED_PARAMS = frozenset(
+        [
+            "top_k",
+            "stop_sequences",
+            "service_tier",
+            "mcp_servers",
+            "context_management",
+            "container",
+        ]
+    )
+
+    def __init__(
+        self,
+        base_url=None,
+        api_key=None,
+        model=None,
+        temperature=None,
+        **kwargs,
+    ):
+        assert model is not None, "model must be provided"
+        self.model = model
+        self.base_url = base_url
+        self.api_key = api_key
+        self.llm_client = None
+        self.temperature = temperature
+
+    @backoff.on_exception(
+        backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
+    )
+    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+        api_key = self.api_key or os.getenv("MINIMAX_API_KEY")
+        if api_key is None:
+            raise ValueError(
+                "An API Key needs to be provided in either the api_key parameter or as an environment variable named MINIMAX_API_KEY"
+            )
+        base_url = (
+            self.base_url
+            or os.getenv("MINIMAX_BASE_URL")
+            or "https://api.minimax.io/anthropic"
+        )
+        if not self.llm_client:
+            from anthropic import Anthropic as _Anthropic
+
+            self.llm_client = _Anthropic(api_key=api_key, base_url=base_url)
+        # Use instance temperature if set, otherwise use generate argument
+        temp = self.temperature if self.temperature is not None else temperature
+        # MiniMax temperature must be in (0.0, 1.0]; clamp to 1.0 if not positive
+        if temp <= 0.0:
+            temp = 1.0
+        # Filter out parameters not supported by MiniMax
+        filtered_kwargs = {
+            k: v for k, v in kwargs.items() if k not in self._UNSUPPORTED_PARAMS
+        }
+        system_text = messages[0]["content"][0]["text"]
+        conversation = messages[1:]
+        return (
+            self.llm_client.messages.create(
+                model=self.model,
+                system=system_text,
+                messages=conversation,
+                max_tokens=max_new_tokens if max_new_tokens else 4096,
+                temperature=temp,
+                **filtered_kwargs,
+            )
+            .content[0]
+            .text
+        )

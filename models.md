@@ -1,4 +1,4 @@
-We support the following APIs for MLLM inference: OpenAI, Anthropic, Gemini, Azure OpenAI, vLLM for local models, and Open Router. To use these APIs, you need to set the corresponding environment variables:
+We support the following APIs for MLLM inference: OpenAI, Anthropic, Gemini, Azure OpenAI, vLLM for local models, Open Router, and MiniMax. To use these APIs, you need to set the corresponding environment variables:
 
 1. OpenAI
 
@@ -54,6 +54,14 @@ agent = AgentS2_5(
     platform=current_platform,
 )
 ```
+
+7. MiniMax
+
+```
+export MINIMAX_API_KEY=<YOUR_API_KEY>
+```
+
+Supported models: `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`
 
 To use the underlying Multimodal Agent (LMMAgent) which wraps LLMs with message handling functionality, you can use the following code snippet:
 
