@@ -5,12 +5,13 @@ import numpy as np
 from gui_agents.s2_5.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
+    LMMEngineGemini,
     LMMEngineHuggingFace,
+    LMMEngineLiteLLM,
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
     LMMEngineParasail,
     LMMEnginevLLM,
-    LMMEngineGemini,
 )
 
 
@@ -35,6 +36,8 @@ class LMMAgent:
                     self.engine = LMMEngineOpenRouter(**engine_params)
                 elif engine_type == "parasail":
                     self.engine = LMMEngineParasail(**engine_params)
+                elif engine_type == "litellm":
+                    self.engine = LMMEngineLiteLLM(**engine_params)
                 else:
                     raise ValueError("engine_type is not supported")
             else:
@@ -127,6 +130,7 @@ class LMMAgent:
                 LMMEngineAzureOpenAI,
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
+                LMMEngineLiteLLM,
                 LMMEngineOpenRouter,
                 LMMEngineParasail,
             ),

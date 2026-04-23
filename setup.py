@@ -29,6 +29,7 @@ setup(
         "toml",
         "pytesseract",
         "google-genai",
+        "litellm>=1.60.0,<2.0.0",
         'pywinauto; platform_system == "Windows"',  # Only for Windows
         'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
