@@ -402,6 +402,37 @@ class LMMEngineHuggingFace(LMMEngine):
         )
 
 
+class LMMEngineLiteLLM(LMMEngine):
+    def __init__(
+        self, api_key=None, model=None, rate_limit=-1, temperature=None, **kwargs
+    ):
+        assert model is not None, "model must be provided"
+        self.model = model
+        self.api_key = api_key
+        self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
+        self.temperature = temperature
+
+    @backoff.on_exception(
+        backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
+    )
+    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
+        import litellm
+
+        temp = self.temperature if self.temperature is not None else temperature
+        params = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": max_new_tokens if max_new_tokens else 4096,
+            "temperature": temp,
+            "drop_params": True,
+            **kwargs,
+        }
+        if self.api_key:
+            params["api_key"] = self.api_key
+        response = litellm.completion(**params)
+        return response.choices[0].message.content
+
+
 class LMMEngineParasail(LMMEngine):
     def __init__(
         self, base_url=None, api_key=None, model=None, rate_limit=-1, **kwargs
