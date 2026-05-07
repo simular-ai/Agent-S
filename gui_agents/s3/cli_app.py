@@ -4,7 +4,6 @@ import io
 import logging
 import os
 import platform
-import pyautogui
 import signal
 import sys
 import time
@@ -14,6 +13,8 @@ from PIL import Image
 from gui_agents.s3.agents.grounding import OSWorldACI
 from gui_agents.s3.agents.agent_s import AgentS3
 from gui_agents.s3.utils.local_env import LocalEnv
+from gui_agents.s3.utils.docker_env import DockerEnv
+from gui_agents.s3.utils.kvm_env import KvmEnv
 
 current_platform = platform.system().lower()
 
@@ -152,18 +153,28 @@ def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
     return safe_width, safe_height
 
 
-def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
+def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int, code_env=None):
     global paused
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
+    print(f"[STEPTIME 0] run_agent_start={time.monotonic():.3f}")
     for step in range(15):
+        _t_step = time.monotonic()
         # Check if we're in paused state and wait
         while paused:
             time.sleep(0.1)
-        # Get screen shot using pyautogui
-        screenshot = pyautogui.screenshot()
+        # Get screenshot from the env backend if available, else pyautogui (host)
+        _t_ss0 = time.monotonic()
+        if code_env is not None and hasattr(code_env, "controller") and hasattr(code_env.controller, "screenshot"):
+            png_bytes = code_env.controller.screenshot()
+            screenshot = Image.open(io.BytesIO(png_bytes))
+        else:
+            import pyautogui  # host-side screenshot needs a display
+            screenshot = pyautogui.screenshot()
         screenshot = screenshot.resize((scaled_width, scaled_height), Image.LANCZOS)
+        _t_ss1 = time.monotonic()
+        print(f"[STEPTIME {step+1}] screenshot={(_t_ss1-_t_ss0)*1000:.0f}ms")
 
         # Save the screenshot to a BytesIO object
         buffered = io.BytesIO()
@@ -181,18 +192,27 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         print(f"\n🔄 Step {step + 1}/15: Getting next action from agent...")
 
         # Get next action code from the agent
+        _t_p0 = time.monotonic()
         info, code = agent.predict(instruction=instruction, observation=obs)
+        _t_p1 = time.monotonic()
+        print(f"[STEPTIME {step+1}] predict={(_t_p1-_t_p0)*1000:.0f}ms")
 
         if "done" in code[0].lower() or "fail" in code[0].lower():
-            if platform.system() == "Darwin":
-                os.system(
-                    f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
-                )
-            elif platform.system() == "Linux":
-                os.system(
-                    f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100'
-                )
-
+            print(f"[STEPTIME {step+1}] done_path total_step={(time.monotonic()-_t_step)*1000:.0f}ms")
+            # Skip the host-side dialog when there's no display (headless / batch
+            # runs). zenity otherwise blocks ~25 s before failing.
+            host_has_display = bool(os.environ.get("DISPLAY")) or platform.system() == "Darwin"
+            if host_has_display:
+                _t_dlg0 = time.monotonic()
+                if platform.system() == "Darwin":
+                    os.system(
+                        f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
+                    )
+                elif platform.system() == "Linux":
+                    os.system(
+                        f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100'
+                    )
+                print(f"[STEPTIME {step+1}] dialog={(time.monotonic()-_t_dlg0)*1000:.0f}ms")
             break
 
         if "next" in code[0].lower():
@@ -211,9 +231,18 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
             while paused:
                 time.sleep(0.1)
 
-            # Ask for permission before executing
-            exec(code[0])
+            # Route execution: container/guest if env backend present, else local exec
+            _t_e0 = time.monotonic()
+            if code_env is not None and hasattr(code_env, "controller") and hasattr(code_env.controller, "run_python_script"):
+                # Predicted code uses pyautogui — run it inside the env so it
+                # acts on the env's display, not the host's.
+                code_env.controller.run_python_script(code[0])
+            else:
+                exec(code[0])
+            _t_e1 = time.monotonic()
+            print(f"[STEPTIME {step+1}] exec={(_t_e1-_t_e0)*1000:.0f}ms")
             time.sleep(1.0)
+            print(f"[STEPTIME {step+1}] total={(time.monotonic()-_t_step)*1000:.0f}ms")
 
             # Update task and subtask trajectories
             if "reflection" in info and "executor_plan" in info:
@@ -226,6 +255,7 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
 
 
 def main():
+    print(f"[STEPTIME 0] main_start={time.monotonic():.3f}")
     parser = argparse.ArgumentParser(description="Run AgentS3 with specified model.")
     parser.add_argument(
         "--provider",
@@ -316,6 +346,33 @@ def main():
         help="Enable local coding environment for code execution (WARNING: Executes arbitrary code locally)",
     )
     parser.add_argument(
+        "--env_backend",
+        type=str,
+        default=None,
+        choices=[None, "local", "docker", "podman", "kvm"],
+        help="Coding environment backend. Overrides --enable_local_env when set. "
+             "'docker'/'podman' require --container; 'kvm' requires --kvm-* flags.",
+    )
+    parser.add_argument("--container", type=str, default=None,
+                        help="Container name/id for docker/podman backend.")
+    parser.add_argument("--container_user", type=str, default=None)
+    parser.add_argument("--container_workdir", type=str, default=None)
+    parser.add_argument("--container_python", type=str, default="python3")
+    parser.add_argument("--kvm_transport", type=str, default="ssh", choices=["ssh", "qga"])
+    parser.add_argument("--kvm_ssh_host", type=str, default=None)
+    parser.add_argument("--kvm_ssh_user", type=str, default=None)
+    parser.add_argument("--kvm_ssh_port", type=int, default=22)
+    parser.add_argument("--kvm_ssh_key", type=str, default=None)
+    parser.add_argument("--kvm_domain", type=str, default=None,
+                        help="libvirt domain name for qga transport.")
+    parser.add_argument("--kvm_virsh_uri", type=str, default=None)
+    parser.add_argument("--kvm_display", type=str, default=":0",
+                        help="DISPLAY env var inside the guest (default :0).")
+    parser.add_argument("--kvm_xauthority", type=str, default=None,
+                        help="XAUTHORITY path inside the guest (e.g. /home/user/.Xauthority).")
+    parser.add_argument("--kvm_python", type=str, default="python3",
+                        help="Python interpreter inside the guest.")
+    parser.add_argument(
         "--task",
         type=str,
         help="The task instruction for Agent-S3 to perform.",
@@ -323,8 +380,47 @@ def main():
 
     args = parser.parse_args()
 
+    # Initialize env backend early so we can read its screen size (no host display needed)
+    code_env = None
+    backend = args.env_backend or ("local" if args.enable_local_env else None)
+    if backend == "local":
+        print("⚠️  WARNING: Local coding environment enabled. This will execute arbitrary code locally!")
+        code_env = LocalEnv()
+    elif backend in ("docker", "podman"):
+        if not args.container:
+            raise SystemExit(f"--env_backend {backend} requires --container")
+        runtime = "podman" if backend == "podman" else "docker"
+        print(f"Using {runtime} container '{args.container}' as code environment")
+        code_env = DockerEnv(
+            container=args.container, runtime=runtime,
+            user=args.container_user, workdir=args.container_workdir,
+            python_bin=args.container_python,
+        )
+    elif backend == "kvm":
+        if args.kvm_transport == "ssh":
+            if not (args.kvm_ssh_host and args.kvm_ssh_user):
+                raise SystemExit("--kvm_transport ssh requires --kvm_ssh_host and --kvm_ssh_user")
+            print(f"Using KVM guest via ssh {args.kvm_ssh_user}@{args.kvm_ssh_host} as code environment")
+            code_env = KvmEnv(transport="ssh", ssh_host=args.kvm_ssh_host, ssh_user=args.kvm_ssh_user,
+                              ssh_port=args.kvm_ssh_port, ssh_key=args.kvm_ssh_key,
+                              python_bin=args.kvm_python,
+                              display=args.kvm_display, xauthority=args.kvm_xauthority)
+        else:
+            if not args.kvm_domain:
+                raise SystemExit("--kvm_transport qga requires --kvm_domain")
+            print(f"Using KVM guest via QGA on domain '{args.kvm_domain}' as code environment")
+            code_env = KvmEnv(transport="qga", domain=args.kvm_domain, virsh_uri=args.kvm_virsh_uri,
+                              python_bin=args.kvm_python,
+                              display=args.kvm_display, xauthority=args.kvm_xauthority)
+
     # Re-scales screenshot size to ensure it fits in UI-TARS context limit
-    screen_width, screen_height = pyautogui.size()
+    print(f"[STEPTIME 0] before_screen_size={time.monotonic():.3f}")
+    if code_env is not None and hasattr(code_env, "controller") and hasattr(code_env.controller, "screen_size"):
+        screen_width, screen_height = code_env.controller.screen_size()
+    else:
+        import pyautogui
+        screen_width, screen_height = pyautogui.size()
+    print(f"[STEPTIME 0] after_screen_size={time.monotonic():.3f}")
     scaled_width, scaled_height = scale_screen_dimensions(
         screen_width, screen_height, max_dim_size=2400
     )
@@ -348,22 +444,17 @@ def main():
         "grounding_height": args.grounding_height,
     }
 
-    # Initialize environment based on user preference
-    local_env = None
-    if args.enable_local_env:
-        print(
-            "⚠️  WARNING: Local coding environment enabled. This will execute arbitrary code locally!"
-        )
-        local_env = LocalEnv()
-
+    _t_setup0 = time.monotonic()
     grounding_agent = OSWorldACI(
-        env=local_env,
+        env=code_env,
         platform=current_platform,
         engine_params_for_generation=engine_params,
         engine_params_for_grounding=engine_params_for_grounding,
         width=screen_width,
         height=screen_height,
     )
+    _t_setup1 = time.monotonic()
+    print(f"[STEPTIME 0] OSWorldACI_init={(_t_setup1-_t_setup0)*1000:.0f}ms")
 
     agent = AgentS3(
         engine_params,
@@ -372,13 +463,14 @@ def main():
         max_trajectory_length=args.max_trajectory_length,
         enable_reflection=args.enable_reflection,
     )
+    print(f"[STEPTIME 0] AgentS3_init={(time.monotonic()-_t_setup1)*1000:.0f}ms total_setup={(time.monotonic()-_t_setup0)*1000:.0f}ms")
 
     task = args.task
 
     # handle query from command line
     if isinstance(task, str) and task.strip():
         agent.reset()
-        run_agent(agent, task, scaled_width, scaled_height)
+        run_agent(agent, task, scaled_width, scaled_height, code_env=code_env)
         return
 
     while True:
@@ -387,7 +479,7 @@ def main():
         agent.reset()
 
         # Run the agent on your own device
-        run_agent(agent, query, scaled_width, scaled_height)
+        run_agent(agent, query, scaled_width, scaled_height, code_env=code_env)
 
         response = input("Would you like to provide another query? (y/n): ")
         if response.lower() != "y":
