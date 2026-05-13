@@ -63,9 +63,7 @@ class BehaviorNarrator:
                     offset_x = 5
                 if y + offset_y < 0:  # Out of bounds on top
                     offset_y = 5
-                draw.text(
-                    (x + offset_x, y + offset_y), label, fill=color, font=font
-                )
+                draw.text((x + offset_x, y + offset_y), label, fill=color, font=font)
 
             if mouse_action.startswith("pyautogui.click"):
                 draw.circle((width, height), radius=3, fill=(255, 0, 0))

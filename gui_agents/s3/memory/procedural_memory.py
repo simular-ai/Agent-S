@@ -4,17 +4,14 @@ import textwrap
 
 class PROCEDURAL_MEMORY:
 
-    FORMATTING_FEEDBACK_PROMPT = textwrap.dedent(
-        """
+    FORMATTING_FEEDBACK_PROMPT = textwrap.dedent("""
     Your previous response was not formatted correctly. You must respond again to replace your previous response. Do not make reference to this message while fixing the response. Please address the following issues below to improve the previous response:
     FORMATTING_FEEDBACK
-    """
-    )
+    """)
 
     @staticmethod
     def construct_simple_worker_procedural_memory(agent_class, skipped_actions):
-        procedural_memory = textwrap.dedent(
-            f"""\
+        procedural_memory = textwrap.dedent(f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the task: `TASK_DESCRIPTION`.
         You are working in CURRENT_OS.
 
@@ -72,8 +69,7 @@ class PROCEDURAL_MEMORY:
         2. The history of your previous interactions with the UI.
         3. Access to the following class and methods to interact with the UI:
         class Agent:
-        """
-        )
+        """)
 
         for attr_name in dir(agent_class):
             if attr_name in skipped_actions:
@@ -88,8 +84,7 @@ class PROCEDURAL_MEMORY:
     '''{attr.__doc__}'''
         """
 
-        procedural_memory += textwrap.dedent(
-            """
+        procedural_memory += textwrap.dedent("""
         Your response should be formatted like this:
         (Previous action verification)
         Carefully analyze based on the screenshot if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
@@ -117,14 +112,12 @@ class PROCEDURAL_MEMORY:
         9. Generate agent.done() as your grounded action when your believe the task is fully complete.
         10. Do not use the "command" + "tab" hotkey on MacOS.
         11. Prefer hotkeys and application features over clicking on text elements when possible. Highlighting text is fine.
-        """
-        )
+        """)
 
         return procedural_memory.strip()
 
     # For reflection agent, post-action verification mainly for cycle detection
-    REFLECTION_ON_TRAJECTORY = textwrap.dedent(
-        """
+    REFLECTION_ON_TRAJECTORY = textwrap.dedent("""
     You are an expert computer use agent designed to reflect on the trajectory of a task and provide feedback on what has happened so far.
     You have access to the Task Description and the Current Trajectory of another computer agent. The Current Trajectory is a sequence of a desktop image, chain-of-thought reasoning, and a desktop action for each time step. The last image is the screen's display after the last action.
     
@@ -147,11 +140,9 @@ class PROCEDURAL_MEMORY:
     - Any response that falls under Case 2 should be concise, since you just need to affirm the agent to continue with the current trajectory.
     - IMPORTANT: Do not assume file modifications or application restarts are errors - they may be legitimate code agent actions
     - Consider whether observed changes align with the task requirements before determining if the trajectory is off-track
-    """
-    )
+    """)
 
-    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent(
-        """
+    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent("""
     You are an expert in graphical user interfaces. Your task is to process a phrase of text, and identify the most relevant word on the computer screen.
     You are provided with a phrase, a table with alxl the text on the screen, and a screenshot of the computer screen. You will identify the single word id that is best associated with the provided phrase.
     This single word must be displayed on the computer screenshot, and its location on the screen should align with the provided phrase.
@@ -162,11 +153,9 @@ class PROCEDURAL_MEMORY:
     2. Then, output the unique word id. Remember, the word id is the 1st number in each row of the text table.
     3. If there are multiple occurrences of the same word, use the surrounding context in the phrase to choose the correct one. Pay very close attention to punctuation and capitalization.
 
-    """
-    )
+    """)
 
-    CODE_AGENT_PROMPT = textwrap.dedent(
-        """\
+    CODE_AGENT_PROMPT = textwrap.dedent("""\
     You are a code execution agent with a limited step budget to complete tasks.
 
     # Core Guidelines:
@@ -281,11 +270,9 @@ class PROCEDURAL_MEMORY:
     - After in-place modifications, close/reopen files via GUI to show changes
 
     Focus on progress within your step budget.
-    """
-    )
+    """)
 
-    CODE_SUMMARY_AGENT_PROMPT = textwrap.dedent(
-        """\
+    CODE_SUMMARY_AGENT_PROMPT = textwrap.dedent("""\
     You are a code execution summarizer. Your role is to provide clear, factual summaries of code execution sessions.
 
     Key responsibilities:
@@ -305,11 +292,9 @@ class PROCEDURAL_MEMORY:
     - This helps the GUI agent understand what to expect and verify your work properly
 
     Always maintain a factual, non-judgmental tone.
-    """
-    )
+    """)
 
-    BEHAVIOR_NARRATOR_SYSTEM_PROMPT = textwrap.dedent(
-        """\
+    BEHAVIOR_NARRATOR_SYSTEM_PROMPT = textwrap.dedent("""\
     You are an expert in computer usage responsible for analyzing what happened after a computer action is taken. 
 
     **Reasoning Guidelines:**
@@ -336,11 +321,9 @@ class PROCEDURAL_MEMORY:
     <answer>
     [An unordered list of the relevant changes induced by the action]
     </answer>
-    """
-    )
+    """)
 
-    VLM_EVALUATOR_PROMPT_COMPARATIVE_BASELINE = textwrap.dedent(
-        """\
+    VLM_EVALUATOR_PROMPT_COMPARATIVE_BASELINE = textwrap.dedent("""\
     You are a meticulous and impartial evaluator, tasked with judging <NUMBER OF TRAJECTORIES> sequences of OS desktop actions to determine which one better completes the user's request. Your evaluation must be strict, detailed, and adhere to the provided criteria.
 
     **User Request:** 
@@ -391,5 +374,4 @@ class PROCEDURAL_MEMORY:
     <answer>
     [The index of the better sequence, a single integer from 1 to <NUMBER OF TRAJECTORIES>]
     </answer>
-    """
-    )
+    """)

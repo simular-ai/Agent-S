@@ -6,8 +6,7 @@ class PROCEDURAL_MEMORY:
 
     @staticmethod
     def construct_worker_procedural_memory(agent_class, skipped_actions):
-        procedural_memory = textwrap.dedent(
-            f"""\
+        procedural_memory = textwrap.dedent(f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the current subtask: `SUBTASK_DESCRIPTION` of the larger goal: `TASK_DESCRIPTION`.
         IMPORTANT: ** The subtasks: ['DONE_TASKS'] have already been done. The future subtasks ['FUTURE_TASKS'] will be done in the future by me. You must only perform the current subtask: `SUBTASK_DESCRIPTION`. Do not try to do future subtasks. **
         You are working in CURRENT_OS. You must only complete the subtask provided and not the larger goal.
@@ -16,8 +15,7 @@ class PROCEDURAL_MEMORY:
         2. The history of your previous interactions with the UI.
         3. Access to the following class and methods to interact with the UI:
         class Agent:
-        """
-        )
+        """)
 
         for attr_name in dir(agent_class):
             if attr_name in skipped_actions:
@@ -32,8 +30,7 @@ class PROCEDURAL_MEMORY:
     '''{attr.__doc__}'''
         """
 
-        procedural_memory += textwrap.dedent(
-            """
+        procedural_memory += textwrap.dedent("""
         Your response should be formatted like this:
         (Previous action verification)
         Carefully analyze based on the screenshot if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
@@ -60,14 +57,12 @@ class PROCEDURAL_MEMORY:
         8. Whenever possible, your grounded action should use hot-keys with the agent.hotkey() action instead of clicking or dragging.
         9. My computer's password is 'password', feel free to use it when you need sudo rights.
         10. Do not use the "command" + "tab" hotkey on MacOS.
-        """
-        )
+        """)
 
         return procedural_memory.strip()
 
     # Manager prompt that generalizes to initial planning, re-planning after subtask completion, and re-planning after failure
-    COMBINED_MANAGER_PROMPT = textwrap.dedent(
-        """
+    COMBINED_MANAGER_PROMPT = textwrap.dedent("""
     You are an expert planning agent for solving GUI navigation tasks. You need to generate a plan for solving the following task: TASK_DESCRIPTION.
 
     You are provided with:
@@ -91,8 +86,7 @@ class PROCEDURAL_MEMORY:
       - If you feel the trajectory and future subtasks seem correct based on the current state of the desktop, you may re-use future subtasks.
       - If you feel some future subtasks are not detailed enough, use your observations from the desktop screenshot to update these subtasks to be more detailed.
       - If you feel some future subtasks are incorrect or unnecessary, feel free to modify or even remove them.
-    """
-    )
+    """)
 
     # USED IN OSWORLD EXPERIMENTS
     RAG_AGENT_OSWORLD = """
@@ -107,8 +101,7 @@ class PROCEDURAL_MEMORY:
     """
 
     # For reflection agent, post-action verification mainly for cycle detection
-    REFLECTION_ON_TRAJECTORY = textwrap.dedent(
-        """
+    REFLECTION_ON_TRAJECTORY = textwrap.dedent("""
     You are a reflection agent designed to assist in subtask execution by reflecting on the trajectory of a subtask and providing feedback for what the next step should be.
     You have access to the Subtask Description and the Current Trajectory of another computer agent. The Current Trajectory is a sequence of a desktop image, chain-of-thought reasoning, and a desktop action for each time step. The last image is the screen's display after the last action.
     Your task is to generate a reflection. Your generated reflection must fall under one of the two cases listed below:
@@ -120,8 +113,7 @@ class PROCEDURAL_MEMORY:
     - DO NOT suggest any specific future plans or actions. Your only goal is to provide a reflection, not an actual plan or action.
     - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially lookout for cycles of actions that are continually repeated with no progress.
     - Any response that falls under Case 2 should be concise, since you just need to affirm the agent to continue with the current trajectory.
-    """
-    )
+    """)
 
     TASK_SUMMARIZATION_PROMPT = """
     You are a summarization agent designed to analyze a trajectory of desktop task execution.
@@ -178,8 +170,7 @@ Important guidelines you must follow:
 Analyze the given plan and provide the output in this JSON format within the <json></json> tags. Ensure the JSON is valid and properly escaped.
 """
 
-    SUBTASK_SUMMARIZATION_PROMPT = textwrap.dedent(
-        """
+    SUBTASK_SUMMARIZATION_PROMPT = textwrap.dedent("""
     You are a summarization agent designed to analyze a trajectory of desktop task execution.
     You will summarize the correct plan and grounded actions based on the whole trajectory of a subtask, ensuring the summarized plan contains only correct and necessary steps.
 
@@ -195,8 +186,7 @@ Analyze the given plan and provide the output in this JSON format within the <js
     	  Action: [Description of the correct action]
     	  Grounded Action: [Grounded actions with the \"element1_description\" replacement when needed]
 	  5.	Exclude any other details that are not necessary for completing the task.
-    """
-    )
+    """)
 
     STATE_EVALUATOR_SYSTEM_PROMPT = """
     You are an impartial evaluator to evaluate the completeness of the given desktop computer task, you are also an expert of accessibility tree, os environment and python programming.
@@ -242,8 +232,7 @@ Analyze the given plan and provide the output in this JSON format within the <js
     Only say Yes or No in the Judgment section. Do not provide any other information in the Judgment section.
     """
 
-    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent(
-        """
+    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent("""
     You are an expert in graphical user interfaces. Your task is to process a phrase of text, and identify the most relevant word on the computer screen.
     You are provided with a phrase, a table with all the text on the screen, and a screenshot of the computer screen. You will identify the single word id that is best associated with the provided phrase.
     This single word must be displayed on the computer screenshot, and its location on the screen should align with the provided phrase.
@@ -254,5 +243,4 @@ Analyze the given plan and provide the output in this JSON format within the <js
     2. Then, output the unique word id. Remember, the word id is the 1st number in each row of the text table.
     3. If there are multiple occurrences of the same word, use the surrounding context in the phrase to choose the correct one. Pay very close attention to punctuation and capitalization.
 
-    """
-    )
+    """)

@@ -5,8 +5,7 @@ import textwrap
 class PROCEDURAL_MEMORY:
     @staticmethod
     def construct_simple_worker_procedural_memory(agent_class, skipped_actions):
-        procedural_memory = textwrap.dedent(
-            f"""\
+        procedural_memory = textwrap.dedent(f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the task: `TASK_DESCRIPTION`.
         You are working in CURRENT_OS.
         You are provided with:
@@ -14,8 +13,7 @@ class PROCEDURAL_MEMORY:
         2. The history of your previous interactions with the UI.
         3. Access to the following class and methods to interact with the UI:
         class Agent:
-        """
-        )
+        """)
 
         for attr_name in dir(agent_class):
             if attr_name in skipped_actions:
@@ -30,8 +28,7 @@ class PROCEDURAL_MEMORY:
     '''{attr.__doc__}'''
         """
 
-        procedural_memory += textwrap.dedent(
-            """
+        procedural_memory += textwrap.dedent("""
         Your response should be formatted like this:
         (Previous action verification)
         Carefully analyze based on the screenshot if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
@@ -58,14 +55,12 @@ class PROCEDURAL_MEMORY:
         8. Generate agent.fail() as your grounded action if you get exhaustively stuck on the task and believe it is impossible.
         9. Generate agent.done() as your grounded action when your believe the task is fully complete.
         10. Do not use the "command" + "tab" hotkey on MacOS.
-        """
-        )
+        """)
 
         return procedural_memory.strip()
 
     # For reflection agent, post-action verification mainly for cycle detection
-    REFLECTION_ON_TRAJECTORY = textwrap.dedent(
-        """
+    REFLECTION_ON_TRAJECTORY = textwrap.dedent("""
     You are an expert computer use agent designed to reflect on the trajectory of a task and provide feedback on what has happened so far.
     You have access to the Task Description and the Current Trajectory of another computer agent. The Current Trajectory is a sequence of a desktop image, chain-of-thought reasoning, and a desktop action for each time step. The last image is the screen's display after the last action.
     Your task is to generate a reflection. Your generated reflection must fall under one of the cases listed below:
@@ -79,11 +74,9 @@ class PROCEDURAL_MEMORY:
     - DO NOT suggest any specific future plans or actions. Your only goal is to provide a reflection, not an actual plan or action.
     - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially lookout for cycles of actions that are continually repeated with no progress.
     - Any response that falls under Case 2 should be concise, since you just need to affirm the agent to continue with the current trajectory.
-    """
-    )
+    """)
 
-    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent(
-        """
+    PHRASE_TO_WORD_COORDS_PROMPT = textwrap.dedent("""
     You are an expert in graphical user interfaces. Your task is to process a phrase of text, and identify the most relevant word on the computer screen.
     You are provided with a phrase, a table with all the text on the screen, and a screenshot of the computer screen. You will identify the single word id that is best associated with the provided phrase.
     This single word must be displayed on the computer screenshot, and its location on the screen should align with the provided phrase.
@@ -94,5 +87,4 @@ class PROCEDURAL_MEMORY:
     2. Then, output the unique word id. Remember, the word id is the 1st number in each row of the text table.
     3. If there are multiple occurrences of the same word, use the surrounding context in the phrase to choose the correct one. Pay very close attention to punctuation and capitalization.
 
-    """
-    )
+    """)

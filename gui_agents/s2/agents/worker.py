@@ -159,13 +159,11 @@ class Worker(BaseModule):
         if self.enable_reflection:
             # Load the initial subtask info
             if self.turn_count == 0:
-                text_content = textwrap.dedent(
-                    f"""
+                text_content = textwrap.dedent(f"""
                     Subtask Description: {subtask}
                     Subtask Information: {subtask_info}
                     Current Trajectory below:
-                    """
-                )
+                    """)
                 updated_sys_prompt = (
                     self.reflection_agent.system_prompt + "\n" + text_content
                 )

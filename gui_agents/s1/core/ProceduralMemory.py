@@ -5,8 +5,7 @@ import textwrap
 class PROCEDURAL_MEMORY:
     @staticmethod
     def construct_worker_procedural_memory(agent_class):
-        procedural_memory = textwrap.dedent(
-            f"""\
+        procedural_memory = textwrap.dedent(f"""\
         You are an expert in graphical user interfaces and Python code. You are responsible for executing the current subtask: `SUBTASK_DESCRIPTION` of the larger goal: `TASK_DESCRIPTION`.
         IMPORTANT: ** The subtasks: ['DONE_TASKS'] have already been done. The future subtasks ['FUTURE_TASKS'] will be done in the future by me. You must only perform the current subtask: `SUBTASK_DESCRIPTION`. Do not try to do future subtasks. **
         You are working in CURRENT_OS. You must only complete the subtask provided and not the larger goal.
@@ -16,8 +15,7 @@ class PROCEDURAL_MEMORY:
         3. The history of your previous interactions with the UI.
         4. Access to the following class and methods to interact with the UI:
         class Agent:
-        """
-        )
+        """)
 
         for attr_name in dir(agent_class):
             attr = getattr(agent_class, attr_name)
@@ -29,8 +27,7 @@ class PROCEDURAL_MEMORY:
     '''{attr.__doc__}'''
         """
 
-        procedural_memory += textwrap.dedent(
-            """
+        procedural_memory += textwrap.dedent("""
         Your response should be formatted like this:
         (Previous action verification)
         Carefully analyze based on the screenshot and the accessibility tree if the previous action was successful. If the previous action was not successful, provide a reason for the failure.
@@ -57,8 +54,7 @@ class PROCEDURAL_MEMORY:
         7. Do not do anything other than the exact specified task. Return with `agent.done()` immediately after the task is completed or `agent.fail()` if it cannot be completed.
         8. Whenever possible use hot-keys or typing rather than mouse clicks.
         9. My computer's password is 'password', feel free to use it when you need sudo rights
-        """
-        )
+        """)
         return procedural_memory.strip()
 
     # MANAGER_PROMPT = """You are a planning agent for solving GUI navigation tasks. You will be provided the initial configuration of a system including accessibility, screenshot and other information. You need to solve the following task: TASK_DESCRIPTION. You will describe in as much detail as possible the steps required to complete the task by a GUI agent. Please do not include any verification steps in your plan that is not your responsibility. IMPORTANT: Your plan should be as concize as possible and should not include any unnecessary steps. Do not fine-tune, or embellish anything or cause any side effects. Generate the plan that can be accomplished in the shortest time. Please take the current state into account when generating the plan. Please provide the plan in a step-by-step format and make sure you do not include anything that's already done in the GUI in your plan."""
