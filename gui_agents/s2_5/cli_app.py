@@ -6,6 +6,7 @@ import os
 import platform
 import pyautogui
 import signal
+import subprocess
 import sys
 import time
 
@@ -131,16 +132,38 @@ platform_os = platform.system()
 
 def show_permission_dialog(code: str, action_description: str):
     """Show a platform-specific permission dialog and return True if approved."""
+    prompt_text = (
+        "Do you want to execute this action?\n\n"
+        f"{code}"
+    )
+    if action_description:
+        prompt_text += f" which will try to {action_description}"
+
     if platform.system() == "Darwin":
-        result = os.system(
-            f'osascript -e \'display dialog "Do you want to execute this action?\n\n{code} which will try to {action_description}" with title "Action Permission" buttons {{"Cancel", "OK"}} default button "OK" cancel button "Cancel"\''
+        script = (
+            'display dialog argv item 1 with title "Action Permission" '
+            'buttons {"Cancel", "OK"} default button "OK" cancel button "Cancel"'
         )
-        return result == 0
+        result = subprocess.run(
+            ["osascript", "-e", script, prompt_text],
+            check=False,
+        )
+        return result.returncode == 0
     elif platform.system() == "Linux":
-        result = os.system(
-            f'zenity --question --title="Action Permission" --text="Do you want to execute this action?\n\n{code}" --width=400 --height=200'
+        result = subprocess.run(
+            [
+                "zenity",
+                "--question",
+                "--title",
+                "Action Permission",
+                "--text",
+                prompt_text,
+                "--width=400",
+                "--height=200",
+            ],
+            check=False,
         )
-        return result == 0
+        return result.returncode == 0
     return False
 
 
