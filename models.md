@@ -61,7 +61,7 @@ agent = AgentS2_5(
 export MINIMAX_API_KEY=<YOUR_API_KEY>
 ```
 
-Supported models: `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`
+Supported models: `MiniMax-M3` (default, 512K context, 128K max output, image input support), `MiniMax-M2.7`, `MiniMax-M2.7-highspeed`
 
 To use the underlying Multimodal Agent (LMMAgent) which wraps LLMs with message handling functionality, you can use the following code snippet:
 

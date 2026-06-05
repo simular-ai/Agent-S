@@ -182,6 +182,17 @@ class TestLMMEngineMiniMaxGenerate(unittest.TestCase):
             self.assertNotEqual(msg.get("role"), "system")
 
     def test_model_name_passed(self):
+        engine = LMMEngineMiniMax(model="MiniMax-M3", api_key="test-key")
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = self._make_mock_response()
+        engine.llm_client = mock_client
+
+        engine.generate(self._make_messages(), temperature=0.5)
+
+        call_kwargs = mock_client.messages.create.call_args[1]
+        self.assertEqual(call_kwargs["model"], "MiniMax-M3")
+
+    def test_highspeed_model_name_passed(self):
         engine = LMMEngineMiniMax(model="MiniMax-M2.7-highspeed", api_key="test-key")
         mock_client = MagicMock()
         mock_client.messages.create.return_value = self._make_mock_response()
