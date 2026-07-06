@@ -2,6 +2,11 @@ import os
 
 import backoff
 from anthropic import Anthropic
+from gui_agents.utils import (
+    anthropic_supports_temperature,
+    extract_anthropic_text,
+    extract_anthropic_thinking,
+)
 from openai import (
     AzureOpenAI,
     APIConnectionError,
@@ -107,20 +112,17 @@ class LMMEngineAnthropic(LMMEngine):
                 thinking={"type": "enabled", "budget_tokens": 4096},
                 **kwargs,
             )
-            thoughts = full_response.content[0].thinking
-            return full_response.content[1].text
-        return (
-            self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temp,
-                **kwargs,
-            )
-            .content[0]
-            .text
-        )
+            return extract_anthropic_text(full_response)
+        request_kwargs = {
+            "system": messages[0]["content"][0]["text"],
+            "model": self.model,
+            "messages": messages[1:],
+            "max_tokens": max_new_tokens if max_new_tokens else 4096,
+            **kwargs,
+        }
+        if anthropic_supports_temperature(self.model):
+            request_kwargs["temperature"] = temp
+        return extract_anthropic_text(self.llm_client.messages.create(**request_kwargs))
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -140,8 +142,8 @@ class LMMEngineAnthropic(LMMEngine):
             **kwargs,
         )
 
-        thoughts = full_response.content[0].thinking
-        answer = full_response.content[1].text
+        thoughts = extract_anthropic_thinking(full_response)
+        answer = extract_anthropic_text(full_response)
         full_response = (
             f"<thoughts>\n{thoughts}\n</thoughts>\n\n<answer>\n{answer}\n</answer>\n"
         )
