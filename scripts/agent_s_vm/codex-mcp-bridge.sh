@@ -42,6 +42,7 @@ if test -s "$ENDPOINT_ENV"; then
 fi
 if [[ "${AGENT_S_MAIN_BASE_URL:-}" == "http://10.0.2.2:18082/v1" || "${AGENT_S_MAIN_BASE_URL:-}" == "http://10.0.2.2:18082/v1/" ]]; then
     export AGENT_S_MAIN_API_KEY="${AGENT_S_MAIN_API_KEY:-local-observer}"
+    unset OPENAI_API_KEY
 fi
 if [[ "${AGENT_S_GROUND_BASE_URL:-}" == "http://10.0.2.2:18082/v1" || "${AGENT_S_GROUND_BASE_URL:-}" == "http://10.0.2.2:18082/v1/" ]]; then
     export AGENT_S_GROUND_API_KEY="${AGENT_S_GROUND_API_KEY:-local-observer}"

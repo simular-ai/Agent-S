@@ -1,7 +1,11 @@
 import asyncio
 import hashlib
 import json
+import os
 import re
+import stat
+import subprocess
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -182,6 +186,86 @@ def test_bridge_disables_xtrace_before_loading_credentials():
         Path(__file__).parents[1] / "scripts" / "agent_s_vm" / "codex-mcp-bridge.sh"
     ).read_text()
     assert bridge.index("set +x") < bridge.index("HF_TOKEN=")
+
+
+def _run_bridge_with_fake_ssh(tmp_path, endpoint_env, extra_env):
+    repo = Path(__file__).parents[1]
+    bridge = repo / "scripts" / "agent_s_vm" / "codex-mcp-bridge.sh"
+    xdg_config = tmp_path / "config"
+    agent_config = xdg_config / "agent-s-lab"
+    agent_config.mkdir(parents=True)
+    (agent_config / "observer_mcp_ed25519").write_text("not-a-real-key")
+    (agent_config / "known_hosts").write_text("")
+    (agent_config / "endpoint.env").write_text(endpoint_env)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    capture = tmp_path / "ssh-env.json"
+    fake_ssh = bin_dir / "ssh"
+    fake_ssh.write_text(
+        textwrap.dedent(
+            """\
+            #!/usr/bin/env python3
+            import json
+            import os
+
+            with open(os.environ["CAPTURE_FILE"], "w", encoding="utf-8") as fh:
+                json.dump(
+                    {
+                        "openai_present": "OPENAI_API_KEY" in os.environ,
+                        "main_key": os.environ.get("AGENT_S_MAIN_API_KEY"),
+                        "main_base_url": os.environ.get("AGENT_S_MAIN_BASE_URL"),
+                    },
+                    fh,
+                    sort_keys=True,
+                )
+            """
+        )
+    )
+    fake_ssh.chmod(fake_ssh.stat().st_mode | stat.S_IXUSR)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "AGENT_S_LAB_HOME": str(tmp_path / "lab"),
+            "CAPTURE_FILE": str(capture),
+            "HOME": str(tmp_path / "home"),
+            "PATH": f"{bin_dir}{os.pathsep}{env['PATH']}",
+            "XDG_CONFIG_HOME": str(xdg_config),
+        }
+    )
+    env.update(extra_env)
+
+    subprocess.run([str(bridge)], check=True, env=env)
+    return json.loads(capture.read_text())
+
+
+@pytest.mark.parametrize(
+    "main_url",
+    ("http://10.0.2.2:18082/v1", "http://10.0.2.2:18082/v1/"),
+)
+def test_bridge_drops_openai_key_for_local_main_endpoint(tmp_path, main_url):
+    capture = _run_bridge_with_fake_ssh(
+        tmp_path,
+        f"AGENT_S_MAIN_BASE_URL={main_url}\n",
+        {"OPENAI_API_KEY": "ambient-test-key"},
+    )
+
+    assert capture["openai_present"] is False
+    assert capture["main_key"] == "local-observer"
+    assert capture["main_base_url"] == main_url
+
+
+def test_bridge_keeps_hosted_openai_forwarding(tmp_path):
+    capture = _run_bridge_with_fake_ssh(
+        tmp_path,
+        "AGENT_S_MAIN_BASE_URL=https://main.example.test/v1\n",
+        {"OPENAI_API_KEY": "ambient-test-key"},
+    )
+
+    assert capture["openai_present"] is True
+    assert capture["main_key"] is None
+    assert capture["main_base_url"] == "https://main.example.test/v1"
 
 
 def test_guest_allows_only_the_dedicated_local_grounding_port():
