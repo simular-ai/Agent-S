@@ -9,7 +9,7 @@ import pytest
 from gui_agents.s3.observer.capture import CapturedObservation
 from gui_agents.s3.observer.mcp_server import mcp
 from gui_agents.s3.observer.planner import AgentSObserverPlanner
-from gui_agents.s3.observer.service import ObserverService
+from gui_agents.s3.observer.service import ObserverService, _model_configuration
 
 
 PNG = b"synthetic-png-with-stable-screen-state"
@@ -122,6 +122,40 @@ def test_status_reports_development_identity_when_metadata_is_absent(
     assert build["source_commit"] == "unknown"
 
 
+def test_local_model_endpoint_needs_no_provider_key(monkeypatch):
+    for name in (
+        "OPENAI_API_KEY",
+        "HF_TOKEN",
+        "HF_ENDPOINT_URL",
+        "AGENT_S_MAIN_API_KEY",
+        "AGENT_S_GROUND_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_S_MAIN_BASE_URL", "http://10.0.2.2:18082/v1")
+    monkeypatch.setenv("AGENT_S_GROUND_BASE_URL", "http://10.0.2.2:18082/v1")
+
+    config = _model_configuration()
+
+    assert config["main_key"] == "local-observer"
+    assert config["ground_key"] == "local-observer"
+
+
+def test_other_private_endpoint_does_not_get_placeholder_key(monkeypatch):
+    for name in (
+        "OPENAI_API_KEY",
+        "HF_TOKEN",
+        "HF_ENDPOINT_URL",
+        "AGENT_S_MAIN_API_KEY",
+        "AGENT_S_GROUND_API_KEY",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AGENT_S_GROUND_BASE_URL", "http://10.0.2.2:18083/v1")
+
+    config = _model_configuration()
+
+    assert config["ground_key"] is None
+
+
 def test_mcp_exposes_observation_tools_only():
     tools = asyncio.run(mcp.list_tools())
     assert {tool.name for tool in tools} == {
@@ -148,6 +182,32 @@ def test_bridge_disables_xtrace_before_loading_credentials():
         Path(__file__).parents[1] / "scripts" / "agent_s_vm" / "codex-mcp-bridge.sh"
     ).read_text()
     assert bridge.index("set +x") < bridge.index("HF_TOKEN=")
+
+
+def test_guest_allows_only_the_dedicated_local_grounding_port():
+    rules = (
+        Path(__file__).parents[1]
+        / "scripts"
+        / "agent_s_vm"
+        / "guest"
+        / "nftables.conf"
+    ).read_text()
+    allow = "ip daddr 10.0.2.2 tcp dport 18082 accept"
+    assert allow in rules
+    assert rules.index(allow) < rules.index("ip daddr 10.0.0.0/8 reject")
+
+
+def test_private_grounding_server_is_loopback_and_offline_only():
+    server = (
+        Path(__file__).parents[1]
+        / "scripts"
+        / "agent_s_vm"
+        / "mac_ui_tars_server.py"
+    ).read_text()
+    assert 'args.host != "127.0.0.1"' in server
+    assert "local_files_only=True" in server
+    assert 'device_map="mps"' in server
+    assert "dtype=torch.bfloat16" in server
 
 
 def test_vm_lifecycle_detects_orphaned_observer_processes():

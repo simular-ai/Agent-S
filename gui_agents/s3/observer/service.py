@@ -15,6 +15,36 @@ from .planner import AgentSObserverPlanner, OpenAIChatClient, TaskHistory
 
 DEFAULT_MAIN_MODEL = "gpt-5-2025-08-07"
 DEFAULT_BUILD_METADATA_PATH = "/opt/agent-s/observer-build.json"
+LOCAL_API_KEY = "local-observer"
+LOCAL_MODEL_BASE_URLS = {
+    "http://10.0.2.2:18082/v1",
+    "http://10.0.2.2:18082/v1/",
+}
+
+
+def _model_configuration() -> dict[str, str | None]:
+    main_url = os.environ.get("AGENT_S_MAIN_BASE_URL")
+    ground_url = os.environ.get("AGENT_S_GROUND_BASE_URL") or os.environ.get(
+        "HF_ENDPOINT_URL"
+    )
+    main_key = os.environ.get("AGENT_S_MAIN_API_KEY") or os.environ.get(
+        "OPENAI_API_KEY"
+    )
+    ground_key = os.environ.get("AGENT_S_GROUND_API_KEY") or os.environ.get(
+        "HF_TOKEN"
+    )
+    if main_url in LOCAL_MODEL_BASE_URLS and not main_key:
+        main_key = LOCAL_API_KEY
+    if ground_url in LOCAL_MODEL_BASE_URLS and not ground_key:
+        ground_key = LOCAL_API_KEY
+    return {
+        "main_url": main_url,
+        "main_key": main_key,
+        "main_model": os.environ.get("AGENT_S_MAIN_MODEL", DEFAULT_MAIN_MODEL),
+        "ground_url": ground_url,
+        "ground_key": ground_key,
+        "ground_model": os.environ.get("AGENT_S_GROUND_MODEL", "tgi"),
+    }
 
 
 def _build_identity() -> dict[str, object]:
@@ -58,39 +88,44 @@ class ObserverService:
 
     @staticmethod
     def _planner_from_environment() -> AgentSObserverPlanner:
-        openai_key = os.environ.get("OPENAI_API_KEY")
-        hf_token = os.environ.get("HF_TOKEN")
-        hf_url = os.environ.get("HF_ENDPOINT_URL")
+        config = _model_configuration()
         missing = [
             name
             for name, value in (
-                ("OPENAI_API_KEY", openai_key),
-                ("HF_TOKEN", hf_token),
-                ("HF_ENDPOINT_URL", hf_url),
+                ("main model API key", config["main_key"]),
+                ("grounding model API key", config["ground_key"]),
+                ("grounding model base URL", config["ground_url"]),
             )
             if not value
         ]
         if missing:
             raise RuntimeError(f"Missing observer configuration: {', '.join(missing)}")
         main_client = OpenAIChatClient(
-            model=os.environ.get("AGENT_S_MAIN_MODEL", DEFAULT_MAIN_MODEL),
-            api_key=openai_key,
+            model=str(config["main_model"]),
+            api_key=str(config["main_key"]),
+            base_url=config["main_url"],
         )
         grounding_client = OpenAIChatClient(
-            model=os.environ.get("AGENT_S_GROUND_MODEL", "tgi"),
-            api_key=hf_token,
-            base_url=hf_url,
+            model=str(config["ground_model"]),
+            api_key=str(config["ground_key"]),
+            base_url=config["ground_url"],
         )
         return AgentSObserverPlanner(main_client, grounding_client)
 
     def status(self) -> dict[str, object]:
         with self._lock:
+            config = _model_configuration()
             return {
                 "mode": "observation_only",
                 "desktop_actions_exposed": False,
                 "display": os.environ.get("DISPLAY", ""),
                 "expected_resolution": {"width": 1920, "height": 1080},
-                "main_model": os.environ.get("AGENT_S_MAIN_MODEL", DEFAULT_MAIN_MODEL),
+                "main_model": config["main_model"],
+                "ground_model": config["ground_model"],
+                "main_api_key_configured": bool(config["main_key"]),
+                "main_endpoint_configured": bool(config["main_url"]),
+                "ground_api_key_configured": bool(config["ground_key"]),
+                "ground_endpoint_configured": bool(config["ground_url"]),
                 "openai_key_configured": bool(os.environ.get("OPENAI_API_KEY")),
                 "hf_token_configured": bool(os.environ.get("HF_TOKEN")),
                 "hf_endpoint_configured": bool(os.environ.get("HF_ENDPOINT_URL")),

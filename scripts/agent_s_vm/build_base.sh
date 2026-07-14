@@ -237,7 +237,7 @@ install -m 0644 /opt/agent-s/scripts/agent_s_vm/guest/synthetic-page.html \
     /home/agent-s/agent-s-observer-test.html
 chown agent-s:agent-s /home/agent-s/agent-s-observer-test.html
 cat >/etc/ssh/sshd_config.d/agent-s-observer.conf <<'EOF'
-AcceptEnv OPENAI_API_KEY HF_TOKEN HF_ENDPOINT_URL AGENT_S_MAIN_MODEL AGENT_S_GROUND_MODEL
+AcceptEnv OPENAI_API_KEY HF_TOKEN HF_ENDPOINT_URL AGENT_S_MAIN_API_KEY AGENT_S_MAIN_BASE_URL AGENT_S_GROUND_API_KEY AGENT_S_GROUND_BASE_URL AGENT_S_MAIN_MODEL AGENT_S_GROUND_MODEL
 PasswordAuthentication no
 KbdInteractiveAuthentication no
 EOF

@@ -19,9 +19,17 @@ proposal. It has no desktop action executor.
 
 ## Required environment
 
-`OPENAI_API_KEY`, `HF_TOKEN`, and `HF_ENDPOINT_URL` are required when calling
-`propose_next`. `AGENT_S_MAIN_MODEL` defaults to `gpt-5-2025-08-07`, and
-`AGENT_S_GROUND_MODEL` defaults to the Hugging Face TGI model name `tgi`.
+The observer accepts generic OpenAI-compatible model configuration:
+
+- `AGENT_S_MAIN_BASE_URL`, `AGENT_S_MAIN_API_KEY`, and `AGENT_S_MAIN_MODEL`;
+- `AGENT_S_GROUND_BASE_URL`, `AGENT_S_GROUND_API_KEY`, and
+  `AGENT_S_GROUND_MODEL`.
+
+The older hosted configuration remains compatible: `OPENAI_API_KEY` is the
+main-model key, while `HF_TOKEN` and `HF_ENDPOINT_URL` configure grounding.
+When either generic base URL is the dedicated VM-to-host route
+`http://10.0.2.2:18082/v1`, the bridge supplies a non-secret local placeholder
+key because the OpenAI client requires a non-empty value.
 
 The other tools can be smoke-tested without model credentials. Start the stdio
 server with:
@@ -41,7 +49,7 @@ The guest is usable only when all of these layers pass:
 2. the localhost SSH forward accepts connections;
 3. the MCP client initializes and sees exactly the five expected tools;
 4. `observe` returns one valid 1920x1080 PNG;
-5. hosted-model configuration is present before `propose_next` is called.
+5. model configuration is present before `propose_next` is called.
 
 `scripts/agent_s_vm/status.sh` reports the cheap process, transport, and model
 configuration layers. `scripts/agent_s_vm/status.sh --deep` adds a real MCP

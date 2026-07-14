@@ -28,18 +28,34 @@ desktop executor, repository metadata, or model credentials into the image.
 Connect Remmina to `127.0.0.1:5905` to inspect the synthetic safety-test page.
 There is no clipboard or file sharing between the viewer and guest.
 
-Create a short-lived UI-TARS-1.5-7B Hugging Face Inference Endpoint, then place
-only its URL in the host file below. Keep the API token in the normal Hugging
-Face token store.
+The preferred owned-hardware path runs UI-TARS on the private 512 GB Mac with
+the checkpoint's native bfloat16 Transformers/MPS runtime. `local_grounding.sh`
+reuses Doc2DB's private SSH route configuration, starts the Mac server on Mac
+loopback only, and creates one Ubuntu-loopback tunnel. It does not use Doc2DB
+MCP tools or expose the model to either LAN.
+
+```bash
+./scripts/agent_s_vm/local_grounding.sh start
+./scripts/agent_s_vm/local_grounding.sh status
+```
+
+Place this non-secret model configuration in the host file below:
 
 ```text
 ~/.config/agent-s-lab/endpoint.env
-HF_ENDPOINT_URL=https://example.endpoints.huggingface.cloud/v1/
+AGENT_S_GROUND_BASE_URL=http://10.0.2.2:18082/v1
+AGENT_S_GROUND_MODEL=ByteDance-Seed/UI-TARS-1.5-7B
 ```
 
+The exact `10.0.2.2:18082` exception is the QEMU host gateway to the dedicated
+Ubuntu-loopback tunnel. All other private-network egress remains rejected in
+the guest. The main planner continues to use `OPENAI_API_KEY` unless an
+independently tested generic main endpoint is configured. A hosted HTTPS
+grounding endpoint remains a backward-compatible fallback.
+
 The endpoint is lazy configuration: `status`, `observe`, `start_task`, and
-`reset_task` work without it. Only `propose_next` requires the OpenAI key, the
-Hugging Face token, and this endpoint URL.
+`reset_task` work without it. Only `propose_next` requires usable model
+endpoints.
 
 Register `codex-mcp-bridge.sh` as a stdio MCP server and apply the exact tool
 allowlist and `propose_next` approval rule in `codex-config.toml.example`. Start
@@ -62,7 +78,7 @@ The integration values have these meanings:
 - `vm=orphaned`: a matching QEMU process exists without valid runtime PID
   bookkeeping. `stop.sh` detects and terminates this exact observer process
   before removing runtime files.
-- `model_unconfigured`: the VM transport is reachable but no endpoint URL is
+- `model_unconfigured`: the VM transport is reachable but no grounding URL is
   configured. Observation can still work.
 - `transport_ready`: the process, transport, and endpoint checks pass. Run the
   deep canary before relying on the MCP.
@@ -100,5 +116,8 @@ Stop the VM and remove its disposable overlay with:
 ./scripts/agent_s_vm/stop.sh
 ```
 
-Pause the paid Hugging Face endpoint separately before considering the test
-complete.
+Stop the local model and tunnel when they are no longer needed:
+
+```bash
+./scripts/agent_s_vm/local_grounding.sh stop
+```

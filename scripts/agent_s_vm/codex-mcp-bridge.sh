@@ -14,11 +14,38 @@ if test -z "${HF_TOKEN:-}" && test -s "$HOME/.cache/huggingface/token"; then
     export HF_TOKEN
 fi
 if test -s "$ENDPOINT_ENV"; then
+    main_url_line="$(grep -m1 -E '^AGENT_S_MAIN_BASE_URL=(https://|http://10[.]0[.]2[.]2:18082/v1/?$)' "$ENDPOINT_ENV" || true)"
+    if test -n "$main_url_line"; then
+        AGENT_S_MAIN_BASE_URL="${main_url_line#AGENT_S_MAIN_BASE_URL=}"
+        export AGENT_S_MAIN_BASE_URL
+    fi
+    ground_url_line="$(grep -m1 -E '^AGENT_S_GROUND_BASE_URL=(https://|http://10[.]0[.]2[.]2:18082/v1/?$)' "$ENDPOINT_ENV" || true)"
+    if test -n "$ground_url_line"; then
+        AGENT_S_GROUND_BASE_URL="${ground_url_line#AGENT_S_GROUND_BASE_URL=}"
+        export AGENT_S_GROUND_BASE_URL
+    fi
+    main_model_line="$(grep -m1 -E '^AGENT_S_MAIN_MODEL=[A-Za-z0-9._/-]+$' "$ENDPOINT_ENV" || true)"
+    if test -n "$main_model_line"; then
+        AGENT_S_MAIN_MODEL="${main_model_line#AGENT_S_MAIN_MODEL=}"
+        export AGENT_S_MAIN_MODEL
+    fi
+    ground_model_line="$(grep -m1 -E '^AGENT_S_GROUND_MODEL=[A-Za-z0-9._/-]+$' "$ENDPOINT_ENV" || true)"
+    if test -n "$ground_model_line"; then
+        AGENT_S_GROUND_MODEL="${ground_model_line#AGENT_S_GROUND_MODEL=}"
+        export AGENT_S_GROUND_MODEL
+    fi
     endpoint_line="$(grep -m1 '^HF_ENDPOINT_URL=https://' "$ENDPOINT_ENV" || true)"
     if test -n "$endpoint_line"; then
         HF_ENDPOINT_URL="${endpoint_line#HF_ENDPOINT_URL=}"
         export HF_ENDPOINT_URL
     fi
+fi
+if [[ "${AGENT_S_MAIN_BASE_URL:-}" == "http://10.0.2.2:18082/v1" || "${AGENT_S_MAIN_BASE_URL:-}" == "http://10.0.2.2:18082/v1/" ]]; then
+    export AGENT_S_MAIN_API_KEY="${AGENT_S_MAIN_API_KEY:-local-observer}"
+fi
+if [[ "${AGENT_S_GROUND_BASE_URL:-}" == "http://10.0.2.2:18082/v1" || "${AGENT_S_GROUND_BASE_URL:-}" == "http://10.0.2.2:18082/v1/" ]]; then
+    export AGENT_S_GROUND_API_KEY="${AGENT_S_GROUND_API_KEY:-local-observer}"
+    unset HF_TOKEN HF_ENDPOINT_URL
 fi
 export AGENT_S_MAIN_MODEL="${AGENT_S_MAIN_MODEL:-gpt-5-2025-08-07}"
 export AGENT_S_GROUND_MODEL="${AGENT_S_GROUND_MODEL:-tgi}"
@@ -35,6 +62,10 @@ exec ssh -q -T \
     -o SendEnv=OPENAI_API_KEY \
     -o SendEnv=HF_TOKEN \
     -o SendEnv=HF_ENDPOINT_URL \
+    -o SendEnv=AGENT_S_MAIN_API_KEY \
+    -o SendEnv=AGENT_S_MAIN_BASE_URL \
+    -o SendEnv=AGENT_S_GROUND_API_KEY \
+    -o SendEnv=AGENT_S_GROUND_BASE_URL \
     -o SendEnv=AGENT_S_MAIN_MODEL \
     -o SendEnv=AGENT_S_GROUND_MODEL \
     -o StrictHostKeyChecking=yes \

@@ -14,7 +14,7 @@ from .service import ObserverService
 INSTRUCTIONS = (
     "Observation-only Agent S VM. No tool can click, type, scroll, launch apps, or "
     "change the desktop. Call start_task before propose_next. propose_next sends the "
-    "current VM screenshot to configured OpenAI and Hugging Face endpoints and returns "
+    "current VM screenshot to configured model endpoints and returns "
     "one reviewable proposal. Never claim a proposal was executed."
 )
 

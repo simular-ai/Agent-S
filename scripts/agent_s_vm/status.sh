@@ -41,11 +41,11 @@ else
 fi
 
 endpoint_configured=false
-if test -s "$ENDPOINT_ENV" && grep -q '^HF_ENDPOINT_URL=https://' "$ENDPOINT_ENV"; then
+if test -s "$ENDPOINT_ENV" && grep -qE '^(AGENT_S_GROUND_BASE_URL=(https://|http://10[.]0[.]2[.]2:18082/v1/?$)|HF_ENDPOINT_URL=https://)' "$ENDPOINT_ENV"; then
     endpoint_configured=true
-    echo "hf_endpoint=configured"
+    echo "ground_endpoint=configured"
 else
-    echo "hf_endpoint=missing"
+    echo "ground_endpoint=missing"
 fi
 
 if ! $vm_running || ! $ssh_reachable; then

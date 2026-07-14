@@ -3,7 +3,7 @@ command = "/absolute/path/to/Agent-S/scripts/agent_s_vm/codex-mcp-bridge.sh"
 enabled = true
 required = false
 enabled_tools = ["status", "observe", "start_task", "propose_next", "reset_task"]
-env_vars = ["OPENAI_API_KEY"]
+env_vars = ["OPENAI_API_KEY", "AGENT_S_MAIN_API_KEY", "AGENT_S_GROUND_API_KEY"]
 startup_timeout_sec = 20
 tool_timeout_sec = 120
 
