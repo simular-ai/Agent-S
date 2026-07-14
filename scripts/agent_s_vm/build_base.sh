@@ -57,10 +57,23 @@ fi
 WORK_DIR="$(mktemp -d "$LAB_HOME/build.XXXXXX")"
 BUILD_PID_FILE="$WORK_DIR/qemu.pid"
 cleanup() {
+    status=$?
+    trap - EXIT
     if test -s "$BUILD_PID_FILE" && kill -0 "$(<"$BUILD_PID_FILE")" 2>/dev/null; then
         kill "$(<"$BUILD_PID_FILE")" 2>/dev/null || true
     fi
+    if (( status != 0 )); then
+        if test -f "$WORK_DIR/qemu.log"; then
+            cp "$WORK_DIR/qemu.log" "$LAB_HOME/last-build-qemu.log"
+            echo "Builder log preserved at $LAB_HOME/last-build-qemu.log" >&2
+        fi
+        rm -f "$BASE_IMAGE"
+        echo "Removed incomplete base-image candidate: $BASE_IMAGE" >&2
+    else
+        rm -f "$LAB_HOME/last-build-qemu.log"
+    fi
     rm -rf "$WORK_DIR"
+    exit "$status"
 }
 trap cleanup EXIT
 
