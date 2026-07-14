@@ -47,41 +47,9 @@ def get_char():
 
 
 def signal_handler(signum, frame):
-    """Handle Ctrl+C signal for debugging during agent execution"""
-    global paused
-
-    if not paused:
-        print("\n\n🔸 Agent-S Workflow Paused 🔸")
-        print("=" * 50)
-        print("Options:")
-        print("  • Press Ctrl+C again to quit")
-        print("  • Press Esc to resume workflow")
-        print("=" * 50)
-
-        paused = True
-
-        while paused:
-            try:
-                print("\n[PAUSED] Waiting for input... ", end="", flush=True)
-                char = get_char()
-
-                if ord(char) == 3:  # Ctrl+C
-                    print("\n\n🛑 Exiting Agent-S...")
-                    sys.exit(0)
-                elif ord(char) == 27:  # Esc
-                    print("\n\n▶️  Resuming Agent-S workflow...")
-                    paused = False
-                    break
-                else:
-                    print(f"\n   Unknown command: '{char}' (ord: {ord(char)})")
-
-            except KeyboardInterrupt:
-                print("\n\n🛑 Exiting Agent-S...")
-                sys.exit(0)
-    else:
-        # Already paused, second Ctrl+C means quit
-        print("\n\n🛑 Exiting Agent-S...")
-        sys.exit(0)
+    """Stop immediately on the first Ctrl+C."""
+    print("\n\n🛑 Exiting Agent-S observer...")
+    raise SystemExit(130)
 
 
 # Set up signal handler for Ctrl+C
@@ -130,21 +98,6 @@ logger.addHandler(sdebug_handler)
 platform_os = platform.system()
 
 
-def show_permission_dialog(code: str, action_description: str):
-    """Show a platform-specific permission dialog and return True if approved."""
-    if platform.system() == "Darwin":
-        result = os.system(
-            f'osascript -e \'display dialog "Do you want to execute this action?\n\n{code} which will try to {action_description}" with title "Action Permission" buttons {{"Cancel", "OK"}} default button "OK" cancel button "Cancel"\''
-        )
-        return result == 0
-    elif platform.system() == "Linux":
-        result = os.system(
-            f'zenity --question --title="Action Permission" --text="Do you want to execute this action?\n\n{code}" --width=400 --height=200'
-        )
-        return result == 0
-    return False
-
-
 def scale_screen_dimensions(width: int, height: int, max_dim_size: int):
     scale_factor = min(max_dim_size / width, max_dim_size / height, 1)
     safe_width = int(width * scale_factor)
@@ -183,46 +136,8 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
 
-        if "done" in code[0].lower() or "fail" in code[0].lower():
-            if platform.system() == "Darwin":
-                os.system(
-                    f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
-                )
-            elif platform.system() == "Linux":
-                os.system(
-                    f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100'
-                )
-
-            break
-
-        if "next" in code[0].lower():
-            continue
-
-        if "wait" in code[0].lower():
-            print("⏳ Agent requested wait...")
-            time.sleep(5)
-            continue
-
-        else:
-            time.sleep(1.0)
-            print("EXECUTING CODE:", code[0])
-
-            # Check for pause state before execution
-            while paused:
-                time.sleep(0.1)
-
-            # Ask for permission before executing
-            exec(code[0])
-            time.sleep(1.0)
-
-            # Update task and subtask trajectories
-            if "reflection" in info and "executor_plan" in info:
-                traj += (
-                    "\n\nReflection:\n"
-                    + str(info["reflection"])
-                    + "\n\n----------------------\n\nPlan:\n"
-                    + info["executor_plan"]
-                )
+        print("PROPOSAL ONLY (not executed):", code[0])
+        return
 
 
 def main():

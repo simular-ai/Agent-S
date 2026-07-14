@@ -1,0 +1,11 @@
+[mcp_servers.agent_s_observer]
+command = "/absolute/path/to/Agent-S/scripts/agent_s_vm/codex-mcp-bridge.sh"
+enabled = true
+required = false
+enabled_tools = ["status", "observe", "start_task", "propose_next", "reset_task"]
+env_vars = ["OPENAI_API_KEY"]
+startup_timeout_sec = 20
+tool_timeout_sec = 120
+
+[mcp_servers.agent_s_observer.tools.propose_next]
+approval_mode = "approve"

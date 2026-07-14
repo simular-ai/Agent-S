@@ -61,16 +61,16 @@ class Worker(BaseModule):
         self.reset()
 
     def reset(self):
-        if self.platform != "linux":
-            skipped_actions = ["set_cell_values"]
-        else:
-            skipped_actions = []
-
-        # Hide code agent action entirely if no env/controller is available
-        if not getattr(self.grounding_agent, "env", None) or not getattr(
-            getattr(self.grounding_agent, "env", None), "controller", None
-        ):
-            skipped_actions.append("call_code_agent")
+        skipped_actions = [
+            "call_code_agent",
+            "drag_and_drop",
+            "highlight_text_span",
+            "hold_and_press",
+            "open",
+            "save_to_knowledge",
+            "set_cell_values",
+            "switch_applications",
+        ]
 
         sys_prompt = PROCEDURAL_MEMORY.construct_simple_worker_procedural_memory(
             type(self.grounding_agent), skipped_actions=skipped_actions

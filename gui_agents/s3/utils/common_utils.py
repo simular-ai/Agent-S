@@ -9,6 +9,8 @@ from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 
 import logging
 
+from gui_agents.s3.observer.actions import parse_action_call
+
 logger = logging.getLogger("desktopenv.agent")
 
 
@@ -27,9 +29,20 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
     Raises:
         Exception: If there is an error in evaluating the code.
     """
-    agent.assign_screenshot(obs)  # Necessary for grounding
-    exec_code = eval(code)
-    return exec_code
+    action = parse_action_call(code)
+    # Use an explicit allowlist and validated literal arguments.  This retains
+    # the legacy proposal formatter without evaluating model-authored Python.
+    allowed_methods = {
+        "click": agent.click,
+        "type": agent.type,
+        "scroll": agent.scroll,
+        "hotkey": agent.hotkey,
+        "wait": agent.wait,
+        "done": agent.done,
+        "fail": agent.fail,
+    }
+    agent.assign_screenshot(obs)
+    return allowed_methods[action.kind](**action.arguments)
 
 
 def call_llm_safe(

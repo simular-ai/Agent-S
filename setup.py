@@ -32,10 +32,19 @@ setup(
         'pywinauto; platform_system == "Windows"',  # Only for Windows
         'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
-    extras_require={"dev": ["black"]},  # Code formatter for linting
+    extras_require={
+        "dev": ["black", "pytest"],
+        "observer": [
+            "mcp==1.27.0",
+            "mss==9.0.1",
+            "openai==1.66.3",
+            "Pillow==11.1.0",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "agent_s=gui_agents.s3.cli_app:main",
+            "agent_s_observer_mcp=gui_agents.s3.observer.mcp_server:main",
         ],
     },
     classifiers=[

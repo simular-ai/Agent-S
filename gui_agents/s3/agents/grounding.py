@@ -102,22 +102,7 @@ def set_cell_values(new_cell_values: dict[str, str], app_name: str = "Untitled 1
         if col is not None and row is not None:
             new_cell_values_idx[(col, row)] = v
 
-    # Clean up previous TCP connections.
-    subprocess.run(
-        'echo \"osworld-public-evaluation\" | sudo -S ss --kill --tcp state TIME-WAIT sport = :2002',
-        shell=True,
-        check=True,
-        text=True,
-        capture_output=True
-    )
-
-    # Dynamically allow soffice to listen on port 2002.
-    subprocess.run(
-        [
-            "soffice",
-            "--accept=socket,host=localhost,port=2002;urp;StarOffice.Service"
-        ]
-    )
+    raise RuntimeError("Spreadsheet automation is disabled in the hardened observer build")
 
     local_context = uno.getComponentContext()
     resolver = local_context.ServiceManager.createInstanceWithContext(
@@ -426,15 +411,7 @@ class OSWorldACI(ACI):
             enter:bool, Assign it to True if the enter key should be pressed after typing the text, otherwise assign it to False.
         """
         command = "import pyautogui; "
-        command += (
-            "\ntry:\n"
-            "    import pyperclip\n"
-            "except ImportError:\n"
-            "    import subprocess\n"
-            "    subprocess.run('echo \"osworld-public-evaluation\" | sudo -S apt-get install -y xclip xsel', shell=True, check=True)\n"
-            "    subprocess.check_call([subprocess.sys.executable, '-m', 'pip', 'install', 'pyperclip'])\n"
-            "    import pyperclip\n\n"
-        )
+        command += "import pyperclip; "
 
         if element_description is not None:
             coords1 = self.generate_coords(element_description, self.obs)

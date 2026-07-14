@@ -1,0 +1,19 @@
+#!/bin/sh
+set -eu
+
+EXPECTED_COMMAND="/opt/agent-s/venv/bin/agent_s_observer_mcp"
+if [ "${SSH_ORIGINAL_COMMAND:-}" != "$EXPECTED_COMMAND" ]; then
+    echo "This SSH key is restricted to the Agent S observer MCP server." >&2
+    exit 126
+fi
+
+export DISPLAY="${DISPLAY:-:0}"
+uid="$(id -u)"
+for candidate in "/run/user/$uid/gdm/Xauthority" "$HOME/.Xauthority"; do
+    if [ -r "$candidate" ]; then
+        export XAUTHORITY="$candidate"
+        break
+    fi
+done
+
+exec "$EXPECTED_COMMAND"
