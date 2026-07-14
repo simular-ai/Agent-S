@@ -65,6 +65,21 @@ a fresh Codex thread after registration. If the provider host cached its MCP
 catalog before registration, fully restart that host rather than opening only
 another conversation.
 
+Codex MCP transports are client-process state. After recycling the VM with
+`stop.sh` and `start.sh`, fully relaunch the Codex client before relying on
+Agent S tools again. A cached tool catalog can still show `status`, `observe`,
+`start_task`, `propose_next`, and `reset_task` after the old stdio transport has
+closed; the first live tool call may then fail with `Transport closed`. The
+expected lifecycle check is:
+
+1. connect a fresh Codex client and confirm the exact five-tool catalog;
+2. recycle the VM;
+3. treat any old-client `Transport closed` response as a stale client transport,
+   not as an Agent S server defect;
+4. fully relaunch Codex;
+5. rerun `status`, `observe`, task/proposal/reset, and the repeatability canary
+   from the fresh client.
+
 ## Status and recovery
 
 Run the cheap status card first:

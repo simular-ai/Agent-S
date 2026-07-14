@@ -302,6 +302,23 @@ def test_vm_lifecycle_detects_orphaned_observer_processes():
     assert "observer_pids" in (scripts / "stop.sh").read_text()
 
 
+def test_vm_recycle_requires_fresh_codex_client_documentation():
+    repo = Path(__file__).parents[1]
+    vm_readme = (repo / "scripts" / "agent_s_vm" / "README.md").read_text()
+    observer_doc = (repo / "docs" / "observer-mcp.md").read_text()
+
+    assert "fully relaunch the Codex client" in vm_readme
+    assert "cached tool catalog" in vm_readme
+    assert "Transport closed" in vm_readme
+    assert "fresh Codex client" in vm_readme
+    assert "recycle the VM" in vm_readme
+
+    assert "Acceptance evidence" in observer_doc
+    assert "4902e9fe683fdb57e69e78ac81ebed3e90be3a8d" in observer_doc
+    assert "Ten repeatability cycles" in observer_doc
+    assert "proposal was recorded as `risk_class=proposal_only`" in observer_doc
+
+
 def test_s3_has_no_dynamic_execution_or_benchmark_password():
     s3_dir = Path(__file__).parents[1] / "gui_agents" / "s3"
     source = "\n".join(path.read_text() for path in s3_dir.rglob("*.py"))

@@ -61,3 +61,31 @@ Every newly built guest contains `/opt/agent-s/observer-build.json`. The MCP
 `status` response reports its source commit, dirty flag, build timestamp, source
 archive digest, and requirements-lock digest. A development server without
 that file reports `build.status=development` instead of inventing an identity.
+
+## Acceptance evidence
+
+Live Codex MCP validation passed on 2026-07-14 against sealed observer build
+`4902e9fe683fdb57e69e78ac81ebed3e90be3a8d`.
+
+- The exposed tool catalog was exactly `status`, `observe`, `start_task`,
+  `propose_next`, and `reset_task`; no desktop action or execution tools were
+  exposed.
+- `status` reported `mode=observation_only`, `desktop_actions_exposed=false`,
+  `build.status=sealed`, `source_dirty=false`, no OpenAI or Hugging Face
+  credentials configured, and both main and grounding API keys configured for
+  the local endpoint.
+- `observe` returned a valid 1920x1080 PNG.
+- The task lifecycle passed: `start_task`, exactly one `propose_next`, status
+  showing one active task and `proposal_count=1`, `reset_task`, then status
+  showing no active task and `proposal_count=0`.
+- The proposal was recorded as `risk_class=proposal_only` and was not executed.
+- Ten repeatability cycles of `status` followed by `observe` passed with no
+  transport errors. Mean latency was 17.7 ms for `status` and 61.9 ms for
+  `observe`.
+- All observations had stable screenshot SHA-256
+  `08865b5fefe9692b4f7887929af5e35e255a89f36686909a19a65f5e79722f93`.
+
+The earlier observed `Transport closed` failure is attributed to a stale Codex
+MCP transport that survived a VM recycle. A cached client-side tool catalog only
+proves that the tool names were previously loaded; it does not prove the stdio
+transport is still live.
