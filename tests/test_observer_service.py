@@ -150,6 +150,14 @@ def test_bridge_disables_xtrace_before_loading_credentials():
     assert bridge.index("set +x") < bridge.index("HF_TOKEN=")
 
 
+def test_vm_lifecycle_detects_orphaned_observer_processes():
+    scripts = Path(__file__).parents[1] / "scripts" / "agent_s_vm"
+    assert "observer_is_running" in (scripts / "start.sh").read_text()
+    assert "observer_is_running" in (scripts / "build_base.sh").read_text()
+    assert "observer_pids" in (scripts / "status.sh").read_text()
+    assert "observer_pids" in (scripts / "stop.sh").read_text()
+
+
 def test_s3_has_no_dynamic_execution_or_benchmark_password():
     s3_dir = Path(__file__).parents[1] / "gui_agents" / "s3"
     source = "\n".join(path.read_text() for path in s3_dir.rglob("*.py"))

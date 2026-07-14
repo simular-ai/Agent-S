@@ -13,6 +13,11 @@ if pid_is_running; then
     echo "Agent S VM is already running with PID $(<"$PID_FILE")."
     exit 0
 fi
+if observer_is_running; then
+    echo "An orphaned Agent S observer VM is already running: $(observer_pids)" >&2
+    echo "Run $SCRIPT_DIR/stop.sh before starting a new runtime." >&2
+    exit 1
+fi
 if test -e "$PID_FILE"; then
     rm -f "$PID_FILE"
 fi

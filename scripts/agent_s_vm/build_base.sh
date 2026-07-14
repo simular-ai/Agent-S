@@ -11,7 +11,7 @@ if test -e "$BASE_IMAGE"; then
     echo "Move it aside explicitly before rebuilding." >&2
     exit 1
 fi
-if pid_is_running; then
+if observer_is_running; then
     echo "Runtime VM is active; stop it before building." >&2
     exit 1
 fi

@@ -2,16 +2,20 @@
 set -euo pipefail
 source "$(dirname "$0")/common.sh"
 
-if pid_is_running; then
-    pid="$(<"$PID_FILE")"
-    kill "$pid"
+observer_processes="$(observer_pids)"
+if test -n "$observer_processes"; then
+    for pid in $observer_processes; do
+        kill "$pid"
+    done
     deadline=$((SECONDS + 30))
-    while kill -0 "$pid" 2>/dev/null; do
-        if (( SECONDS >= deadline )); then
-            echo "VM did not stop after 30 seconds." >&2
-            exit 1
-        fi
-        sleep 1
+    for pid in $observer_processes; do
+        while kill -0 "$pid" 2>/dev/null; do
+            if (( SECONDS >= deadline )); then
+                echo "VM PID $pid did not stop after 30 seconds." >&2
+                exit 1
+            fi
+            sleep 1
+        done
     done
 fi
 

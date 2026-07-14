@@ -29,5 +29,19 @@ require_command() {
 }
 
 pid_is_running() {
-    test -s "$PID_FILE" && kill -0 "$(<"$PID_FILE")" 2>/dev/null
+    if ! test -s "$PID_FILE"; then
+        return 1
+    fi
+    pid="$(<"$PID_FILE")"
+    kill -0 "$pid" 2>/dev/null && \
+        ps -p "$pid" -o args= 2>/dev/null | \
+            grep -qE '^qemu-system-x86_64 -name agent-s-observer( |$)'
+}
+
+observer_pids() {
+    pgrep -f '^qemu-system-x86_64 -name agent-s-observer( |$)' || true
+}
+
+observer_is_running() {
+    test -n "$(observer_pids)"
 }

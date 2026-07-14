@@ -14,17 +14,22 @@ if test -f "$BASE_IMAGE"; then
 else
     echo "base_image=missing"
 fi
+vm_running=false
 if pid_is_running; then
+    vm_running=true
     echo "vm=running"
     echo "pid=$(<"$PID_FILE")"
     echo "ssh=127.0.0.1:$SSH_PORT"
     echo "vnc=127.0.0.1:$VNC_PORT"
+elif observer_is_running; then
+    echo "vm=orphaned"
+    echo "orphaned_pids=$(observer_pids | tr '\n' ' ')"
 else
     echo "vm=stopped"
 fi
 
 ssh_reachable=false
-if pid_is_running; then
+if $vm_running; then
     if timeout 3 bash -c "</dev/tcp/127.0.0.1/$SSH_PORT" 2>/dev/null; then
         ssh_reachable=true
         echo "ssh_transport=reachable"
@@ -43,7 +48,7 @@ else
     echo "hf_endpoint=missing"
 fi
 
-if ! pid_is_running || ! $ssh_reachable; then
+if ! $vm_running || ! $ssh_reachable; then
     echo "integration=guest_unreachable"
 elif ! $endpoint_configured; then
     echo "integration=model_unconfigured"

@@ -59,6 +59,9 @@ The integration values have these meanings:
 
 - `guest_unreachable`: the QEMU PID is absent, or the localhost SSH transport is
   unavailable or blocked in the current execution sandbox.
+- `vm=orphaned`: a matching QEMU process exists without valid runtime PID
+  bookkeeping. `stop.sh` detects and terminates this exact observer process
+  before removing runtime files.
 - `model_unconfigured`: the VM transport is reachable but no endpoint URL is
   configured. Observation can still work.
 - `transport_ready`: the process, transport, and endpoint checks pass. Run the
