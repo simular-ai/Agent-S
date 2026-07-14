@@ -43,15 +43,17 @@ Place this non-secret model configuration in the host file below:
 
 ```text
 ~/.config/agent-s-lab/endpoint.env
+AGENT_S_MAIN_BASE_URL=http://10.0.2.2:18082/v1
+AGENT_S_MAIN_MODEL=ByteDance-Seed/UI-TARS-1.5-7B
 AGENT_S_GROUND_BASE_URL=http://10.0.2.2:18082/v1
 AGENT_S_GROUND_MODEL=ByteDance-Seed/UI-TARS-1.5-7B
 ```
 
 The exact `10.0.2.2:18082` exception is the QEMU host gateway to the dedicated
 Ubuntu-loopback tunnel. All other private-network egress remains rejected in
-the guest. The main planner continues to use `OPENAI_API_KEY` unless an
-independently tested generic main endpoint is configured. A hosted HTTPS
-grounding endpoint remains a backward-compatible fallback.
+the guest. UI-TARS serves both the main observation-only proposal and coordinate
+grounding calls serially, so this configuration needs no provider credential.
+Hosted HTTPS model endpoints remain backward-compatible fallbacks.
 
 The endpoint is lazy configuration: `status`, `observe`, `start_task`, and
 `reset_task` work without it. Only `propose_next` requires usable model
