@@ -421,6 +421,8 @@ class MacOSACI(ACI):
         Args:
             keys:List the keys to press in combination in a list format (e.g. ['shift', 'c'])
         """
+        if isinstance(keys, str):
+            keys = [keys]
         # Normalize any 'cmd' to 'command'
         keys = [_normalize_key(k) for k in keys]
         # add quotes around the keys
@@ -434,6 +436,10 @@ class MacOSACI(ACI):
             hold_keys:List, list of keys to hold
             press_keys:List, list of keys to press in a sequence
         """
+        if isinstance(hold_keys, str):
+            hold_keys = [hold_keys]
+        if isinstance(press_keys, str):
+            press_keys = [press_keys]
         # Normalize any 'cmd' to 'command' in both lists
         hold_keys = [_normalize_key(k) for k in hold_keys]
         press_keys = [_normalize_key(k) for k in press_keys]
