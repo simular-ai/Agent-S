@@ -7,7 +7,7 @@
 
 <p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s3">[S3 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper]</a>&nbsp;
+  📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper (TMLR 2026)]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=VHr0a3UBsh4">[S3 Video]</a>
 </p>
 
