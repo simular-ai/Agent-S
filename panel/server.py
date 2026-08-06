@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from dotenv import dotenv_values
 
-from gui_agents.s3.mcp_client import MCPClient, MCPToolError
+from gui_agents.s3.mcp_client import MCPClient
 from gui_agents.s3.orchestrator import Orchestrator
 from gui_agents.s3.coordination.peer_lock import PeerLock
 
@@ -119,8 +119,10 @@ def _run_orchestrator(task: str, env: dict):
         _log_lines.append(f"[panel] orchestrator dispatch: {task}")
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+    client = None
     peer_lock = None
     hb_stop = None
+    acquired = False
     try:
         bridge_env = {
             **env,
@@ -131,11 +133,12 @@ def _run_orchestrator(task: str, env: dict):
         client = MCPClient(BRIDGE_CMD, env=bridge_env)
         loop.run_until_complete(client.start())
         peer_lock = PeerLock(bridge_env["CUBEFLOW_COORDINATION_DB"])
-        acquired = peer_lock.acquire("agent_s", task, timeout_ms=5000)
-        if not acquired.get("ok"):
+        acq = peer_lock.acquire("agent_s", task, timeout_ms=5000)
+        if not acq.get("ok"):
             with _lock:
-                _log_lines.append(f"[panel] peer-lock bloqueado: {acquired.get('reason')}")
+                _log_lines.append(f"[panel] peer-lock bloqueado: {acq.get('reason')}")
             return
+        acquired = True
         hb_stop = threading.Event()
         threading.Thread(target=_heartbeat, args=(peer_lock, hb_stop), daemon=True).start()
         orch = Orchestrator(
@@ -164,9 +167,14 @@ def _run_orchestrator(task: str, env: dict):
     finally:
         if hb_stop is not None:
             hb_stop.set()
-        if peer_lock is not None:
+        if acquired:
             try:
                 peer_lock.release("agent_s")
+            except Exception:
+                pass
+        if client is not None:
+            try:
+                loop.run_until_complete(client.close())
             except Exception:
                 pass
         loop.close()
