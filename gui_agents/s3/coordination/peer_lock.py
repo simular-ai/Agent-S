@@ -108,6 +108,21 @@ class PeerLock:
                 return {"ok": False, "reason": "timeout"}
             time.sleep(POLL_INTERVAL_S)
 
+    def is_held_by_other(self, peer):
+        """True se o lock está num peer diferente, não-stale. False se livre ou held por `peer`."""
+        row = self.conn.execute(
+            "SELECT holder, heartbeat_at FROM driver_lock WHERE id = 1"
+        ).fetchone()
+        if row is None:
+            return False
+        holder, heartbeat_at = row
+        if holder is None:
+            return False
+        stale = heartbeat_at is not None and heartbeat_at < (_now_ms() - HEARTBEAT_STALE_MS)
+        if stale:
+            return False
+        return holder != peer
+
     def release(self, peer):
         cur = self.conn.execute(
             "UPDATE driver_lock SET holder=NULL, task_id=NULL WHERE id=1 AND holder=?",
