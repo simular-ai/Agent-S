@@ -72,5 +72,34 @@ class TestOrchestrator(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res["perfect"])
         self.assertLessEqual(res["api_calls"], 2)
 
+    async def test_blocked_tool_emits_error_after_retries(self):
+        """Peer-lock bloqueado 3x → tool_result de erro, mcp.call não chamado, run completa."""
+        mcp, calls = make_mcp([{"perfect":False,"issues":["x"],"sections":{},"summary":""}])
+        called_names = []
+        orig_call = mcp.call
+        async def tracking_call(name, args):
+            called_names.append(name)
+            return await orig_call(name, args)
+        mcp.call = tracking_call
+        def messages_create(**kw):
+            class B:
+                def __init__(self): self.type="tool_use"; self.name="smart_quantize"; self.input={}; self.id="x"
+            return MagicMock(content=[B()], stop_reason="tool_use")
+        peer_lock = MagicMock()
+        peer_lock.is_held_by_other = MagicMock(return_value=True)  # sempre ocupado
+        orch = Orchestrator(mcp=mcp, anthropic_key="k", peer_lock=peer_lock,
+                            peer_name="agent_s", max_cycles=1, max_api_calls=2)
+        with patch.object(orch._client.messages, "create", side_effect=messages_create), \
+             patch("gui_agents.s3.orchestrator.asyncio.sleep", new=AsyncMock(return_value=None)):
+            res = await orch.run("bateria", {"tracks":[{"name":"k","file":"/a.wav"}],"bpm":120,"grid":"1/16"})
+        # tool destrutiva bloqueada nunca foi chamada
+        self.assertNotIn("smart_quantize", called_names)
+        # run completa (não perfect)
+        self.assertFalse(res["perfect"])
+        # peer-lock foi re-checado pelo menos 3x (1 checagem inicial + 3 dentro do loop)
+        self.assertGreaterEqual(peer_lock.is_held_by_other.call_count, 4)
+        # métrica de blocked registrada
+        self.assertGreaterEqual(res["metrics"]["blocked"], 1)
+
 if __name__ == "__main__":
     unittest.main()

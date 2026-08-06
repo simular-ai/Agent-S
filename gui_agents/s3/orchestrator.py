@@ -93,12 +93,17 @@ class Orchestrator:
                     continue
                 any_tool = True
                 name, args = block.name, block.input or {}
-                # gate destrutivo via peer-lock
+                # gate destrutivo via peer-lock — espera 2s e re-checa (até 3x)
                 if self.peer_lock and self.peer_lock.is_held_by_other(self.peer_name):
                     metrics["blocked"] += 1
                     self._log(run_id, "blocked", {"tool": name, "holder": "other"})
-                    await asyncio.sleep(2)
-                    if self.peer_lock.is_held_by_other(self.peer_name):
+                    blocked = True
+                    for _ in range(3):
+                        await asyncio.sleep(2)
+                        if not self.peer_lock.is_held_by_other(self.peer_name):
+                            blocked = False
+                            break
+                    if blocked:
                         tool_results.append({"type": "tool_result", "tool_use_id": block.id,
                             "content": json.dumps({"error": "peer-lock ocupado por outro peer", "blocked": True}),
                             "is_error": True})

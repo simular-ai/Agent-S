@@ -77,7 +77,7 @@ class MCPClient:
         self._proc.stdin.write(line)
 
     async def _request(self, method, params):
-        fut = asyncio.get_event_loop().create_future()
+        fut = asyncio.get_running_loop().create_future()
         msg_id = self._next_id
         self._next_id += 1
         self._pending[msg_id] = fut
