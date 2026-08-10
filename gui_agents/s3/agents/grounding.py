@@ -1,9 +1,11 @@
+import base64
 import re
 from collections import defaultdict
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytesseract
+from anthropic import Anthropic
 from PIL import Image
 from pytesseract import Output
 
@@ -14,6 +16,15 @@ from gui_agents.s3.agents.code_agent import CodeAgent
 import logging
 
 logger = logging.getLogger("desktopenv.agent")
+
+# Claude computer-use tool (nativo da API Anthropic) — usado em generate_coords
+# quando o grounding roda em cima de um modelo Claude. Substitui o antigo
+# caminho de texto livre + regex (prompt "output only the coordinate", parse
+# via re.findall) por uma tool_use forçada com schema de coordenada real,
+# treinado especificamente pra isso — mais preciso que o modelo "chutando"
+# coordenada em texto livre.
+COMPUTER_USE_BETA = "computer-use-2025-11-24"
+COMPUTER_USE_TOOL_TYPE = "computer_20251124"
 
 
 class ACI:
@@ -209,6 +220,7 @@ class OSWorldACI(ACI):
         # Configure the visual grounding model responsible for coordinate generation
         self.grounding_model = LMMAgent(engine_params_for_grounding)
         self.engine_params_for_grounding = engine_params_for_grounding
+        self._computer_use_client = None  # lazy — só criado se o grounding for Claude
 
         # Configure text grounding agent
         self.text_span_agent = LMMAgent(
@@ -226,24 +238,108 @@ class OSWorldACI(ACI):
         self.current_task_instruction = None
         self.last_code_agent_result = None
 
+        # Cache de coords por hash de screenshot (FASE 3) — lazy, None se indisponível.
+        self._coord_cache_inst = None
+
+    def _coord_cache(self):
+        """Lazy ScreenshotCache p/ grounding. None se indisponível (import guard)."""
+        if self._coord_cache_inst is None:
+            try:
+                from gui_agents.s3.grounding.screenshot_cache import ScreenshotCache
+                self._coord_cache_inst = ScreenshotCache(track=True)
+            except Exception as exc:  # noqa: BLE001 — cache é otimização opcional
+                logger.warning("coord_cache_disabled", extra={"error": str(exc)})
+                self._coord_cache_inst = False  # sentinel: desativado
+        return self._coord_cache_inst if self._coord_cache_inst is not False else None
+
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
     def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
+        # Cache: mesma screenshot + mesmo ref_expr → mesmas coords (pula LLM call).
+        cache = self._coord_cache()
+        key = None
+        if cache is not None and obs.get("screenshot") is not None:
+            from gui_agents.s3.grounding.screenshot_cache import hash_screenshot
+            key = f"coord:{hash_screenshot(obs['screenshot'])}:{ref_expr}"
+            cached = cache.get(key)
+            if cached is not None:
+                logger.info("grounding_cache_hit", extra={"ref_expr": ref_expr})
+                return cached
 
-        # Reset the grounding model state
-        self.grounding_model.reset()
+        if self.engine_params_for_grounding.get("engine_type") == "anthropic":
+            coords = self._generate_coords_computer_use(ref_expr, obs)
+        else:
+            # Reset the grounding model state
+            self.grounding_model.reset()
+            # Configure the context, UI-TARS demo does not use system prompt
+            prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
+            self.grounding_model.add_message(
+                text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+            )
+            # Generate and parse coordinates
+            response = call_llm_safe(self.grounding_model)
+            print("RAW GROUNDING MODEL RESPONSE:", response)
+            numericals = re.findall(r"\d+", response)
+            assert len(numericals) >= 2
+            coords = [int(numericals[0]), int(numericals[1])]
 
-        # Configure the context, UI-TARS demo does not use system prompt
-        prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
-        self.grounding_model.add_message(
-            text_content=prompt, image_content=obs["screenshot"], put_text_last=True
+        if cache is not None and key is not None:
+            cache.put(key, coords)
+        return coords
+
+    # Grounding via Claude computer-use tool nativo: em vez de pedir coordenada
+    # em texto livre e extrair por regex, força uma tool_use no schema real de
+    # clique (treinado especificamente pra isso — mais preciso). thinking fica
+    # desligado porque tool_choice forçado num tool específico não combina com
+    # thinking ligado na API da Anthropic.
+    def _generate_coords_computer_use(self, ref_expr: str, obs: Dict) -> List[int]:
+        if self._computer_use_client is None:
+            self._computer_use_client = Anthropic()
+
+        image_b64 = base64.b64encode(obs["screenshot"]).decode("utf-8")
+        response = self._computer_use_client.beta.messages.create(
+            model=self.engine_params_for_grounding["model"],
+            max_tokens=512,
+            thinking={"type": "disabled"},
+            output_config={"effort": "low"},
+            betas=[COMPUTER_USE_BETA],
+            tools=[
+                {
+                    "type": COMPUTER_USE_TOOL_TYPE,
+                    "name": "computer",
+                    "display_width_px": self.width,
+                    "display_height_px": self.height,
+                }
+            ],
+            tool_choice={"type": "tool", "name": "computer"},
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        # Instrução ANTES da imagem: melhora precisão de clique
+                        # (confirmado na doc oficial do computer-use tool).
+                        {"type": "text", "text": f"Click on: {ref_expr}"},
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/png",
+                                "data": image_b64,
+                            },
+                        },
+                    ],
+                }
+            ],
         )
 
-        # Generate and parse coordinates
-        response = call_llm_safe(self.grounding_model)
-        print("RAW GROUNDING MODEL RESPONSE:", response)
-        numericals = re.findall(r"\d+", response)
-        assert len(numericals) >= 2
-        return [int(numericals[0]), int(numericals[1])]
+        for block in response.content:
+            if block.type == "tool_use" and block.input.get("action") == "left_click":
+                x, y = block.input["coordinate"]
+                return [int(x), int(y)]
+
+        raise RuntimeError(
+            f"computer-use grounding: nenhuma ação left_click retornada "
+            f"(stop_reason={response.stop_reason})"
+        )
 
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:

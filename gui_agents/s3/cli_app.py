@@ -20,6 +20,18 @@ current_platform = platform.system().lower()
 # Global flag to track pause state for debugging
 paused = False
 
+logger = logging.getLogger("desktopenv.agent")
+
+
+def _track_action(action_type: str, status: str) -> None:
+    """Observability hook (FASE 3) — conta ações executadas. Import-guard:
+    não derruba o loop do agente se o módulo de métricas falhar."""
+    try:
+        from gui_agents.s3.observability.metrics import track_action
+        track_action(action_type, status)
+    except Exception:  # noqa: BLE001 — métrica nunca derruba execução
+        pass
+
 
 def get_char():
     """Get a single character from stdin without pressing Enter"""
@@ -157,6 +169,30 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
+
+    # ── Peer-lock (CubeFlow ↔ Agent-S3) ──────────────────────────────────────
+    # Cada AÇÃO computer-use exige lock exclusivo. Se o CubeFlow autopilot
+    # estiver segurando (ação destrutiva em andamento), esperamos — os dois
+    # NÃO dirigem o Cubase simultaneamente. Opcional: sem CUBEFLOW_COORDINATION_DB
+    # roda sem coordenação (modo isolado).
+    peer_lock = None
+    try:
+        from gui_agents.s3.coordination.peer_lock import PeerLock, DB_PATH_ENV
+        if os.environ.get(DB_PATH_ENV):
+            peer_lock = PeerLock()
+    except Exception as e:
+        print(f"[peer-lock] indisponível ({e}) — rodando sem coordenação")
+    import threading
+    hb_stop = threading.Event()
+
+    def _heartbeat_loop():
+        while not hb_stop.wait(10.0):
+            try:
+                if peer_lock:
+                    peer_lock.heartbeat("agent_s")
+            except Exception:
+                pass
+
     for step in range(15):
         # Check if we're in paused state and wait
         while paused:
@@ -211,9 +247,48 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
             while paused:
                 time.sleep(0.1)
 
-            # Ask for permission before executing
-            exec(code[0])
-            time.sleep(1.0)
+            # ── Peer-lock: adquirir antes de executar a ação ──────────────────
+            task_id = f"step{step + 1}"
+            lock_held = False
+            if peer_lock:
+                acq = peer_lock.acquire("agent_s", task_id, 10000)
+                if not acq.get("ok"):
+                    print(f"[peer-lock] CubeFlow segurando o lock ({acq.get('reason')}) — pulando ação")
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "action_skipped", {"reason": acq.get("reason")}, False)
+                    except Exception:
+                        pass
+                    continue
+                lock_held = True
+                hb_stop.clear()
+                threading.Thread(target=_heartbeat_loop, daemon=True).start()
+
+            try:
+                # Ask for permission before executing
+                exec(code[0])
+                _track_action("exec", "ok")
+                time.sleep(1.0)
+                if peer_lock:
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "exec", {"code": code[0][:500]}, True)
+                    except Exception:
+                        pass
+            except Exception as e:
+                _track_action("exec", "fail")
+                if peer_lock:
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "exec", {"code": code[0][:500]}, False)
+                    except Exception:
+                        pass
+                raise
+            finally:
+                if lock_held:
+                    hb_stop.set()
+                    if peer_lock:
+                        try:
+                            peer_lock.release("agent_s")
+                        except Exception:
+                            pass
 
             # Update task and subtask trajectories
             if "reflection" in info and "executor_plan" in info:
