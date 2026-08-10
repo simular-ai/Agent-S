@@ -184,22 +184,27 @@ class DAGExecutor:
         return blocked
 
     # --------------------------------------------------------------- persist
-    def _persist(self, node: DAGNode, status: TaskStatus) -> None:
+    def _persist(self, node: DAGNode, status: TaskStatus, run_cid: str) -> None:
         if self.task_store is None:
             return
-        rec = self.task_store.get(node.task_id)
+        # #17: store_id composto por run → isola runs no store (re-run do mesmo
+        # DAG não reusa/sobrescreve rows do run anterior). idempotency_key
+        # garante que re-chamadas dentro do MESMO run sejam idempotentes.
+        store_id = f"{run_cid}:{node.task_id}"
+        rec = self.task_store.get(store_id)
         if rec is None:
             self.task_store.create(
                 node.task_id,  # instrução = id do nó (executor opaco)
-                task_id=node.task_id,
-                metadata={"dag": True},
+                task_id=store_id,
+                metadata={"dag": True, "run_cid": run_cid},
+                idempotency_key=store_id,
             )
         if status == TaskStatus.RUNNING:
-            self.task_store.mark_running(node.task_id)
+            self.task_store.mark_running(store_id)
         elif status == TaskStatus.COMPLETED:
-            self.task_store.set_result(node.task_id, node.result)
+            self.task_store.set_result(store_id, node.result)
         elif status == TaskStatus.FAILED:
-            self.task_store.set_error(node.task_id, node.error or "unknown")
+            self.task_store.set_error(store_id, node.error or "unknown")
 
     # ------------------------------------------------------------- exec sync
     def execute(self, context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
@@ -247,7 +252,7 @@ class DAGExecutor:
     ) -> None:
         token = bind_context_id(f"{run_cid}:{node.task_id}")
         node.status = NodeStatus.RUNNING
-        self._persist(node, TaskStatus.RUNNING)
+        self._persist(node, TaskStatus.RUNNING, run_cid)
         logger.info("dag_node_start", extra={"node": node.task_id})
         try:
             fn = node._wrap_retry()
@@ -255,7 +260,7 @@ class DAGExecutor:
             node.result = result
             context[node.task_id] = result
             node.status = NodeStatus.COMPLETED
-            self._persist(node, TaskStatus.COMPLETED)
+            self._persist(node, TaskStatus.COMPLETED, run_cid)
             logger.info(
                 "dag_node_done",
                 extra={"node": node.task_id, "status": "completed"},
@@ -264,7 +269,7 @@ class DAGExecutor:
             node.error = str(exc)
             node.status = NodeStatus.FAILED
             context[node.task_id] = {"error": str(exc)}
-            self._persist(node, TaskStatus.FAILED)
+            self._persist(node, TaskStatus.FAILED, run_cid)
             logger.error(
                 "dag_node_failed",
                 extra={"node": node.task_id, "error": str(exc)},
@@ -319,7 +324,7 @@ class DAGExecutor:
     ) -> None:
         token = bind_context_id(f"{run_cid}:{node.task_id}")
         node.status = NodeStatus.RUNNING
-        self._persist(node, TaskStatus.RUNNING)
+        self._persist(node, TaskStatus.RUNNING, run_cid)
         logger.info("dag_node_start", extra={"node": node.task_id})
         try:
             fn = node._wrap_retry()
@@ -330,7 +335,7 @@ class DAGExecutor:
             node.result = result
             context[node.task_id] = result
             node.status = NodeStatus.COMPLETED
-            self._persist(node, TaskStatus.COMPLETED)
+            self._persist(node, TaskStatus.COMPLETED, run_cid)
             logger.info(
                 "dag_node_done",
                 extra={"node": node.task_id, "status": "completed"},
@@ -339,7 +344,7 @@ class DAGExecutor:
             node.error = str(exc)
             node.status = NodeStatus.FAILED
             context[node.task_id] = {"error": str(exc)}
-            self._persist(node, TaskStatus.FAILED)
+            self._persist(node, TaskStatus.FAILED, run_cid)
             logger.error(
                 "dag_node_failed",
                 extra={"node": node.task_id, "error": str(exc)},

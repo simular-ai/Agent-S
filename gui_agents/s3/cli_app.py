@@ -220,6 +220,15 @@ logger.addHandler(debug_handler)
 logger.addHandler(stdout_handler)
 logger.addHandler(sdebug_handler)
 
+# #14: desktopenv.agent logger também grava nos arquivos de log. O
+# structured_logger set propagate=False → sem isto, logs desktopenv (módulos
+# s3) não chegam aos FileHandlers do CLI (logs/*.log). Mantém o handler JSON
+# do structured_logger p/ stdout; arquivos pegam formato colorido legível.
+_s3_logger = logging.getLogger("desktopenv.agent")
+_s3_logger.addHandler(file_handler)
+_s3_logger.addHandler(debug_handler)
+_s3_logger.addHandler(sdebug_handler)
+
 platform_os = platform.system()
 
 

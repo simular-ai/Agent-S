@@ -163,15 +163,31 @@ class VectorMemory:
         embed_model: Optional[str] = None,
         openai_api_key: Optional[str] = None,
     ) -> None:
-        if provider not in ("local", "openai"):
-            raise ValueError(f"provider inválido: {provider!r} (use local|openai)")
+        # #5: provider="remote" (ou env AGENT_S3_CHROMA_URL set) → HttpClient
+        # conecta a um servidor ChromaDB (`chroma run`), seguro p/ multi-process.
+        # Default: PersistentClient local (single-writer DuckDB, 1 processo).
+        chroma_url = os.environ.get("AGENT_S3_CHROMA_URL")
+        if provider not in ("local", "openai", "remote"):
+            raise ValueError(
+                f"provider inválido: {provider!r} (use local|openai|remote)"
+            )
+        if provider != "remote" and chroma_url:
+            provider = "remote"  # auto-promove se env set
         self.provider = provider
         self.persist_dir = persist_dir
         self.collection_name = collection_name
 
         chroma = _require_chroma()
-        Path(persist_dir).mkdir(parents=True, exist_ok=True)
-        self._client = chroma.PersistentClient(path=persist_dir)
+        if provider == "remote":
+            if not chroma_url:
+                raise RuntimeError(
+                    "provider='remote' requer AGENT_S3_CHROMA_URL "
+                    "(ex.: http://localhost:8000) — rode `chroma run`"
+                )
+            self._client = chroma.HttpClient(url=chroma_url)  # type: ignore[union-attr]
+        else:
+            Path(persist_dir).mkdir(parents=True, exist_ok=True)
+            self._client = chroma.PersistentClient(path=persist_dir)
 
         # Embedding function (decidida aqui p/ fail-fast no construtor).
         if provider == "local":
