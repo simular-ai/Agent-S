@@ -1,0 +1,540 @@
+# gui_agents/s3/api/main.py
+"""FastAPI — plano de controle do Agent-S3.
+
+Endpoints:
+    POST /tasks         — cria e inicia tarefa (pool background)
+    GET  /tasks/{id}    — status/estado da tarefa
+    GET  /tasks         — lista tarefas (query ?status=&limit=)
+    POST /workflows     — submete um DAG (nós referenciam handlers registrados)
+    GET  /health        — health check básico
+
+Integra: TaskStore (FASE 1), JSON logging com context_id (FASE 1),
+observability track_task (FASE 3), DAGExecutor (FASE 2). Idempotência via
+header ``X-Idempotency-Key``. Shutdown gracoso via lifespan (drain +
+cancela PENDING).
+"""
+from __future__ import annotations
+
+import logging
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Callable, Optional
+
+from fastapi import FastAPI, HTTPException, Header, Query
+from pydantic import BaseModel, Field
+
+from gui_agents.s3.logging_utils.structured_logger import (
+    bind_context_id,
+    configure_logging,
+    get_logger,
+    new_context_id,
+    reset_context_id,
+)
+from gui_agents.s3.observability.metrics import track_task
+from gui_agents.s3.orchestration.dag_executor import DAGExecutor, NodeStatus
+from gui_agents.s3.persistence.task_store import TaskStatus, TaskStore
+
+configure_logging()
+logger = get_logger("desktopenv.agent.api")
+
+# Handler plugável: assinatura (task_id, instruction, metadata) -> Any.
+TaskHandler = Callable[[str, str, dict], Any]
+# Action p/ workflows: recebe o context do DAG, devolve Any.
+ActionFn = Callable[[dict], Any]
+
+# Pool bounded — evita explosão de threads sob burst de POST /tasks.
+MAX_WORKERS = int(os.environ.get("AGENT_S3_WORKERS", "8"))
+
+
+class TaskCreateRequest(BaseModel):
+    instruction: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    schedule_cron: Optional[str] = None  # se fornecido, agenda (cron) em vez de rodar já
+
+
+class TaskResponse(BaseModel):
+    id: str
+    status: str
+    instruction: str
+    result: Optional[Any] = None
+    error: Optional[str] = None
+    attempts: int
+    created_at: float
+    updated_at: float
+    started_at: Optional[float] = None
+    completed_at: Optional[float] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class HealthResponse(BaseModel):
+    status: str
+    tasks_total: int
+    tasks_running: int
+    tasks_failed: int
+    orphans_recovered: int
+    uptime_s: float
+
+
+# ----------------------------------------------------------- workflow models
+class WorkflowNodeSpec(BaseModel):
+    id: str
+    handler: str                       # nome de action registrada via register_action
+    dependencies: list[str] = Field(default_factory=list)
+    retry: bool = False
+    max_attempts: int = 3
+    backoff_base: float = 2.0
+
+
+class WorkflowRequest(BaseModel):
+    nodes: list[WorkflowNodeSpec]
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class WorkflowResponse(BaseModel):
+    workflow_id: str
+    status: str
+    summary: dict[str, int]
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+# --------------------------------------------------------------- app state
+def _maybe_scheduler():
+    """Cria TaskScheduler se apscheduler estiver instalado; senão None."""
+    try:
+        from gui_agents.s3.orchestration.scheduler import TaskScheduler
+        return TaskScheduler()
+    except ImportError:
+        return None
+
+
+def _reaper_loop(state: dict, interval: float) -> None:
+    """Reaper periódico de contêineres + dirs temp órfãos (H4 nuance).
+
+    Daemon thread — não bloqueia shutdown. Dorme em slices de 5s checando
+    ``state["shutting_down"]`` p/ parar prontamente no graceful shutdown.
+    Falhas isoladas (daemon offline, SDK ausente) não derrubam o processo:
+    ``reap_orphans_now`` retorna 0 nesses casos.
+    """
+    from gui_agents.s3.execution.docker_executor import reap_orphans_now
+    while not state["shutting_down"]:
+        try:
+            reap_orphans_now()
+        except Exception as exc:  # noqa: BLE001 — reaper não derruba a API
+            logger.warning("periodic_reaper_failed", extra={"error": str(exc)})
+        slept = 0.0
+        while slept < interval and not state["shutting_down"]:
+            time.sleep(min(5.0, interval - slept))
+            slept += 5.0
+
+
+def create_app(
+    task_store: Optional[TaskStore] = None,
+    handler: Optional[TaskHandler] = None,
+    scheduler=None,
+    *,
+    recover_orphans: bool = True,
+) -> FastAPI:
+    """Factory — permite injetar store, handler e scheduler (testes/prod).
+
+    Args:
+        recover_orphans: no startup, marca RUNNING/RETRYING órfãos (de crash
+            anterior) como FAILED. Evita tasks presas p/ sempre no DB.
+    """
+    from contextlib import asynccontextmanager
+
+    store = task_store or TaskStore()
+    state: dict[str, Any] = {
+        "store": store,
+        "handler": handler,
+        "scheduler": scheduler,  # None → criado no lifespan se apscheduler ok
+        "pool": ThreadPoolExecutor(max_workers=MAX_WORKERS,
+                                   thread_name_prefix="task"),
+        "actions": {},            # registro nome → ActionFn p/ workflows
+        "shutting_down": False,   # flag p/ shutdown gracioso
+        "started_at": time.time(),
+        "orphans_recovered": 0,
+    }
+
+    @asynccontextmanager
+    async def _lifespan(_app: FastAPI):
+        # Reaper de startup: RUNNING/RETRYING órfãos → FAILED.
+        if recover_orphans:
+            n = store.recover_orphans(requeue=False)
+            state["orphans_recovered"] = n
+            if n:
+                logger.warning(
+                    "orphans_recovered", extra={"count": n}
+                )
+        # Scheduler criado AQUI (não lazy no request handler) → sem race.
+        sched = state["scheduler"] or _maybe_scheduler()
+        state["scheduler"] = sched
+        if sched is not None:
+            sched.start()
+        # Reaper periódico (H4 nuance): contêineres + dirs temp órfãos a cada
+        # AGENT_S3_REAPER_INTERVAL segundos (default 3600 = 1h). Daemon thread
+        # — para no graceful shutdown via state["shutting_down"].
+        reaper_interval = float(
+            os.environ.get("AGENT_S3_REAPER_INTERVAL", "3600")
+        )
+        reaper_thread = threading.Thread(
+            target=_reaper_loop,
+            args=(state, reaper_interval),
+            name="agent_s3_reaper",
+            daemon=True,
+        )
+        state["reaper_thread"] = reaper_thread
+        reaper_thread.start()
+        logger.info(
+            "periodic_reaper_started", extra={"interval_s": reaper_interval}
+        )
+        yield
+        # ---- shutdown gracoso ----
+        # 1. Sinaliza _run_task p/ não iniciar novas PENDING.
+        state["shutting_down"] = True
+        # 2. Scheduler para de disparar novos jobs.
+        if sched is not None:
+            sched.shutdown(wait=False)
+        # 3. Marca PENDING (na fila, ainda não começaram) como CANCELLED.
+        cancelled = store.cancel_pending(reason="shutdown")
+        if cancelled:
+            logger.info("shutdown_cancelled_pending", extra={"count": cancelled})
+        # 4. Pool: cancela fila (PENDING já CANCELLED no store); dá grace period
+        #    p/ tasks em voo — NÃO espera para sempre (handler deadlock não
+        #    trava o shutdown). Threads vivas após timeout viram zumbis (logado).
+        state["pool"].shutdown(wait=False, cancel_futures=True)
+        deadline = time.time() + float(
+            os.environ.get("AGENT_S3_SHUTDOWN_TIMEOUT", "30")
+        )
+        for t in list(state["pool"]._threads):  # noqa: SLF001 — fallback gracioso
+            t.join(timeout=max(1.0, deadline - time.time()))
+        remaining = sum(1 for t in state["pool"]._threads if t.is_alive())
+        logger.info("pool_shutdown_complete", extra={"threads_remaining": remaining})
+
+    app = FastAPI(
+        title="Agent-S3 Control API",
+        version="0.3.0",
+        lifespan=_lifespan,
+    )
+
+    def _default_handler(task_id: str, instruction: str, meta: dict) -> Any:
+        # Stub — registra que rodou sem plugar o Worker de verdade.
+        logger.info(
+            "task_handler_stub",
+            extra={"task_id": task_id, "instruction": instruction},
+        )
+        return {"stub": True, "instruction": instruction}
+
+    def _tier4_handler(task_id: str, instruction: str, meta: dict) -> Any:
+        """Handler integrador: fecha o ciclo POST /tasks → Docker → VectorMemory → Observability.
+
+        Env-gated (AGENT_S3_API_TIER4=1). Default off preserva o stub — surgical.
+        """
+        result: Any = None
+        # 1. Recupera experiência similar (VectorMemory).
+        if os.environ.get("AGENT_S3_USE_MEMORY"):
+            try:
+                from gui_agents.s3.memory.vector_memory import get_vector_memory
+
+                mem = get_vector_memory()
+                hits = mem.query_similar_experience(instruction, top_k=1)
+                if hits and hits[0].score >= 0.6:
+                    logger.info(
+                        "memory_reused",
+                        extra={"task_id": task_id, "score": round(hits[0].score, 3)},
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "memory_query_failed",
+                    extra={"task_id": task_id, "error": str(exc)},
+                )
+
+        # 2. Executa código em sandbox (DockerExecutor) se houver bloco ```python.
+        if os.environ.get("AGENT_S3_USE_DOCKER") and "```python" in instruction:
+            try:
+                from gui_agents.s3.execution.docker_executor import DockerExecutor
+                from gui_agents.s3.observability.metrics import track_action
+
+                code = instruction.split("```python", 1)[1].split("```", 1)[0]
+                r = DockerExecutor().run_python(code)
+                result = {
+                    "stdout": r.stdout,
+                    "stderr": r.stderr,
+                    "exit_code": r.exit_code,
+                }
+                track_action("docker", "ok" if r.success else "fail")
+                if not r.success:
+                    raise RuntimeError(
+                        f"docker exit {r.exit_code}: {r.stderr[:500]}"
+                    )
+            except Exception:  # noqa: BLE001 — _run_task trata + track_task("failed")
+                raise
+        else:
+            result = {"handled": True, "instruction": instruction}
+
+        # 3. Salva trajetória de sucesso (VectorMemory) — falha VISÍVEL (#16).
+        if os.environ.get("AGENT_S3_USE_MEMORY"):
+            try:
+                from gui_agents.s3.memory.vector_memory import get_vector_memory
+                from gui_agents.s3.observability.metrics import track_action
+
+                get_vector_memory().save_success_trajectory(
+                    instruction, f"task_id={task_id}\nresult={result}"
+                )
+                track_action("memory_save", "ok")
+            except Exception as exc:  # noqa: BLE001
+                track_action("memory_save", "fail")
+                logger.error(
+                    "memory_save_failed",
+                    extra={"task_id": task_id, "error": str(exc)},
+                )
+        return result
+
+    def _get_handler() -> TaskHandler:
+        if os.environ.get("AGENT_S3_API_TIER4"):
+            return state["handler"] or _tier4_handler
+        return state["handler"] or _default_handler
+
+    def _run_task(task_id: str, instruction: str, meta: dict) -> None:
+        """Pool worker — executa handler e atualiza o store + observability.
+        Usado por POST /tasks (pool) e por jobs cron do scheduler.
+        """
+        token = bind_context_id(task_id)
+        s: TaskStore = state["store"]
+        # Shutdown em andamento: cancela e não executa (não estava RUNNING ainda).
+        if state["shutting_down"]:
+            s.cancel(task_id)
+            track_task("cancelled")
+            logger.info("task_cancelled_shutdown", extra={"task_id": task_id})
+            reset_context_id(token)
+            return
+        s.mark_running(task_id)
+        try:
+            result = _get_handler()(task_id, instruction, meta)
+            s.set_result(task_id, result)
+            track_task("completed")
+            logger.info("task_completed", extra={"task_id": task_id})
+        except Exception as exc:  # noqa: BLE001
+            s.set_error(task_id, str(exc))
+            # alert_on_fail=True dispara Slack se webhook configurado.
+            track_task("failed", alert_on_fail=True)
+            logger.error(
+                "task_failed",
+                extra={"task_id": task_id, "error": str(exc)},
+            )
+        finally:
+            reset_context_id(token)
+
+    def _cron_fire(instruction: str, meta: dict) -> None:
+        """Cada disparo cron = NOVA tarefa (não reusa id do agendamento).
+
+        O rec.id do agendamento é só p/ nomear o job; o histórico de cada
+        fire é uma linha própria no store.
+        """
+        fire_meta = {**meta, "trigger": "cron"}
+        rec = state["store"].create(instruction, metadata=fire_meta)
+        state["pool"].submit(_run_task, rec.id, instruction, fire_meta)
+
+    # ---------------------------------------------------------------- routes
+    @app.post("/tasks", response_model=TaskResponse, status_code=202)
+    def create_task(
+        req: TaskCreateRequest,
+        idem: Optional[str] = Header(None, alias="X-Idempotency-Key"),
+    ) -> TaskResponse:
+        s: TaskStore = state["store"]
+
+        if req.schedule_cron:
+            # Modo agendado: cria PENDING (template) + registra cron que
+            # gera nova task a cada fire. Não roda agora.
+            sched = state["scheduler"]
+            if sched is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="schedule_cron requer apscheduler. "
+                           "Rode: pip install apscheduler",
+                )
+            meta = {**req.metadata, "schedule_cron": req.schedule_cron}
+            rec = s.create(req.instruction, metadata=meta, idempotency_key=idem)
+            sched.add_cron(
+                _cron_fire,
+                job_id=f"cron:{rec.id}",
+                cron=req.schedule_cron,
+                args=(req.instruction, meta),
+            )
+            logger.info(
+                "task_scheduled",
+                extra={"task_id": rec.id, "cron": req.schedule_cron},
+            )
+            return _to_response(rec)
+
+        # Modo imediato: submete ao pool (bounded, não Thread cru).
+        rec = s.create(req.instruction, metadata=req.metadata, idempotency_key=idem)
+        # Se idempotência devolveu task pré-existente, NÃO re-submete (já rodando/rodou).
+        if idem and rec.status != TaskStatus.PENDING:
+            logger.info(
+                "task_idempotent_hit",
+                extra={"task_id": rec.id, "status": rec.status.value},
+            )
+            return _to_response(rec)
+        state["pool"].submit(
+            _run_task, rec.id, req.instruction, req.metadata
+        )
+        logger.info(
+            "task_accepted",
+            extra={"task_id": rec.id, "instruction": req.instruction},
+        )
+        return _to_response(rec)
+
+    @app.get("/tasks/{task_id}", response_model=TaskResponse)
+    def get_task(task_id: str) -> TaskResponse:
+        store: TaskStore = state["store"]
+        rec = store.get(task_id)
+        if rec is None:
+            raise HTTPException(status_code=404, detail="task not found")
+        return _to_response(rec)
+
+    @app.get("/tasks", response_model=list[TaskResponse])
+    def list_tasks(
+        status: Optional[str] = Query(None),
+        limit: int = Query(100, ge=1, le=1000),
+    ) -> list[TaskResponse]:
+        store: TaskStore = state["store"]
+        st = TaskStatus(status) if status else None
+        return [_to_response(r) for r in store.list(status=st, limit=limit)]
+
+    @app.get("/health", response_model=HealthResponse)
+    def health() -> HealthResponse:
+        store: TaskStore = state["store"]
+        return HealthResponse(
+            status="ok",
+            tasks_total=store.count(),
+            tasks_running=store.count(TaskStatus.RUNNING),
+            tasks_failed=store.count(TaskStatus.FAILED),
+            orphans_recovered=state["orphans_recovered"],
+            uptime_s=round(time.time() - state["started_at"], 3),
+        )
+
+    # ------------------------------------------------------------- workflows
+    def _execute_workflow(
+        wf_task_id: str, nodes: list[WorkflowNodeSpec], context: dict[str, Any]
+    ) -> None:
+        """Pool worker — roda um DAG de handlers registrados.
+
+        Cada nó referencia um handler pelo nome no registro ``state["actions"]``.
+        Dependências respeitadas; falha de nó skipa dependentes (fail_fast=False).
+        Resultado do workflow é armazenado na task wf_task_id.
+        """
+        token = bind_context_id(wf_task_id)
+        s: TaskStore = state["store"]
+        if state["shutting_down"]:
+            s.cancel(wf_task_id)
+            track_task("cancelled")
+            reset_context_id(token)
+            return
+        s.mark_running(wf_task_id)
+        try:
+            actions: dict[str, ActionFn] = state["actions"]
+            dag = DAGExecutor(task_store=s, fail_fast=False)
+            for n in nodes:
+                fn = actions.get(n.handler)
+                if fn is None:
+                    raise KeyError(
+                        f"handler '{n.handler}' não registrado. "
+                        f"Disponíveis: {sorted(actions)}"
+                    )
+                dag.add_node(
+                    n.id,
+                    executor_func=fn,
+                    dependencies=n.dependencies,
+                    retry=n.retry,
+                    max_attempts=n.max_attempts,
+                    backoff_base=n.backoff_base,
+                )
+            # execute() devolve o context MUTADO (copia internamente e popula
+            # com resultados de cada nó). Usar o retorno, não a var original.
+            out_ctx = dag.execute(context)
+            summary = dag._summary()["summary"]
+            result = {
+                "summary": summary,
+                "context": out_ctx,
+            }
+            s.set_result(wf_task_id, result)
+            track_task("completed")
+            logger.info("workflow_completed", extra={"task_id": wf_task_id,
+                                                       "summary": summary})
+        except Exception as exc:  # noqa: BLE001
+            s.set_error(wf_task_id, str(exc))
+            track_task("failed", alert_on_fail=True)
+            logger.error("workflow_failed", extra={"task_id": wf_task_id,
+                                                    "error": str(exc)})
+        finally:
+            reset_context_id(token)
+
+    @app.post("/workflows", response_model=WorkflowResponse, status_code=202)
+    def submit_workflow(req: WorkflowRequest) -> WorkflowResponse:
+        actions: dict[str, ActionFn] = state["actions"]
+        # Validação eagerly: handlers existem? DAG válido?
+        missing = [n.handler for n in req.nodes if n.handler not in actions]
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"handlers não registrados: {sorted(set(missing))}. "
+                       f"Disponíveis: {sorted(actions)}",
+            )
+        s: TaskStore = state["store"]
+        rec = s.create(
+            f"workflow: {len(req.nodes)} nodes",
+            metadata={"type": "workflow", "nodes": [n.id for n in req.nodes]},
+        )
+        state["pool"].submit(_execute_workflow, rec.id, req.nodes, dict(req.context))
+        logger.info(
+            "workflow_accepted",
+            extra={"task_id": rec.id, "node_count": len(req.nodes)},
+        )
+        return WorkflowResponse(
+            workflow_id=rec.id,
+            status=rec.status.value,
+            summary={"total": len(req.nodes)},
+            context=dict(req.context),
+        )
+
+    # Permite trocar handler depois de criado (prod pluga Worker).
+    app.state.set_handler = lambda h: state.__setitem__("handler", h)
+    # Registro de actions p/ workflows: app.state.register_action("foo", fn)
+    def _register_action(name: str, fn: ActionFn) -> None:
+        state["actions"][name] = fn
+    app.state.register_action = _register_action
+    app.state.store = state["store"]
+    return app
+
+
+def _to_response(rec) -> TaskResponse:
+    return TaskResponse(
+        id=rec.id,
+        status=rec.status.value,
+        instruction=rec.instruction,
+        result=rec.result,
+        error=rec.error,
+        attempts=rec.attempts,
+        created_at=rec.created_at,
+        updated_at=rec.updated_at,
+        started_at=rec.started_at,
+        completed_at=rec.completed_at,
+        metadata=rec.metadata,
+    )
+
+
+# Instância default p/ ``uvicorn gui_agents.s3.api.main:app``.
+app = create_app()
+
+
+def main() -> None:
+    """Entry point: ``python -m gui_agents.s3.api.main``."""
+    import uvicorn
+
+    uvicorn.run(app, host="0.0.0.0", port=8765, log_level="info")
+
+
+if __name__ == "__main__":
+    main()

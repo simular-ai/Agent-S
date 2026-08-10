@@ -20,6 +20,99 @@ current_platform = platform.system().lower()
 # Global flag to track pause state for debugging
 paused = False
 
+logger = logging.getLogger("desktopenv.agent")
+
+
+def _track_action(action_type: str, status: str) -> None:
+    """Observability hook (FASE 3) — conta ações executadas. Import-guard:
+    não derruba o loop do agente se o módulo de métricas falhar."""
+    try:
+        from gui_agents.s3.observability.metrics import track_action
+        track_action(action_type, status)
+    except Exception:  # noqa: BLE001 — métrica nunca derruba execução
+        pass
+
+
+# ── TIER 4 hooks (env-gated, opt-in) ─────────────────────────────────────────
+# AGENT_S3_USE_MEMORY=1 → VectorMemory query/save no ciclo
+# AGENT_S3_USE_HEALING=1 → SelfHealingEngine no except path
+# Default off = behavior inalterado (sem deps/keys não quebra).
+
+
+def _action_to_code(action: dict) -> str | None:
+    """Converte action dict (HealingResult) → pyautogui code string."""
+    at = (action or {}).get("action_type")
+    if at in ("done", "fail", "", None):
+        return None
+    coords = action.get("coordinates") or [0, 0]
+    x, y = int(coords[0]), int(coords[1])
+    if at == "click":
+        return f"pyautogui.click({x}, {y})"
+    if at == "type":
+        return f"pyautogui.write({action.get('text', '')!r})"
+    if at == "hotkey":
+        keys = action.get("keys", "")
+        args = ",".join(repr(k) for k in keys.split("+") if k)
+        return f"pyautogui.hotkey({args})"
+    if at == "scroll":
+        return f"pyautogui.scroll(0, {x}, {y})"
+    if at == "wait":
+        return "time.sleep(2)"
+    return None
+
+
+def _memory_query(instruction: str) -> None:
+    """Recupera trajetória similar (TIER 4 M2). Import-guard + fail-soft."""
+    try:
+        from gui_agents.s3.memory.vector_memory import get_vector_memory
+
+        hits = get_vector_memory().query_similar_experience(instruction, top_k=1)
+        if hits and hits[0].score >= 0.6:
+            print(
+                f"[memory] trajetória similar reusada (score={hits[0].score:.2f})"
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"[memory] indisponível ({e})")
+
+
+def _memory_save(instruction: str, traj: str) -> None:
+    """Grava trajetória de sucesso (TIER 4 M2). Falha OBSERVÁVEL (não silenciosa)."""
+    try:
+        from gui_agents.s3.memory.vector_memory import get_vector_memory
+        from gui_agents.s3.logging_utils.structured_logger import context_id
+
+        get_vector_memory().save_success_trajectory(
+            instruction, traj, metadata={"context_id": context_id()}
+        )
+        print("[memory] trajetória de sucesso salva")
+        _track_action("memory_save", "ok")
+    except Exception as e:  # noqa: BLE001
+        print(f"[memory] save falhou ({e})")
+        _track_action("memory_save", "fail")
+        logger.error("memory_save_failed", extra={"error": str(e), "instruction": instruction[:120]})
+
+
+def _heal(action_code: str, error: str, before_bytes: bytes) -> str | None:
+    """Auto-correção causal via VLM (TIER 4 M3). Retorna code corrigido ou None."""
+    try:
+        from gui_agents.s3.cognition.self_healing import SelfHealingEngine
+
+        shot = pyautogui.screenshot()
+        buf = io.BytesIO()
+        shot.save(buf, format="PNG")
+        result = SelfHealingEngine().diagnose(
+            action_code, error, before_bytes, buf.getvalue()
+        )
+        if result.has_recovery:
+            code = _action_to_code(result.action)
+            if code:
+                print(f"[healing] causa raiz: {result.root_cause} | ação: {code}")
+                return code
+        print(f"[healing] sem recuperação ({result.root_cause})")
+    except Exception as e:  # noqa: BLE001
+        print(f"[healing] indisponível ({e})")
+    return None
+
 
 def get_char():
     """Get a single character from stdin without pressing Enter"""
@@ -127,6 +220,15 @@ logger.addHandler(debug_handler)
 logger.addHandler(stdout_handler)
 logger.addHandler(sdebug_handler)
 
+# #14: desktopenv.agent logger também grava nos arquivos de log. O
+# structured_logger set propagate=False → sem isto, logs desktopenv (módulos
+# s3) não chegam aos FileHandlers do CLI (logs/*.log). Mantém o handler JSON
+# do structured_logger p/ stdout; arquivos pegam formato colorido legível.
+_s3_logger = logging.getLogger("desktopenv.agent")
+_s3_logger.addHandler(file_handler)
+_s3_logger.addHandler(debug_handler)
+_s3_logger.addHandler(sdebug_handler)
+
 platform_os = platform.system()
 
 
@@ -157,6 +259,34 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     obs = {}
     traj = "Task:\n" + instruction
     subtask_traj = ""
+
+    # ── TIER 4 M2: memória semântica — reusa experiência similar ──────────────
+    if os.environ.get("AGENT_S3_USE_MEMORY"):
+        _memory_query(instruction)
+
+    # ── Peer-lock (CubeFlow ↔ Agent-S3) ──────────────────────────────────────
+    # Cada AÇÃO computer-use exige lock exclusivo. Se o CubeFlow autopilot
+    # estiver segurando (ação destrutiva em andamento), esperamos — os dois
+    # NÃO dirigem o Cubase simultaneamente. Opcional: sem CUBEFLOW_COORDINATION_DB
+    # roda sem coordenação (modo isolado).
+    peer_lock = None
+    try:
+        from gui_agents.s3.coordination.peer_lock import PeerLock, DB_PATH_ENV
+        if os.environ.get(DB_PATH_ENV):
+            peer_lock = PeerLock()
+    except Exception as e:
+        print(f"[peer-lock] indisponível ({e}) — rodando sem coordenação")
+    import threading
+    hb_stop = threading.Event()
+
+    def _heartbeat_loop():
+        while not hb_stop.wait(10.0):
+            try:
+                if peer_lock:
+                    peer_lock.heartbeat("agent_s")
+            except Exception:
+                pass
+
     for step in range(15):
         # Check if we're in paused state and wait
         while paused:
@@ -184,6 +314,11 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         info, code = agent.predict(instruction=instruction, observation=obs)
 
         if "done" in code[0].lower() or "fail" in code[0].lower():
+            # ── TIER 4 M2: grava trajetória vencedora ──────────────────────────
+            if "done" in code[0].lower() and os.environ.get(
+                "AGENT_S3_USE_MEMORY"
+            ):
+                _memory_save(instruction, traj)
             if platform.system() == "Darwin":
                 os.system(
                     f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
@@ -211,9 +346,58 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
             while paused:
                 time.sleep(0.1)
 
-            # Ask for permission before executing
-            exec(code[0])
-            time.sleep(1.0)
+            # ── Peer-lock: adquirir antes de executar a ação ──────────────────
+            task_id = f"step{step + 1}"
+            lock_held = False
+            if peer_lock:
+                acq = peer_lock.acquire("agent_s", task_id, 10000)
+                if not acq.get("ok"):
+                    print(f"[peer-lock] CubeFlow segurando o lock ({acq.get('reason')}) — pulando ação")
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "action_skipped", {"reason": acq.get("reason")}, False)
+                    except Exception:
+                        pass
+                    continue
+                lock_held = True
+                hb_stop.clear()
+                threading.Thread(target=_heartbeat_loop, daemon=True).start()
+
+            try:
+                # Ask for permission before executing
+                exec(code[0])
+                _track_action("exec", "ok")
+                time.sleep(1.0)
+                if peer_lock:
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "exec", {"code": code[0][:500]}, True)
+                    except Exception:
+                        pass
+            except Exception as e:
+                _track_action("exec", "fail")
+                if peer_lock:
+                    try:
+                        peer_lock.log_event("agent_s", task_id, "exec", {"code": code[0][:500]}, False)
+                    except Exception:
+                        pass
+                # ── TIER 4 M3: auto-correção causal antes de propagar ──────────
+                if os.environ.get("AGENT_S3_USE_HEALING"):
+                    healed = _heal(code[0], str(e), obs["screenshot"])
+                    if healed:
+                        try:
+                            exec(healed)
+                            _track_action("exec", "ok")
+                            continue  # finally libera peer-lock; próximo step
+                        except Exception:
+                            raise
+                raise
+            finally:
+                if lock_held:
+                    hb_stop.set()
+                    if peer_lock:
+                        try:
+                            peer_lock.release("agent_s")
+                        except Exception:
+                            pass
 
             # Update task and subtask trajectories
             if "reflection" in info and "executor_plan" in info:
