@@ -33,6 +33,81 @@ def _track_action(action_type: str, status: str) -> None:
         pass
 
 
+# ── TIER 4 hooks (env-gated, opt-in) ─────────────────────────────────────────
+# AGENT_S3_USE_MEMORY=1 → VectorMemory query/save no ciclo
+# AGENT_S3_USE_HEALING=1 → SelfHealingEngine no except path
+# Default off = behavior inalterado (sem deps/keys não quebra).
+
+
+def _action_to_code(action: dict) -> str | None:
+    """Converte action dict (HealingResult) → pyautogui code string."""
+    at = (action or {}).get("action_type")
+    if at in ("done", "fail", "", None):
+        return None
+    coords = action.get("coordinates") or [0, 0]
+    x, y = int(coords[0]), int(coords[1])
+    if at == "click":
+        return f"pyautogui.click({x}, {y})"
+    if at == "type":
+        return f"pyautogui.write({action.get('text', '')!r})"
+    if at == "hotkey":
+        keys = action.get("keys", "")
+        args = ",".join(repr(k) for k in keys.split("+") if k)
+        return f"pyautogui.hotkey({args})"
+    if at == "scroll":
+        return f"pyautogui.scroll(0, {x}, {y})"
+    if at == "wait":
+        return "time.sleep(2)"
+    return None
+
+
+def _memory_query(instruction: str) -> None:
+    """Recupera trajetória similar (TIER 4 M2). Import-guard + fail-soft."""
+    try:
+        from gui_agents.s3.memory.vector_memory import VectorMemory
+
+        hits = VectorMemory().query_similar_experience(instruction, top_k=1)
+        if hits and hits[0].score >= 0.6:
+            print(
+                f"[memory] trajetória similar reusada (score={hits[0].score:.2f})"
+            )
+    except Exception as e:  # noqa: BLE001
+        print(f"[memory] indisponível ({e})")
+
+
+def _memory_save(instruction: str, traj: str) -> None:
+    """Grava trajetória de sucesso (TIER 4 M2). Import-guard + fail-soft."""
+    try:
+        from gui_agents.s3.memory.vector_memory import VectorMemory
+
+        VectorMemory().save_success_trajectory(instruction, traj)
+        print("[memory] trajetória de sucesso salva")
+    except Exception as e:  # noqa: BLE001
+        print(f"[memory] save falhou ({e})")
+
+
+def _heal(action_code: str, error: str, before_bytes: bytes) -> str | None:
+    """Auto-correção causal via VLM (TIER 4 M3). Retorna code corrigido ou None."""
+    try:
+        from gui_agents.s3.cognition.self_healing import SelfHealingEngine
+
+        shot = pyautogui.screenshot()
+        buf = io.BytesIO()
+        shot.save(buf, format="PNG")
+        result = SelfHealingEngine().diagnose(
+            action_code, error, before_bytes, buf.getvalue()
+        )
+        if result.has_recovery:
+            code = _action_to_code(result.action)
+            if code:
+                print(f"[healing] causa raiz: {result.root_cause} | ação: {code}")
+                return code
+        print(f"[healing] sem recuperação ({result.root_cause})")
+    except Exception as e:  # noqa: BLE001
+        print(f"[healing] indisponível ({e})")
+    return None
+
+
 def get_char():
     """Get a single character from stdin without pressing Enter"""
     try:
@@ -170,6 +245,10 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
     traj = "Task:\n" + instruction
     subtask_traj = ""
 
+    # ── TIER 4 M2: memória semântica — reusa experiência similar ──────────────
+    if os.environ.get("AGENT_S3_USE_MEMORY"):
+        _memory_query(instruction)
+
     # ── Peer-lock (CubeFlow ↔ Agent-S3) ──────────────────────────────────────
     # Cada AÇÃO computer-use exige lock exclusivo. Se o CubeFlow autopilot
     # estiver segurando (ação destrutiva em andamento), esperamos — os dois
@@ -220,6 +299,11 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         info, code = agent.predict(instruction=instruction, observation=obs)
 
         if "done" in code[0].lower() or "fail" in code[0].lower():
+            # ── TIER 4 M2: grava trajetória vencedora ──────────────────────────
+            if "done" in code[0].lower() and os.environ.get(
+                "AGENT_S3_USE_MEMORY"
+            ):
+                _memory_save(instruction, traj)
             if platform.system() == "Darwin":
                 os.system(
                     f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
@@ -280,6 +364,16 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
                         peer_lock.log_event("agent_s", task_id, "exec", {"code": code[0][:500]}, False)
                     except Exception:
                         pass
+                # ── TIER 4 M3: auto-correção causal antes de propagar ──────────
+                if os.environ.get("AGENT_S3_USE_HEALING"):
+                    healed = _heal(code[0], str(e), obs["screenshot"])
+                    if healed:
+                        try:
+                            exec(healed)
+                            _track_action("exec", "ok")
+                            continue  # finally libera peer-lock; próximo step
+                        except Exception:
+                            raise
                 raise
             finally:
                 if lock_held:
