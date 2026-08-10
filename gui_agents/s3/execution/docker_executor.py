@@ -359,11 +359,32 @@ class DockerExecutor:
             return 0
 
 
+def reap_orphans_now() -> int:
+    """Reaper standalone (contêineres + dirs temp órfãos) — sem instância.
+
+    P/ uso fora do ciclo de execução (ex.: reaper periódico na API). Seguro
+    chamar sem daemon/SDK: ``reap_orphans`` faz seu próprio ``_require_docker``
+    em try/except e retorna 0 se indisponível. ``reap_orphans`` não usa attrs
+    de instância → ``__new__`` bypassa o construtor (que faria fail-fast no
+    ``_require_docker``).
+    """
+    ex = DockerExecutor.__new__(DockerExecutor)
+    return ex.reap_orphans()
+
+
 def _alive_pids() -> List[int]:
     """PIDs vivos relevantes p/ o reaper. Default: só o atual.
 
-    Em produção multi-process (ex.: gunicorn workers), expandir p/ varrer
-    ``/proc`` (Linux) ou ``ps`` — aqui mantido mínimo (Simplicity First).
+    H1 — limite single-worker: o reaper (``reap_orphans``) mata contêineres
+    cujo ``agent_s3.owner`` PID NÃO está vivo. Com múltiplos workers
+    (ex.: ``uvicorn --workers N``, gunicorn), o worker B só conhece o próprio
+    PID → mata os contêineres do worker A (ainda rodando) tratando-os como
+    órfãos. Seguro p/ single-worker (default local). P/ multi-worker, OU:
+      (a) expandir aqui p/ varrer ``/proc`` (Linux) / ``ps -eo pid`` (macOS),
+          filtrando PIDs do processo-pai do agente; OU
+      (b) trocar o label ``agent_s3.owner=<pid>`` por um UUID por processo
+          (``agent_s3.owner_uuid``) e reap apenas dos UUIDs mortos — mais
+          robusto que PID (sobrevive a PID reuse).
     """
     import os as _os
 

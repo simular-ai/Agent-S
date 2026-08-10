@@ -332,9 +332,22 @@ def get_vector_memory(**kwargs: Any) -> "VectorMemory":
     Evita recarregar ``all-MiniLM-L6-v2`` (~90MB) a cada chamada e múltiplos
     PersistentClient contendendo o lock single-writer do DuckDB. Use este em
     vez de ``VectorMemory()`` direto em loops/hot paths.
+
+    H2: se o singleton já foi inicializado, kwargs conflitantes eram
+    silenciosamente ignorados (caller achava que trocava ``provider`` mas
+    recebia a 1ª instância). Agora levanta ``ValueError`` se um kwarg diferir
+    da config em uso — passe toda a config na 1ª chamada.
     """
     global _VM_INSTANCE
     with _VM_LOCK:
         if _VM_INSTANCE is None:
             _VM_INSTANCE = VectorMemory(**kwargs)
+        elif kwargs:
+            for key, val in kwargs.items():
+                cur = getattr(_VM_INSTANCE, key, None)
+                if cur != val:
+                    raise ValueError(
+                        f"get_vector_memory já inicializado com {key}={cur!r}; "
+                        f"ignoraria {key}={val!r}. Defina antes da 1ª chamada."
+                    )
         return _VM_INSTANCE

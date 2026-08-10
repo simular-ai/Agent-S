@@ -331,7 +331,12 @@ class DAGExecutor:
             if node.is_async:
                 result = await fn(context)
             else:
-                result = fn(context)
+                # M3: sync fn pode ser bloqueante (ex.: docker 30s) — roda num
+                # thread do executor padrão p/ não travar o event loop. Sem
+                # isso, asyncio.gather dá paralelismo zero p/ fns sync
+                # (todos os nós da camada rodam em série, bloqueando o loop).
+                loop = asyncio.get_running_loop()
+                result = await loop.run_in_executor(None, fn, context)
             node.result = result
             context[node.task_id] = result
             node.status = NodeStatus.COMPLETED

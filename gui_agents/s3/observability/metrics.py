@@ -85,6 +85,23 @@ class ObservabilityManager:
     ) -> None:
         with self._lock:
             if getattr(self, "_initialized", False):
+                # H2: kwargs conflitantes eram silenciosamente ignorados (o
+                # guard returnava cedo e o caller achava que reconfigurava).
+                # Raise p/ falhar cedo — passe toda a config na 1ª instanciação.
+                if metrics_port != self.metrics_port:
+                    raise ValueError(
+                        f"ObservabilityManager já inicializado com "
+                        f"metrics_port={self.metrics_port}; ignoraria "
+                        f"{metrics_port}. Defina na 1ª instanciação."
+                    )
+                if (
+                    slack_webhook_url
+                    and slack_webhook_url != self.slack_webhook_url
+                ):
+                    raise ValueError(
+                        "ObservabilityManager já inicializado; "
+                        "slack_webhook_url conflitante seria ignorado."
+                    )
                 return
             self.metrics_port = metrics_port
             # Env fallback — não loga o valor (segredo).

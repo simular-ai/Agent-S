@@ -93,7 +93,7 @@ class LocalController:
                 "error": str(e),
             }
 
-    def run_python_script(self, code: str) -> Dict:
+    def run_python_script(self, code: str, timeout: int = 30) -> Dict:
         docker = _docker_executor()
         if docker is not None:
             r = docker.run_python(code, env={"AGENT_S3_CONTEXT_ID": context_id() or ""})
@@ -120,6 +120,7 @@ class LocalController:
                 [sys.executable, "-c", code],
                 capture_output=True,
                 text=True,
+                timeout=timeout,
             )
             print("PYTHON OUTPUT =======================================")
             print(proc.stdout or "")
@@ -129,6 +130,13 @@ class LocalController:
                 "return_code": proc.returncode,
                 "output": proc.stdout or "",
                 "error": proc.stderr or "",
+            }
+        except subprocess.TimeoutExpired as e:
+            return {
+                "status": "error",
+                "return_code": -1,
+                "output": e.stdout or "",
+                "error": f"TimeoutExpired: {str(e)}",
             }
         except Exception as e:
             return {

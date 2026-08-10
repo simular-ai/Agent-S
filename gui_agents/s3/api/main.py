@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Optional
@@ -108,6 +109,26 @@ def _maybe_scheduler():
         return None
 
 
+def _reaper_loop(state: dict, interval: float) -> None:
+    """Reaper periódico de contêineres + dirs temp órfãos (H4 nuance).
+
+    Daemon thread — não bloqueia shutdown. Dorme em slices de 5s checando
+    ``state["shutting_down"]`` p/ parar prontamente no graceful shutdown.
+    Falhas isoladas (daemon offline, SDK ausente) não derrubam o processo:
+    ``reap_orphans_now`` retorna 0 nesses casos.
+    """
+    from gui_agents.s3.execution.docker_executor import reap_orphans_now
+    while not state["shutting_down"]:
+        try:
+            reap_orphans_now()
+        except Exception as exc:  # noqa: BLE001 — reaper não derruba a API
+            logger.warning("periodic_reaper_failed", extra={"error": str(exc)})
+        slept = 0.0
+        while slept < interval and not state["shutting_down"]:
+            time.sleep(min(5.0, interval - slept))
+            slept += 5.0
+
+
 def create_app(
     task_store: Optional[TaskStore] = None,
     handler: Optional[TaskHandler] = None,
@@ -151,6 +172,23 @@ def create_app(
         state["scheduler"] = sched
         if sched is not None:
             sched.start()
+        # Reaper periódico (H4 nuance): contêineres + dirs temp órfãos a cada
+        # AGENT_S3_REAPER_INTERVAL segundos (default 3600 = 1h). Daemon thread
+        # — para no graceful shutdown via state["shutting_down"].
+        reaper_interval = float(
+            os.environ.get("AGENT_S3_REAPER_INTERVAL", "3600")
+        )
+        reaper_thread = threading.Thread(
+            target=_reaper_loop,
+            args=(state, reaper_interval),
+            name="agent_s3_reaper",
+            daemon=True,
+        )
+        state["reaper_thread"] = reaper_thread
+        reaper_thread.start()
+        logger.info(
+            "periodic_reaper_started", extra={"interval_s": reaper_interval}
+        )
         yield
         # ---- shutdown gracoso ----
         # 1. Sinaliza _run_task p/ não iniciar novas PENDING.

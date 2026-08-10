@@ -298,36 +298,27 @@ class SelfHealingEngine:
     # ─────────────────────────────────────────────────────────── parse
     @staticmethod
     def _parse_json(raw: str) -> Optional[Dict[str, Any]]:
-        """Extrai JSON object da resposta (tolera ```json fences / prose)."""
+        """Extrai JSON object da resposta (tolera ```json fences / prose).
+
+        H3: usa ``json.JSONDecoder().raw_decode`` em vez de brace-counting —
+        o contador antigo quebrava com ``}`` dentro de strings (ex.: valor
+        ``"click({x:100})"`` decrementava depth prematuro). raw_decode é um
+        parser JSON real: lida com chaves dentro de strings, objetos aninhados
+        e ignora prose/fences antes e depois do objeto.
+        """
         if not raw:
             return None
-        # fence ```json ... ```
-        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", raw, re.DOTALL)
-        candidate = m.group(1) if m else raw
-        try:
-            obj = json.loads(candidate)
-        except json.JSONDecodeError:
-            # fallback: primeiro { ... } balanceado
-            start = candidate.find("{")
-            if start < 0:
-                return None
-            depth = 0
-            for i in range(start, len(candidate)):
-                if candidate[i] == "{":
-                    depth += 1
-                elif candidate[i] == "}":
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            obj = json.loads(candidate[start : i + 1])
-                            break
-                        except json.JSONDecodeError:
-                            return None
-            else:
-                return None
-        if not isinstance(obj, dict):
-            return None
-        return obj
+        decoder = json.JSONDecoder()
+        start = raw.find("{")
+        while start >= 0:
+            try:
+                obj, _ = decoder.raw_decode(raw[start:])
+                if isinstance(obj, dict):
+                    return obj
+            except json.JSONDecodeError:
+                pass
+            start = raw.find("{", start + 1)
+        return None
 
 
 # ───────────────────────────────────────────────────────────── helpers
