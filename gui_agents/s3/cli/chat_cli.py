@@ -370,6 +370,22 @@ class ChatCLI(cmd.Cmd):
         return "python"
 
     # ─────────────────────────────────────────────────────────── cmd loop
+    def parseline(self, line: str) -> Any:
+        """Honra o prefixo ``/`` anunciado no intro (``/exit``, ``/help``…).
+
+        ``cmd.Cmd`` ignora chars não-identificador à esquerda, então
+        ``/exit`` vira cmd vazio → ``default`` (tratado como tarefa). Aqui,
+        se a linha começa com ``/`` E o resto resolve para um ``do_*``
+        registrado, usamos esse comando; senão caímos no parse default
+        (preserva tarefas que começam com path, ex.: ``/tmp/foo.pdf`` →
+        ``do_tmp`` não existe → ``default`` → ``run_task``).
+        """
+        if line and line.startswith("/"):
+            stripped = super().parseline(line[1:])
+            if stripped and stripped[0] and hasattr(self, "do_" + stripped[0]):
+                return stripped
+        return super().parseline(line)
+
     def default(self, line: str) -> bool:  # noqa: D401
         """Qualquer linha que não é comando vira tarefa."""
         try:

@@ -5,6 +5,7 @@ _parse_json (incl. caso H3 — } dentro de string), _strip_fences,
 _needs_research, _build_query, e ChatCLI._detect_language. Os métodos que
 chamam OpenAI/Anthropic/DDGS ficam fora de escopo (env-gated, precisam key).
 """
+import sys
 import unittest
 
 from gui_agents.s3.cli.chat_cli import ChatCLI
@@ -158,6 +159,48 @@ class TestDetectLanguage(unittest.TestCase):
 
     def test_apt(self):
         self.assertEqual(ChatCLI._detect_language("apt install ffmpeg"), "bash")
+
+
+class TestParselineSlashRouting(unittest.TestCase):
+    """``/exit`` etc. devem rotear para ``do_*``, não virar tarefa (default)."""
+
+    def setUp(self):
+        # __init__ imprime o banner (rich) — pytest captura stdout, ok.
+        import io
+        self._saved_stdout = sys.stdout
+        sys.stdout = io.StringIO()
+        self.cli = ChatCLI()
+
+    def tearDown(self):
+        sys.stdout = self._saved_stdout
+
+    def test_slash_exit_routes_to_exit(self):
+        cmd, arg, line = self.cli.parseline("/exit")
+        self.assertEqual(cmd, "exit")
+
+    def test_slash_help_routes_to_help(self):
+        cmd, _arg, _line = self.cli.parseline("/help")
+        self.assertEqual(cmd, "help")
+
+    def test_slash_memory_routes_to_memory(self):
+        cmd, _arg, _line = self.cli.parseline("/memory")
+        self.assertEqual(cmd, "memory")
+
+    def test_bare_exit_still_works(self):
+        cmd, _arg, _line = self.cli.parseline("exit")
+        self.assertEqual(cmd, "exit")
+
+    def test_path_starting_slash_falls_back_to_default(self):
+        # "/tmp/foo.pdf" → do_tmp não existe → não roubeia, cai em default.
+        cmd, _arg, _line = self.cli.parseline("/tmp/foo.pdf")
+        self.assertEqual(cmd, "")
+
+    def test_plain_task_has_no_do_method(self):
+        # parseline devolve a 1ª palavra como cmd; roteamento p/ default
+        # acontece no onecmd (do_quantize não existe). Verificamos isso.
+        cmd, _arg, _line = self.cli.parseline("quantize the drum loop")
+        self.assertEqual(cmd, "quantize")
+        self.assertFalse(hasattr(self.cli, "do_" + cmd))
 
 
 if __name__ == "__main__":
