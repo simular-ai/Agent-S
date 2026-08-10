@@ -247,3 +247,27 @@ rápido (criar row SQLite + submit future é O(ms)); tasks processam assíncrono
 Se `--check-completion` → poll GET /tasks/{id} até terminal, mede throughput
 real do handler (stub = instantâneo; com `AGENT_S3_API_TIER4=1` + Docker,
 throughput cai p/ ~8 paralelo limitado pelo pool).
+
+---
+
+## Status de Aplicação (2026-08-10)
+
+| Issue | Severidade | Status | Commit |
+|-------|-----------|--------|--------|
+| #15 | CRÍTICO | ✅ aplicado | 7fd43dc |
+| #1 | ALTO | ✅ aplicado | 7fd43dc |
+| #3 | ALTO | ✅ aplicado | 7fd43dc |
+| #4 | ALTO | ✅ aplicado | 7fd43dc |
+| #16 | ALTO | ✅ aplicado | 7fd43dc |
+| #7 | Médio | ✅ aplicado | 02b30df |
+| #10 | Médio | ✅ aplicado | 02b30df |
+| #11 | Médio | ✅ aplicado | 02b30df |
+| #12 | Médio | ✅ aplicado | 02b30df |
+| #2 | Médio | ✅ aplicado | 02b30df |
+| #5 | Médio | ⏸️ push back — ChromaDB multi-process = migration p/ server mode (`chroma run`), não fix cirúrgico | — |
+| #14 | Médio | ⏸️ push back — logs duplicados cli_app vs structured_logger: risco quebrar CLI logging existente; refatorar exige reprojeto do handler setup | — |
+| #6,#8,#9,#13,#19 | Baixo | ✅ confirmado OK — não requer fix (já race-safe/documentado) | — |
+| #17 | Médio | ⏸️ pendente — DAG `_persist` sem idempotency_key (isolamento entre runs) | — |
+
+**Resumo final:** 10/19 aplicados (1 crítico + 4 alto + 5 médio), 2 push back
+(documentados), 1 pendente (#17), 6 confirmados OK. Base endurecida sob carga.
