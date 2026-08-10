@@ -1,7 +1,12 @@
+import logging
 import os
 import subprocess
 import sys
-from typing import Dict
+from typing import Dict, Optional
+
+from gui_agents.s3.logging_utils.structured_logger import context_id
+
+logger = logging.getLogger("desktopenv.agent.local_env")
 
 
 def _docker_executor():
@@ -31,11 +36,23 @@ class LocalController:
     def run_bash_script(self, code: str, timeout: int = 30) -> Dict:
         docker = _docker_executor()
         if docker is not None:
-            r = docker.run_bash(code, timeout=float(timeout))
+            r = docker.run_bash(
+                code, timeout=float(timeout),
+                env={"AGENT_S3_CONTEXT_ID": context_id() or ""},
+            )
             output = r.stdout + (("\n" + r.stderr) if r.stderr else "")
             print("BASH OUTPUT =======================================")
             print(output)
             print("BASH OUTPUT =======================================")
+            if not r.success:
+                logger.error(
+                    "docker_bash_failed",
+                    extra={
+                        "context_id": context_id(),
+                        "exit_code": r.exit_code,
+                        "stderr": (r.stderr or "")[:500],
+                    },
+                )
             return {
                 "status": "ok" if r.success else "error",
                 "returncode": r.exit_code if r.exit_code is not None else -1,
@@ -79,10 +96,19 @@ class LocalController:
     def run_python_script(self, code: str) -> Dict:
         docker = _docker_executor()
         if docker is not None:
-            r = docker.run_python(code)
+            r = docker.run_python(code, env={"AGENT_S3_CONTEXT_ID": context_id() or ""})
             print("PYTHON OUTPUT =======================================")
             print(r.stdout)
             print("PYTHON OUTPUT =======================================")
+            if not r.success:
+                logger.error(
+                    "docker_python_failed",
+                    extra={
+                        "context_id": context_id(),
+                        "exit_code": r.exit_code,
+                        "stderr": (r.stderr or "")[:500],
+                    },
+                )
             return {
                 "status": "ok" if r.success else "error",
                 "return_code": r.exit_code if r.exit_code is not None else -1,

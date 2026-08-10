@@ -140,6 +140,7 @@ class DockerExecutor:
         script: str,
         files: Optional[Dict[str, bytes]] = None,
         timeout: Optional[float] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> ExecutionResult:
         """Executa ``script`` (Python) no contêiner.
 
@@ -147,17 +148,19 @@ class DockerExecutor:
             script: código Python fonte.
             files: mapa ``nome → bytes`` gravado no work_dir antes de rodar.
             timeout: sobrescreve o timeout do construtor p/ esta chamada.
+            env: variáveis de ambiente injetadas no contêiner (ex.: context_id).
         """
-        return self._run_script(script, files, "python", timeout)
+        return self._run_script(script, files, "python", timeout, env)
 
     def run_bash(
         self,
         script: str,
         files: Optional[Dict[str, bytes]] = None,
         timeout: Optional[float] = None,
+        env: Optional[Dict[str, str]] = None,
     ) -> ExecutionResult:
         """Executa ``script`` (Bash) no contêiner (requer ``bash`` na imagem)."""
-        return self._run_script(script, files, "bash", timeout)
+        return self._run_script(script, files, "bash", timeout, env)
 
     # ───────────────────────────────────────────────────────────── internos
     def _ensure_image(self) -> None:
@@ -174,9 +177,12 @@ class DockerExecutor:
         files: Optional[Dict[str, bytes]],
         interpreter: str,
         timeout: Optional[float],
+        env: Optional[Dict[str, str]] = None,
     ) -> ExecutionResult:
         host_dir = Path(tempfile.mkdtemp(prefix="agent_s3_sandbox_"))
         try:
+            # Marker c/ PID p/ o reaper limpar dirs órfãos sob SIGKILL/OOM (#2).
+            (host_dir / ".agent_s3_pid").write_text(str(os.getpid()), encoding="utf-8")
             # Escreve script + arquivos no volume host (bind-mount → work_dir).
             if interpreter == "python":
                 (host_dir / "script.py").write_text(script, encoding="utf-8")
@@ -188,7 +194,7 @@ class DockerExecutor:
                 # Sanitiza nome: sem path traversal p/ fora do host_dir.
                 safe = Path(name).name
                 (host_dir / safe).write_bytes(data)
-            return self._execute(command, host_dir, timeout)
+            return self._execute(command, host_dir, timeout, env)
         except Exception as exc:
             logger.error(
                 "sandbox_setup_error",
@@ -211,6 +217,7 @@ class DockerExecutor:
         command: List[str],
         host_dir: Path,
         timeout: Optional[float],
+        env: Optional[Dict[str, str]] = None,
     ) -> ExecutionResult:
         to = self.timeout if timeout is None else timeout
         run_kwargs: Dict[str, Any] = dict(
@@ -233,6 +240,9 @@ class DockerExecutor:
                 "agent_s3.managed": "1",
             },
         )
+        # #10: injeta env vars (ex.: AGENT_S3_CONTEXT_ID) p/ correlação de logs.
+        if env:
+            run_kwargs["environment"] = env
         container = None
         start = time.time()
         try:
@@ -324,7 +334,8 @@ class DockerExecutor:
             return 0
         try:
             client = _require_docker()
-            alive = {f"pid{p}" for p in _alive_pids()}
+            alive_pids = _alive_pids()
+            alive = {f"pid{p}" for p in alive_pids}
             n = 0
             for c in client.containers.list(
                 all=True, filters={"label": "agent_s3.managed=1"}
@@ -336,8 +347,13 @@ class DockerExecutor:
                         n += 1
                     except Exception:  # noqa: BLE001
                         pass
-            if n:
-                logger.info("docker_reaped_orphans", extra={"count": n})
+            # #2: limpa dirs temp órfãos (mkdtemp vazia sob SIGKILL/OOM).
+            dirs = _reap_temp_dirs(alive_pids)
+            if n or dirs:
+                logger.info(
+                    "docker_reaped_orphans",
+                    extra={"containers": n, "temp_dirs": dirs},
+                )
             return n
         except Exception:  # noqa: BLE001
             return 0
@@ -352,3 +368,29 @@ def _alive_pids() -> List[int]:
     import os as _os
 
     return [_os.getpid()]
+
+
+def _reap_temp_dirs(alive_pids: List[int]) -> int:
+    """Remove dirs ``agent_s3_sandbox_*`` órfãos em /tmp cujo PID-marker morreu.
+
+    Sob SIGKILL/OOM, o ``finally`` que faz ``shutil.rmtree(host_dir)`` não
+    roda → dirs temp vazam. O marker ``.agent_s3_pid`` (escrito em
+    :meth:`_run_script`) permite ao reaper identificar órfãos por PID.
+    """
+    import glob
+    import shutil as _shutil
+
+    alive = set(alive_pids)
+    n = 0
+    for d in glob.glob(str(Path(tempfile.gettempdir()) / "agent_s3_sandbox_*")):
+        marker = Path(d) / ".agent_s3_pid"
+        if not marker.exists():
+            continue
+        try:
+            pid = int(marker.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError):
+            continue
+        if pid not in alive:
+            _shutil.rmtree(d, ignore_errors=True)
+            n += 1
+    return n

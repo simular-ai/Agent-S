@@ -79,8 +79,11 @@ def _memory_save(instruction: str, traj: str) -> None:
     """Grava trajetória de sucesso (TIER 4 M2). Falha OBSERVÁVEL (não silenciosa)."""
     try:
         from gui_agents.s3.memory.vector_memory import get_vector_memory
+        from gui_agents.s3.logging_utils.structured_logger import context_id
 
-        get_vector_memory().save_success_trajectory(instruction, traj)
+        get_vector_memory().save_success_trajectory(
+            instruction, traj, metadata={"context_id": context_id()}
+        )
         print("[memory] trajetória de sucesso salva")
         _track_action("memory_save", "ok")
     except Exception as e:  # noqa: BLE001

@@ -126,6 +126,7 @@ class SelfHealingEngine:
         model: Optional[str] = None,
         api_key: Optional[str] = None,
         max_tokens: int = 1024,
+        vlm_timeout: float = 30.0,
     ) -> None:
         if provider not in ("openai", "anthropic"):
             raise ValueError(
@@ -138,6 +139,8 @@ class SelfHealingEngine:
             else self.DEFAULT_MODEL_ANTHROPIC
         )
         self.max_tokens = max_tokens
+        # #7: timeout HTTP p/ chamada VLM — VLM hang não bloqueia step do agente.
+        self.vlm_timeout = vlm_timeout
         self._client = self._build_client(provider, api_key)
         logger.info(
             "self_healing_ready",
@@ -156,7 +159,7 @@ class SelfHealingEngine:
                 raise RuntimeError(
                     "OPENAI_API_KEY ausente — defina a env ou passe api_key="
                 )
-            return _OpenAIClient(api_key=key)  # type: ignore[misc]
+            return _OpenAIClient(api_key=key, timeout=self.vlm_timeout)  # type: ignore[misc]
         # anthropic
         if not _HAS_ANTHROPIC:
             raise RuntimeError(
@@ -167,7 +170,7 @@ class SelfHealingEngine:
             raise RuntimeError(
                 "ANTHROPIC_API_KEY ausente — defina a env ou passe api_key="
             )
-        return _AnthropicClient(api_key=key)  # type: ignore[misc]
+        return _AnthropicClient(api_key=key, timeout=self.vlm_timeout)  # type: ignore[misc]
 
     # ───────────────────────────────────────────────────────── API pública
     def diagnose(
