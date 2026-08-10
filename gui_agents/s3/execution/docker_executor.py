@@ -227,6 +227,11 @@ class DockerExecutor:
             security_opt=["no-new-privileges"],
             # auto_remove tratado no GC p/ garantir logs mesmo em kill.
             auto_remove=False,
+            # Label p/ o reaper (reap_orphans) encontrar órfãos sob SIGKILL/OOM.
+            labels={
+                "agent_s3.owner": f"pid{os.getpid()}",
+                "agent_s3.managed": "1",
+            },
         )
         container = None
         start = time.time()
@@ -303,3 +308,47 @@ class DockerExecutor:
                 getattr(container, op)(force=True)
             except Exception:
                 pass
+
+    # ─────────────────────────────────────────────────────── reaper (orphan GC)
+    def reap_orphans(self) -> int:
+        """Remove containers ``agent_s3.managed`` órfãos de PIDs mortos.
+
+        Sob SIGKILL/OOM do processo Python, o ``finally`` que chama
+        :meth:`_cleanup` NÃO roda → containers ``detach=True`` + volumes
+        ``mkdtemp`` vazam. Este reaper (chamar no startup do executor e
+        opcionalmente no lifespan da API) remove os órfãos por label.
+
+        Retorna a quantidade removida.
+        """
+        if not _HAS_DOCKER:
+            return 0
+        try:
+            client = _require_docker()
+            alive = {f"pid{p}" for p in _alive_pids()}
+            n = 0
+            for c in client.containers.list(
+                all=True, filters={"label": "agent_s3.managed=1"}
+            ):
+                owner = c.labels.get("agent_s3.owner", "")
+                if owner and owner not in alive:
+                    try:
+                        c.remove(force=True)
+                        n += 1
+                    except Exception:  # noqa: BLE001
+                        pass
+            if n:
+                logger.info("docker_reaped_orphans", extra={"count": n})
+            return n
+        except Exception:  # noqa: BLE001
+            return 0
+
+
+def _alive_pids() -> List[int]:
+    """PIDs vivos relevantes p/ o reaper. Default: só o atual.
+
+    Em produção multi-process (ex.: gunicorn workers), expandir p/ varrer
+    ``/proc`` (Linux) ou ``ps`` — aqui mantido mínimo (Simplicity First).
+    """
+    import os as _os
+
+    return [_os.getpid()]

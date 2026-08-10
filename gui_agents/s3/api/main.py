@@ -162,10 +162,17 @@ def create_app(
         cancelled = store.cancel_pending(reason="shutdown")
         if cancelled:
             logger.info("shutdown_cancelled_pending", extra={"count": cancelled})
-        # 4. Pool: espera tarefas em voo terminarem; cancela as que ainda
-        #    estão na fila (já marcadas CANCELLED no store, então _run_task
-        #    que eventualmente pegá-las verá o status e skip).
-        state["pool"].shutdown(wait=True, cancel_futures=True)
+        # 4. Pool: cancela fila (PENDING já CANCELLED no store); dá grace period
+        #    p/ tasks em voo — NÃO espera para sempre (handler deadlock não
+        #    trava o shutdown). Threads vivas após timeout viram zumbis (logado).
+        state["pool"].shutdown(wait=False, cancel_futures=True)
+        deadline = time.time() + float(
+            os.environ.get("AGENT_S3_SHUTDOWN_TIMEOUT", "30")
+        )
+        for t in list(state["pool"]._threads):  # noqa: SLF001 — fallback gracioso
+            t.join(timeout=max(1.0, deadline - time.time()))
+        remaining = sum(1 for t in state["pool"]._threads if t.is_alive())
+        logger.info("pool_shutdown_complete", extra={"threads_remaining": remaining})
 
     app = FastAPI(
         title="Agent-S3 Control API",
@@ -181,7 +188,74 @@ def create_app(
         )
         return {"stub": True, "instruction": instruction}
 
+    def _tier4_handler(task_id: str, instruction: str, meta: dict) -> Any:
+        """Handler integrador: fecha o ciclo POST /tasks → Docker → VectorMemory → Observability.
+
+        Env-gated (AGENT_S3_API_TIER4=1). Default off preserva o stub — surgical.
+        """
+        result: Any = None
+        # 1. Recupera experiência similar (VectorMemory).
+        if os.environ.get("AGENT_S3_USE_MEMORY"):
+            try:
+                from gui_agents.s3.memory.vector_memory import get_vector_memory
+
+                mem = get_vector_memory()
+                hits = mem.query_similar_experience(instruction, top_k=1)
+                if hits and hits[0].score >= 0.6:
+                    logger.info(
+                        "memory_reused",
+                        extra={"task_id": task_id, "score": round(hits[0].score, 3)},
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.error(
+                    "memory_query_failed",
+                    extra={"task_id": task_id, "error": str(exc)},
+                )
+
+        # 2. Executa código em sandbox (DockerExecutor) se houver bloco ```python.
+        if os.environ.get("AGENT_S3_USE_DOCKER") and "```python" in instruction:
+            try:
+                from gui_agents.s3.execution.docker_executor import DockerExecutor
+                from gui_agents.s3.observability.metrics import track_action
+
+                code = instruction.split("```python", 1)[1].split("```", 1)[0]
+                r = DockerExecutor().run_python(code)
+                result = {
+                    "stdout": r.stdout,
+                    "stderr": r.stderr,
+                    "exit_code": r.exit_code,
+                }
+                track_action("docker", "ok" if r.success else "fail")
+                if not r.success:
+                    raise RuntimeError(
+                        f"docker exit {r.exit_code}: {r.stderr[:500]}"
+                    )
+            except Exception:  # noqa: BLE001 — _run_task trata + track_task("failed")
+                raise
+        else:
+            result = {"handled": True, "instruction": instruction}
+
+        # 3. Salva trajetória de sucesso (VectorMemory) — falha VISÍVEL (#16).
+        if os.environ.get("AGENT_S3_USE_MEMORY"):
+            try:
+                from gui_agents.s3.memory.vector_memory import get_vector_memory
+                from gui_agents.s3.observability.metrics import track_action
+
+                get_vector_memory().save_success_trajectory(
+                    instruction, f"task_id={task_id}\nresult={result}"
+                )
+                track_action("memory_save", "ok")
+            except Exception as exc:  # noqa: BLE001
+                track_action("memory_save", "fail")
+                logger.error(
+                    "memory_save_failed",
+                    extra={"task_id": task_id, "error": str(exc)},
+                )
+        return result
+
     def _get_handler() -> TaskHandler:
+        if os.environ.get("AGENT_S3_API_TIER4"):
+            return state["handler"] or _tier4_handler
         return state["handler"] or _default_handler
 
     def _run_task(task_id: str, instruction: str, meta: dict) -> None:

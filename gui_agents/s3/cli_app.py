@@ -64,9 +64,9 @@ def _action_to_code(action: dict) -> str | None:
 def _memory_query(instruction: str) -> None:
     """Recupera trajetória similar (TIER 4 M2). Import-guard + fail-soft."""
     try:
-        from gui_agents.s3.memory.vector_memory import VectorMemory
+        from gui_agents.s3.memory.vector_memory import get_vector_memory
 
-        hits = VectorMemory().query_similar_experience(instruction, top_k=1)
+        hits = get_vector_memory().query_similar_experience(instruction, top_k=1)
         if hits and hits[0].score >= 0.6:
             print(
                 f"[memory] trajetória similar reusada (score={hits[0].score:.2f})"
@@ -76,14 +76,17 @@ def _memory_query(instruction: str) -> None:
 
 
 def _memory_save(instruction: str, traj: str) -> None:
-    """Grava trajetória de sucesso (TIER 4 M2). Import-guard + fail-soft."""
+    """Grava trajetória de sucesso (TIER 4 M2). Falha OBSERVÁVEL (não silenciosa)."""
     try:
-        from gui_agents.s3.memory.vector_memory import VectorMemory
+        from gui_agents.s3.memory.vector_memory import get_vector_memory
 
-        VectorMemory().save_success_trajectory(instruction, traj)
+        get_vector_memory().save_success_trajectory(instruction, traj)
         print("[memory] trajetória de sucesso salva")
+        _track_action("memory_save", "ok")
     except Exception as e:  # noqa: BLE001
         print(f"[memory] save falhou ({e})")
+        _track_action("memory_save", "fail")
+        logger.error("memory_save_failed", extra={"error": str(e), "instruction": instruction[:120]})
 
 
 def _heal(action_code: str, error: str, before_bytes: bytes) -> str | None:

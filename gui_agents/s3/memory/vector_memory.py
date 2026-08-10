@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -302,3 +303,22 @@ class VectorMemory:
             return int(self._collection.count())
         except Exception:
             return 0
+
+
+# ───────────────────────────────────────────────────────────── singleton
+_VM_INSTANCE: Optional["VectorMemory"] = None
+_VM_LOCK = threading.Lock()
+
+
+def get_vector_memory(**kwargs: Any) -> "VectorMemory":
+    """Singleton thread-safe — reusa PersistentClient + modelo de embedding.
+
+    Evita recarregar ``all-MiniLM-L6-v2`` (~90MB) a cada chamada e múltiplos
+    PersistentClient contendendo o lock single-writer do DuckDB. Use este em
+    vez de ``VectorMemory()`` direto em loops/hot paths.
+    """
+    global _VM_INSTANCE
+    with _VM_LOCK:
+        if _VM_INSTANCE is None:
+            _VM_INSTANCE = VectorMemory(**kwargs)
+        return _VM_INSTANCE
