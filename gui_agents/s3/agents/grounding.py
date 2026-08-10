@@ -242,7 +242,14 @@ class OSWorldACI(ACI):
         self._coord_cache_inst = None
 
     def _coord_cache(self):
-        """Lazy ScreenshotCache p/ grounding. None se indisponível (import guard)."""
+        """Lazy ScreenshotCache p/ grounding. None se indisponível (import guard).
+
+        ``hasattr`` guard p/ init parcial (ex.: testes via ``__new__`` p/ evitar
+        deps de API key em ``__init__``): sem o atributo → cache desativado (None),
+        comportamento idêntico ao pré-integração. Só carrega se ``__init__`` rodou.
+        """
+        if not hasattr(self, "_coord_cache_inst"):
+            return None
         if self._coord_cache_inst is None:
             try:
                 from gui_agents.s3.grounding.screenshot_cache import ScreenshotCache
