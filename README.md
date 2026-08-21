@@ -188,9 +188,6 @@ agent_s \
 - **`--grounding_width`**: Width of the output coordinate resolution from the grounding model - **Required**
 - **`--grounding_height`**: Height of the output coordinate resolution from the grounding model - **Required**
 
-#### Optional Parameters
-- **`--model_temperature`**: The temperature to fix all model calls to (necessary to set to 1.0 for models like o3 but can be left blank for other models)
-
 #### Grounding Model Dimensions
 The grounding width and height should match the output coordinate resolution of your grounding model:
 - **UI-TARS-1.5-7B**: Use `--grounding_width 1920 --grounding_height 1080`
@@ -203,6 +200,7 @@ The grounding width and height should match the output coordinate resolution of 
 - **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 - **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
+- **`--model_temperature`**: The temperature to fix all model calls to (necessary to set to 1.0 for models like o3 but can be left blank for other models)
 
 #### Local Coding Environment Details
 The local coding environment enables Agent S3 to execute Python and Bash code directly on your machine. This is particularly useful for:
