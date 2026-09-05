@@ -3,9 +3,16 @@
   <small>Use Computer Like a Human</small>
 </h1>
 
-<h2 align="center">🏆 Agent S3: First to Surpass Human Performance on OSWorld (72.60%)</h2>
+<p align="center">
+  <b>An open-source computer use agent that operates a real GUI — mouse, keyboard, and screen — the way a person does.</b>
+</p>
+
+<h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
+<h2 align="center">🏆 <a href="https://github.com/simular-ai/Agent-S">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
+
 
 <p align="center">&nbsp;
+  🌐 <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">[Sai OSWorld 2.0 report]</a>&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s3">[S3 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper (TMLR 2026)]</a>&nbsp;
   🎥 <a href="https://www.youtube.com/watch?v=VHr0a3UBsh4">[S3 Video]</a>
@@ -58,6 +65,7 @@
 </div>
 
 ## 🥳 Updates
+- [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
 - [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
 - [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
 - [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
@@ -74,19 +82,28 @@
 ## Table of Contents
 
 1. [💡 Introduction](#-introduction)
-2. [🎯 Current Results](#-current-results)
+2. [🎯 OSWorld Benchmark Results](#-osworld-benchmark-results)
 3. [🛠️ Installation & Setup](#%EF%B8%8F-installation--setup) 
 4. [🚀 Usage](#-usage)
-5. [🤝 Acknowledgements](#-acknowledgements)
-6. [💬 Citation](#-citation)
+5. [🎬 See Sai in Action](#-see-sai-in-action)
+6. [🤝 Acknowledgements](#-acknowledgements)
+7. [💬 Citation](#-citation)
 
 ## 💡 Introduction
 
-Welcome to **Agent S**, an open-source framework designed to enable autonomous interaction with computers through Agent-Computer Interface. Our mission is to build intelligent GUI agents that can learn from past experiences and perform complex tasks autonomously on your computer. 
+**Agent S** is an open source computer use agent framework from [Simular](https://www.simular.ai). It takes a natural-language task, looks at the screen, and completes the task by clicking, typing, and scrolling in ordinary desktop and web applications — no API integration and no per-app scripting required. Agent S3 is the third generation of the framework and was the first computer use agent to surpass human performance on the OSWorld benchmark, at **72.60%**. It runs on macOS, Windows, and Linux, and works with models from OpenAI, Anthropic, and open-weight providers.
 
-Whether you're interested in AI, automation, or contributing to cutting-edge agent-based systems, we're excited to have you here!
+The research continues in production: in August 2026, **[Sai](https://www.sai.work/)** — Simular's hosted computer use agent, built on the ideas in this repo — reached a **73% success rate on OSWorld 2.0**, ahead of GPT-5.6 Sol at 62.57% as reported by OpenAI, and at lower cost. If you are looking for a hosted, production version of this technology rather than a research framework, [see Sai](https://www.sai.work/).
 
-## 🎯 Current Results
+Whether you're researching OS agents, automating your own desktop, or contributing to open source computer use, we're excited to have you here.
+
+## 🎯 OSWorld Benchmark Results
+
+### August 2026 — Sai tops OSWorld 2.0 (73%)
+
+Our flagship product **Sai** reaches a **73% success rate on OSWorld 2.0**, a 108-task benchmark of long professional and everyday tasks that take skilled humans more than an hour to complete. That places Sai ahead of GPT-5.6 Sol at 62.57% as reported by OpenAI, and it does so at lower cost per task. Full write-up: [Sai Tops OSWorld 2.0](https://www.simular.ai/articles/sai-tops-osworld-2-0).
+
+### Agent S3 on OSWorld, WindowsAgentArena and AndroidWorld
 
 <p align="center">
   <img src="images/s3_results_new.png" alt="Agent S3 Results" width="700"/>
@@ -326,6 +343,13 @@ Refer to `gui_agents/s3/cli_app.py` for more details on how the inference loop w
 ### OSWorld
 
 To deploy Agent S3 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s3/OSWorld.md).
+
+
+## 🎬 See Sai in Action
+
+Most computer work is not one-off — it repeats. [Sai](https://www.sai.work/) turns those repeating jobs into recurring workflows: describe the routine once, set when it should run, and the agent does it on a cloud computer on your schedule. 
+Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates), or start from the [Sai API](https://www.sai.work/blog/introducing-sai-api) if you would rather trigger runs from your own code.
+
 
 ## 💬 Citations
 
