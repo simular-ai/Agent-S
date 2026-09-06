@@ -1,0 +1,6 @@
+pytest
+pillow
+black
+flake8
+isort
+pre-commit
