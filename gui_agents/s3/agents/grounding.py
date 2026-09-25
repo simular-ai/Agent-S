@@ -226,8 +226,16 @@ class OSWorldACI(ACI):
         self.current_task_instruction = None
         self.last_code_agent_result = None
 
+        # Cache for grounding model results to avoid redundant API calls
+        self._grounding_cache: Dict[tuple, List[int]] = {}
+
     # Given the state and worker's referring expression, use the grounding model to generate (x,y)
     def generate_coords(self, ref_expr: str, obs: Dict) -> List[int]:
+        # Check cache using screenshot bytes hash as key
+        screenshot_bytes = obs.get("screenshot", b"")
+        cache_key = (ref_expr, hash(screenshot_bytes))
+        if cache_key in self._grounding_cache:
+            return self._grounding_cache[cache_key]
 
         # Reset the grounding model state
         self.grounding_model.reset()
@@ -243,7 +251,9 @@ class OSWorldACI(ACI):
         print("RAW GROUNDING MODEL RESPONSE:", response)
         numericals = re.findall(r"\d+", response)
         assert len(numericals) >= 2
-        return [int(numericals[0]), int(numericals[1])]
+        coords = [int(numericals[0]), int(numericals[1])]
+        self._grounding_cache[cache_key] = coords
+        return coords
 
     # Calls pytesseract to generate word level bounding boxes for text grounding
     def get_ocr_elements(self, b64_image_data: str) -> Tuple[str, List]:
