@@ -11,6 +11,7 @@ import time
 
 from PIL import Image
 
+from gui_agents.code_safety import safe_exec
 from gui_agents.s3.agents.grounding import OSWorldACI
 from gui_agents.s3.agents.agent_s import AgentS3
 from gui_agents.s3.utils.local_env import LocalEnv
@@ -211,8 +212,8 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
             while paused:
                 time.sleep(0.1)
 
-            # Ask for permission before executing
-            exec(code[0])
+            # Execute with safety validation
+            safe_exec(code[0], globals(), locals())
             time.sleep(1.0)
 
             # Update task and subtask trajectories

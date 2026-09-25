@@ -4,6 +4,7 @@ import re
 from typing import Dict, List, Tuple
 import platform
 
+from gui_agents.code_safety import safe_eval_agent_action, CodeSafetyError
 from gui_agents.s1.aci.ACI import ACI
 from gui_agents.s1.core.BaseModule import BaseModule
 from gui_agents.s1.core.Knowledge import KnowledgeBase
@@ -228,13 +229,19 @@ class Worker(BaseModule):
         )
         plan_code = common_utils.sanitize_code(plan_code)
         plan_code = common_utils.extract_first_agent_function(plan_code)
-        exec_code = eval(plan_code)
+
+        try:
+            exec_code = safe_eval_agent_action(plan_code, agent)
+        except CodeSafetyError as e:
+            logger.error(f"Code safety error: {e}, falling back to wait")
+            plan_code = "agent.wait(1.0)"
+            exec_code = safe_eval_agent_action(plan_code, agent)
 
         # If agent selects an element that was out of range, it should not be executed just send a WAIT command.
         # TODO: should provide this as code feedback to the agent?
         if agent.index_out_of_range_flag:
             plan_code = "agent.wait(1.0)"
-            exec_code = eval(plan_code)
+            exec_code = safe_eval_agent_action(plan_code, agent)
             agent.index_out_of_range_flag = False
 
         executor_info = {
