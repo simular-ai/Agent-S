@@ -10,6 +10,7 @@ import time
 
 import pyautogui
 
+from gui_agents.code_safety import safe_exec
 from gui_agents.s1.core.AgentS import GraphSearchAgent, UIAgent
 
 current_platform = platform.system().lower()
@@ -213,8 +214,8 @@ def run_agent(agent: UIAgent, instruction: str):
             while paused:
                 time.sleep(0.1)
 
-            # Ask for permission before executing
-            exec(code[0])
+            # Execute with safety validation
+            safe_exec(code[0], globals(), locals())
             time.sleep(1.0)
 
             # Update task and subtask trajectories and optionally the episodic memory
