@@ -305,9 +305,9 @@ def main():
     )
     parser.add_argument(
         "--enable_reflection",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
         default=True,
-        help="Enable reflection agent to assist the worker agent",
+        help="Enable reflection agent to assist the worker agent (--enable_reflection / --no-enable_reflection)",
     )
     parser.add_argument(
         "--enable_local_env",
