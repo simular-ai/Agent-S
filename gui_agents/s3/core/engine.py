@@ -95,31 +95,46 @@ class LMMEngineAnthropic(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named ANTHROPIC_API_KEY"
             )
         self.llm_client = Anthropic(api_key=api_key)
-        # Use the instance temperature if not specified in the call
-        temp = self.temperature if temperature is None else temperature
+        # Newer Claude models (e.g. claude-sonnet-5) reject `temperature`
+        # outright ("`temperature` is deprecated for this model") no matter
+        # what value is sent, including the caller's own explicit 0.0
+        # default (see call_llm_safe) — so it's never included, matching
+        # how the thinking-mode branch below already omits it.
+        temp_kwargs = {}
+        # Newer Claude models also reject a request whose message list ends
+        # in an assistant turn ("This model does not support assistant
+        # message prefill"). Some retry/bookkeeping paths in this codebase
+        # can leave a dangling assistant message last — strip it defensively
+        # rather than track down every caller that can produce one.
+        api_messages = messages[1:]
+        while api_messages and api_messages[-1].get("role") == "assistant":
+            api_messages = api_messages[:-1]
         if self.thinking:
             full_response = self.llm_client.messages.create(
                 system=messages[0]["content"][0]["text"],
                 model=self.model,
-                messages=messages[1:],
+                messages=api_messages,
                 max_tokens=8192,
                 thinking={"type": "enabled", "budget_tokens": 4096},
                 **kwargs,
             )
             thoughts = full_response.content[0].thinking
             return full_response.content[1].text
-        return (
-            self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temp,
-                **kwargs,
-            )
-            .content[0]
-            .text
+        response = self.llm_client.messages.create(
+            system=messages[0]["content"][0]["text"],
+            model=self.model,
+            messages=api_messages,
+            max_tokens=max_new_tokens if max_new_tokens else 4096,
+            **temp_kwargs,
+            **kwargs,
         )
+        # Some models (e.g. claude-sonnet-5) can prepend a ThinkingBlock
+        # even without extended thinking explicitly requested, so content[0]
+        # isn't reliably the text block.
+        for block in response.content:
+            if hasattr(block, "text"):
+                return block.text
+        return ""
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
