@@ -217,7 +217,8 @@ The grounding width and height should match the output coordinate resolution of 
 - **`--model_url`**: Custom API URL for main generation model - Default: ""
 - **`--model_api_key`**: API key for main generation model - Default: ""
 - **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
-- **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
+- **`--max_trajectory_length`**: Maximum number of full turns to keep for short-context models - Default: 8
+- **`--max_history_images`**: Maximum number of recent images to send to long-context models - Default: 3
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 - **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
 
@@ -314,7 +315,8 @@ agent = AgentS3(
     engine_params,
     grounding_agent,
     platform=current_platform,
-    max_trajectory_length=8,  # Optional: maximum image turns to keep
+    max_trajectory_length=8,  # Optional: full turns for short-context models
+    max_history_images=3,     # Optional: recent images for long-context models
     enable_reflection=True     # Optional: enable reflection agent
 )
 ```
