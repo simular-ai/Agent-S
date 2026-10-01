@@ -1,0 +1,15 @@
+{
+  "name": "agent-s3-ui",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Agent S3 control UI (TypeScript sources, compiled to static/ for FastAPI).",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node ../../../tests/frontend.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}
