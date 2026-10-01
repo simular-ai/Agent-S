@@ -32,9 +32,38 @@ export AZURE_OPENAI_API_KEY=<YOUR_API_KEY>
 export vLLM_ENDPOINT_URL=<YOUR_DEPLOYMENT_URL>
 ```
 
+6. LM Studio (or any OpenAI-compatible local server)
+
+No pip or env setup needed. In LM Studio: load a **vision-capable** chat
+model for planning (e.g. Qwen2-VL / Qwen2.5-VL) and **UI-TARS-1.5-7B** for
+grounding, then Start Server (default `http://localhost:1234/v1`, any API
+key works — loopback endpoints use a dummy key when no key is configured).
+
+```python
+engine_params = {
+    "engine_type": "lmstudio",  # alias of openai + local defaults
+    "model": "<model id shown in LM Studio>",
+    "base_url": "http://localhost:1234/v1",  # optional, this is the default
+    "api_key": "lm-studio",                 # optional, this is the default
+}
+```
+
+`engine_type="openai_compatible"` works the same for other local servers
+(Ollama at `http://localhost:11434/v1`, llama.cpp, text-generation-webui…).
+Grounding dimensions for UI-TARS-1.5-7B: `grounding_width=1920`,
+`grounding_height=1080`. Note: local planners are weaker than frontier
+models at following the strict action format — keep `max_trajectory_length`
+small (3–4) if the context window is tight.
+
+Prefer a UI? Run `agent_s_ui`, open http://127.0.0.1:8000, and configure
+both the planner and grounding endpoints from the browser. That server also
+exposes `GET /v1/models` and `POST /v1/chat/completions` (use
+`"model": "agent-s3"` to run the desktop agent, any other model id is
+proxied to the configured planner backend).
+
 Alternatively you can directly pass the API keys into the engine_params argument while instantating the agent.
 
-6. Open Router
+7. Open Router
 
 ```
 export OPENROUTER_API_KEY=<YOUR_API_KEY>

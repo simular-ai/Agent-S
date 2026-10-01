@@ -323,10 +323,14 @@ class Worker(BaseModule):
 
         # Extract the next action from the plan
         plan_code = parse_code_from_string(plan)
+        if getattr(self.grounding_agent, "deferred_execution", False):
+            self.grounding_agent.prepared_action = None
         try:
             assert plan_code, "Plan code should not be empty"
             exec_code = create_pyautogui_code(self.grounding_agent, plan_code, obs)
         except Exception as e:
+            if getattr(self.grounding_agent, "deferred_execution", False):
+                raise ValueError(f"Planner returned an invalid action: {e}") from e
             logger.error(
                 f"Could not evaluate the following plan code:\n{plan_code}\nError: {e}"
             )

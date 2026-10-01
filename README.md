@@ -244,6 +244,43 @@ When enabled, the agent can use the `call_code_agent` action to execute code blo
 - Consider running in a sandboxed environment for untrusted tasks
 - Bash scripts are executed with a 30-second timeout to prevent hanging processes
 
+### Web UI, MCP & action overlay
+
+Prefer a browser over the terminal? The UI server configures the planner and
+grounding endpoints (including LM Studio), runs tasks, and streams the live
+screen plus per-step plan/code/reflection. It also exposes an
+OpenAI-compatible API (`GET /v1/models`, `POST /v1/chat/completions` — use
+`"model": "agent-s3"` to run the desktop agent, any other model id proxies
+to the configured planner backend).
+
+```bash
+agent_s_ui            # open http://127.0.0.1:8000
+```
+
+While a task runs, an always-on-top overlay window narrates the agent's
+actions between steps and during approval. It stays hidden from capture through
+execution. Tasks default to dry-run and share one supervised worker across the
+UI, MCP, and API. The overlay is opt-in.
+
+The API requires a bearer token stored beside the user-local configuration;
+the browser and local MCP client load it automatically. Backend credentials are
+redacted from responses and encrypted with Windows DPAPI when saved.
+See [the complete configuration, execution, API, and testing guide](gui_agents/s3/UI_SERVER.md).
+
+To drive Agent S3 from a coding agent (Claude Code, opencode, ...), run the
+MCP server — it wraps the UI backend with tools to launch tasks, poll
+status, fetch screenshots, approve steps, and stop:
+
+```bash
+agent_s_mcp           # stdio MCP server (auto-starts agent_s_ui if needed)
+```
+
+Claude Code example (`.mcp.json`):
+
+```json
+{"mcpServers": {"agent-s3": {"command": "agent_s_mcp"}}}
+```
+
 ### `gui_agents` SDK
 
 First, we import the necessary modules. `AgentS3` is the main agent class for Agent S3. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
