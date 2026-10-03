@@ -12,6 +12,7 @@ import subprocess
 import sys
 import os
 import shutil
+import threading
 
 
 def run_agent_s(task, max_steps=15, enable_reflection=True, enable_local_env=False):
@@ -69,47 +70,84 @@ def run_agent_s(task, max_steps=15, enable_reflection=True, enable_local_env=Fal
     if enable_local_env:
         cmd.append("--enable_local_env")
 
-    try:
-        # Run Agent-S
-        print(f"Starting Agent-S with task: {task}", file=sys.stderr)
-        print(f"Command: {' '.join(cmd)}", file=sys.stderr)
+    # --- Helper: sanitize sensitive args for safe logging ---
+    def _sanitize_cmd(cmd_list):
+        sanitized = []
+        i = 0
+        while i < len(cmd_list):
+            if cmd_list[i] == "--ground_api_key" and i + 1 < len(cmd_list):
+                sanitized.extend([cmd_list[i], "******"])
+                i += 2
+            else:
+                sanitized.append(cmd_list[i])
+                i += 1
+        return sanitized
 
-        # Agent-S can take 2-5 minutes for complex tasks (15 steps max)
-        # Don't capture output - let it stream to allow real-time GUI interaction
-        result = subprocess.run(
+    # --- Determine logs directory (env override > cwd based) ---
+    logs_dir = os.environ.get(
+        "AGENT_S_LOGS_DIR",
+        os.path.join(os.getcwd(), "logs")
+    )
+
+    print(f"Starting Agent-S with task: {task}", file=sys.stderr)
+    print(f"Command: {' '.join(_sanitize_cmd(cmd))}", file=sys.stderr)
+
+    # --- Hybrid: stream output to terminal in real time AND capture it ---
+    try:
+        proc = subprocess.Popen(
             cmd,
-            capture_output=False,  # Changed: let output stream
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,   # merge stderr into stdout for ordered output
             text=True,
-            timeout=600  # 10 minute timeout
         )
 
-        if result.returncode == 0:
+        output_lines = []
+
+        def _stream_and_capture():
+            """Read lines from proc.stdout, print live, and accumulate."""
+            for line in iter(proc.stdout.readline, ""):
+                print(line, end="", flush=True)
+                output_lines.append(line)
+
+        reader = threading.Thread(target=_stream_and_capture, daemon=True)
+        reader.start()
+        reader.join(timeout=600)  # 10 minute timeout
+
+        if reader.is_alive():
+            proc.kill()
+            reader.join()
+            raise subprocess.TimeoutExpired(cmd, 600)
+
+        proc.wait()
+        captured_output = "".join(output_lines)
+
+        if proc.returncode == 0:
             return {
                 "status": "success",
                 "message": f"Agent-S completed the task: {task}",
-                "logs_directory": os.path.expanduser("~/workspace/Agent-S/logs/"),
-                "note": "Output was streamed to terminal. Check logs for details."
+                "output": captured_output,
+                "logs_directory": logs_dir,
             }
         else:
             return {
                 "status": "error",
-                "message": f"Agent-S failed with return code {result.returncode}",
-                "logs_directory": os.path.expanduser("~/workspace/Agent-S/logs/"),
-                "note": "Check logs for error details."
+                "message": f"Agent-S failed with return code {proc.returncode}",
+                "output": captured_output,
+                "logs_directory": logs_dir,
             }
 
     except subprocess.TimeoutExpired:
         return {
             "status": "error",
             "message": f"Agent-S timed out after 10 minutes for task: {task}",
-            "error": "Timeout expired"
+            "error": "Timeout expired",
         }
 
     except Exception as e:
         return {
             "status": "error",
             "message": f"Failed to execute Agent-S: {str(e)}",
-            "error": str(e)
+            "error": str(e),
         }
 
 
@@ -167,11 +205,11 @@ def main():
         print(json.dumps(result, indent=2))
     else:
         if result["status"] == "success":
-            print(f"✓ {result['message']}")
-            if result.get("output"):
-                print(f"\nOutput:\n{result['output']}")
+            print(f"\n✓ {result['message']}")
+            if result.get("logs_directory"):
+                print(f"📁 Logs: {result['logs_directory']}")
         else:
-            print(f"✗ {result['message']}")
+            print(f"\n✗ {result['message']}")
             if result.get("error"):
                 print(f"\nError:\n{result['error']}", file=sys.stderr)
             sys.exit(1)
