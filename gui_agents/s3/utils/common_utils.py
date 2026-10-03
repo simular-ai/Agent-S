@@ -107,6 +107,27 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
     return exec_code
 
 
+PAYLOAD_TOO_LARGE_MARKERS = (
+    "length limit exceeded",
+    "payload too large",
+    "request entity too large",
+    "413",
+)
+
+
+def payload_too_large_hint(error: Exception) -> Optional[str]:
+    """Returns guidance when an endpoint rejected the request for being too big."""
+    message = str(error).lower()
+    if any(marker in message for marker in PAYLOAD_TOO_LARGE_MARKERS):
+        return (
+            "The endpoint rejected the request body as too large. This usually means "
+            "the screenshot exceeds the server's payload limit (HuggingFace TGI "
+            "defaults to 2 MB). Re-run with --max_image_mb (e.g. --max_image_mb 1.0) "
+            "or raise the server's payload limit."
+        )
+    return None
+
+
 def call_llm_safe(
     agent, temperature: float = 0.0, use_thinking: bool = False, **kwargs
 ) -> str:
@@ -125,6 +146,9 @@ def call_llm_safe(
         except Exception as e:
             attempt += 1
             print(f"Attempt {attempt} failed: {e}")
+            hint = payload_too_large_hint(e)
+            if hint:
+                print(f"Hint: {hint}")
             if attempt == max_retries:
                 print("Max retries reached. Handling failure.")
         time.sleep(1.0)

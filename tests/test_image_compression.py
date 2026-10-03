@@ -4,7 +4,10 @@ import unittest
 
 from PIL import Image
 
-from gui_agents.s3.utils.common_utils import compress_image_bytes
+from gui_agents.s3.utils.common_utils import (
+    compress_image_bytes,
+    payload_too_large_hint,
+)
 
 
 def _noisy_png(width: int, height: int) -> bytes:
@@ -116,6 +119,23 @@ class TestLMMAgentImageBudget(unittest.TestCase):
             len(agent.messages) - 1, "replaced", image_content=data
         )
         self.assertTrue(self._image_url(agent).startswith("data:image/jpeg;base64,"))
+
+
+class TestPayloadTooLargeHint(unittest.TestCase):
+    def test_hints_on_tgi_length_limit_error(self):
+        hint = payload_too_large_hint(
+            Exception("Failed to buffer the request body: length limit exceeded")
+        )
+        self.assertIsNotNone(hint)
+        self.assertIn("--max_image_mb", hint)
+
+    def test_hints_on_http_413(self):
+        self.assertIsNotNone(
+            payload_too_large_hint(Exception("Error code: 413 - Payload Too Large"))
+        )
+
+    def test_no_hint_for_unrelated_errors(self):
+        self.assertIsNone(payload_too_large_hint(Exception("Error code: 404")))
 
 
 if __name__ == "__main__":
