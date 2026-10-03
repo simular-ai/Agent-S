@@ -218,6 +218,7 @@ The grounding width and height should match the output coordinate resolution of 
 - **`--model_api_key`**: API key for main generation model - Default: ""
 - **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
 - **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
+- **`--max_image_mb`**: Maximum size in MB of each screenshot sent to the models. Larger screenshots are re-encoded as JPEG and downscaled as needed. Use this if a self-hosted endpoint fails with `Failed to buffer the request body: length limit exceeded` (HuggingFace TGI defaults to a 2 MB payload limit), e.g. `--max_image_mb 1.0` - Default: unlimited
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 - **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
 
