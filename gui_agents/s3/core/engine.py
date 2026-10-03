@@ -12,8 +12,8 @@ from openai import (
 )
 
 
-class LMMEngine:
-    pass
+from gui_agents.s3.core.lmm_engine import LMMEngine
+from gui_agents.s3.core.codex import LMMEngineCodex
 
 
 class LMMEngineOpenAI(LMMEngine):
@@ -35,6 +35,8 @@ class LMMEngineOpenAI(LMMEngine):
         self.request_interval = 0 if rate_limit == -1 else 60.0 / rate_limit
         self.llm_client = None
         self.temperature = temperature  # Can force temperature to be the same (in the case of o3 requiring temperature to be 1)
+        self.timeout = kwargs.get("timeout")
+        self.max_retries = kwargs.get("max_retries")
 
     @backoff.on_exception(
         backoff.expo, (APIConnectionError, APIError, RateLimitError), max_time=60
@@ -42,16 +44,40 @@ class LMMEngineOpenAI(LMMEngine):
     def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         api_key = self.api_key or os.getenv("OPENAI_API_KEY")
         if api_key is None:
+            # Local OpenAI-compatible servers (LM Studio, Ollama, llama.cpp)
+            # accept any key. Fall back to a dummy key so local setups work
+            # without an OpenAI account.
+            try:
+                from gui_agents.s3.core.openai_compatible import (
+                    LMSTUDIO_DEFAULT_API_KEY,
+                    is_local_url,
+                )
+
+                if self.base_url and is_local_url(self.base_url):
+                    api_key = LMSTUDIO_DEFAULT_API_KEY
+            except Exception:
+                pass
+        if api_key is None:
             raise ValueError(
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
         organization = self.organization or os.getenv("OPENAI_ORG_ID")
         if not self.llm_client:
+            options = {}
+            if self.timeout is not None:
+                options["timeout"] = self.timeout
+            if self.max_retries is not None:
+                options["max_retries"] = self.max_retries
             if not self.base_url:
-                self.llm_client = OpenAI(api_key=api_key, organization=organization)
+                self.llm_client = OpenAI(
+                    api_key=api_key, organization=organization, **options
+                )
             else:
                 self.llm_client = OpenAI(
-                    base_url=self.base_url, api_key=api_key, organization=organization
+                    base_url=self.base_url,
+                    api_key=api_key,
+                    organization=organization,
+                    **options,
                 )
         return (
             self.llm_client.chat.completions.create(

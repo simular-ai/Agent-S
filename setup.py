@@ -14,9 +14,15 @@ setup(
         "backoff",
         "pandas",
         "openai",
+        "openai-codex>=0.160,<0.161",
         "anthropic",
         "fastapi",
         "uvicorn",
+        "mcp>=2.2,<3",
+        "httpx>=0.27,<1",
+        "pydantic>=2.7,<3",
+        "mss>=9,<11",
+        "pyperclip>=1.8,<2",
         "paddleocr",
         "paddlepaddle",
         "together",
@@ -33,14 +39,19 @@ setup(
         'pywin32; platform_system == "Windows"',  # Only for Windows
     ],
     extras_require={"dev": ["black"]},  # Code formatter for linting
+    package_data={
+        "gui_agents.s3": ["ui/index.html", "ui/static/*.js", "ui/static/*.css"]
+    },
     entry_points={
         "console_scripts": [
             "agent_s=gui_agents.s3.cli_app:main",
+            "agent_s_ui=gui_agents.s3.ui_server:main",
+            "agent_s_mcp=gui_agents.s3.mcp_server:main",
         ],
     },
     classifiers=[
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: Microsoft :: Windows",
         "Operating System :: POSIX :: Linux",
@@ -52,5 +63,5 @@ setup(
         "Source": "https://github.com/simular-ai/Agent-S",
         "Bug Reports": "https://github.com/simular-ai/Agent-S/issues",
     },
-    python_requires=">=3.9, <=3.12",
+    python_requires=">=3.10,<3.13",
 )

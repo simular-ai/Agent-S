@@ -162,3 +162,7 @@ cython_debug/
 #.idea/
 logs/
 .DS_Store
+# Agent S3 UI runtime state
+agent_s_ui_config.json
+# Agent S3 UI frontend build
+node_modules/
