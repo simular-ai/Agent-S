@@ -33,8 +33,9 @@ from gui_agents.s3.ui_config import (
     request_target,
     server_token,
 )
-from gui_agents.s3.core.codex_cli import (
-    clear_status_cache,
+from gui_agents.s3.core.codex import (
+    codex_login as start_codex_login,
+    codex_logout as logout_codex,
     codex_models,
     codex_status,
     test_codex_vision,
@@ -249,44 +250,18 @@ def create_app(
 
     @app.post("/api/codex/login", dependencies=protected)
     def codex_login():
-        import shutil
-        import subprocess
-
-        binary = shutil.which("codex")
-        if not binary:
-            raise HTTPException(422, "Codex CLI is not installed or not on PATH")
         try:
-            completed = subprocess.run(
-                [binary, "login"], capture_output=True, text=True, timeout=10
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            result = start_codex_login()
+        except Exception as exc:
             raise HTTPException(502, f"Could not start Codex login: {exc}") from exc
-        clear_status_cache()
-        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
-        return {
-            "started": completed.returncode == 0,
-            "output": output[-2000:],
-            "status": codex_status(refresh=True),
-        }
+        return {**result, "status": codex_status()}
 
     @app.post("/api/codex/logout", dependencies=protected)
     def codex_logout():
-        import shutil
-        import subprocess
-
-        binary = shutil.which("codex")
-        if not binary:
-            raise HTTPException(422, "Codex CLI is not installed or not on PATH")
         try:
-            completed = subprocess.run(
-                [binary, "logout"], capture_output=True, text=True, timeout=30
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+            logout_codex()
+        except Exception as exc:
             raise HTTPException(502, f"Codex logout failed: {exc}") from exc
-        clear_status_cache()
-        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
-        if completed.returncode != 0:
-            raise HTTPException(502, f"Codex logout failed: {output[-1000:]}")
         return {"ok": True, "status": codex_status(refresh=True)}
 
     async def discover(body):

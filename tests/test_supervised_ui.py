@@ -39,7 +39,7 @@ from gui_agents.s3.ui_config import (
     request_target,
     unprotect,
 )
-from gui_agents.s3.core import codex_cli as codex_module
+from gui_agents.s3.core import codex as codex_module
 from gui_agents.s3.ui_server import create_app
 from gui_agents.s3.utils.actions import PreparedAction, parse_action
 from gui_agents.s3.utils.common_utils import create_pyautogui_code
@@ -394,21 +394,19 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(resolved["provider"], "codex")
         self.assertEqual(resolved["model"], "gpt-6-astra")
 
-    def test_codex_generate_parses_final_message(self):
-        stdout = (
-            '{"type":"item.completed","item":{"id":"x","type":"error","message":"noise"}}\n'
-            '{"type":"item.completed","item":{"id":"y","type":"agent_message","text":"```python\\nagent.wait(1.0)\\n```"}}\n'
-        )
-        with patch.object(codex_module, "codex_status", return_value={"signed_in": True, "model": "m"}), patch.object(
-            codex_module.subprocess, "run"
-        ) as run:
-            run.return_value = SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+    def test_codex_generate_returns_sdk_final_response(self):
+        with patch.object(codex_module, "Codex") as factory:
+            client = factory.return_value.__enter__.return_value
+            client.account.return_value.account = SimpleNamespace(root=SimpleNamespace(type="chatgpt"))
+            client.thread_start.return_value.run.return_value = SimpleNamespace(
+                final_response="```python\nagent.wait(1.0)\n```"
+            )
             text = codex_module.codex_generate([{"role": "user", "content": "hi"}], "m")
         self.assertIn("agent.wait", text)
-        args = run.call_args.args[0]
-        self.assertIn("read-only", args)
-        self.assertIn("features.shell_tool=false", args)
-        self.assertIn("approval_policy=\"never\"", " ".join(args))
+        options = client.thread_start.call_args.kwargs
+        self.assertEqual(options["sandbox"], codex_module.Sandbox.read_only)
+        self.assertEqual(options["approval_mode"], codex_module.ApprovalMode.deny_all)
+        self.assertIn("features.shell_tool=false", factory.call_args.kwargs["config"].config_overrides)
 
 
 class StubManager:

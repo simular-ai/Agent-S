@@ -372,7 +372,7 @@ def backend(config: AgentConfig, aspect="planner", overrides=None):
     key = data["ground_api_key" if ground else "model_api_key"]
     model = data["ground_model" if ground else "model"]
     if provider == "codex" and not ground:
-        from gui_agents.s3.core.codex_cli import codex_status
+        from gui_agents.s3.core.codex import codex_status
 
         model = (overrides or {}).get("model") or model or CODEX_DEFAULT_MODEL
         status = codex_status(model)
@@ -473,7 +473,7 @@ def engine_params(config, aspect="planner"):
 
 def request_target(resolved, operation, model=""):
     if resolved["provider"] == "codex":
-        raise ValueError("Codex models are served through the local Codex CLI")
+        raise ValueError("Codex models are served through the Codex SDK")
     if resolved["provider"] == "anthropic":
         raise ValueError(
             "This endpoint supports OpenAI-compatible providers; enter Anthropic model IDs manually"

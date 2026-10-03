@@ -1,6 +1,19 @@
 import base64
+from collections.abc import Sequence
 
 import numpy as np
+
+from gui_agents.s3.core.messages import (
+    ImageDetail,
+    LMMMessage,
+    MessageRole,
+    TextMessage,
+    normalize_messages,
+)
+from gui_agents.s3.core.lmm_engine import LMMEngine
+
+SingleImage = str | bytes | np.ndarray
+ImageContent = SingleImage | list[SingleImage]
 
 from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
@@ -20,7 +33,13 @@ from gui_agents.s3.core.openai_compatible import (
 
 
 class LMMAgent:
-    def __init__(self, engine_params=None, system_prompt=None, engine=None):
+    def __init__(
+        self,
+        engine_params=None,
+        system_prompt: str | None = None,
+        engine: LMMEngine | None = None,
+    ):
+        self.engine: LMMEngine
         if engine is None:
             if engine_params is not None:
                 engine_type = engine_params.get("engine_type")
@@ -119,25 +138,32 @@ class LMMAgent:
         else:
             self.engine = engine
 
-        self.messages = []  # Empty messages
+        self.messages: list[LMMMessage] = []
 
         if system_prompt:
             self.add_system_prompt(system_prompt)
         else:
             self.add_system_prompt("You are a helpful assistant.")
 
-    def encode_image(self, image_content):
+    def encode_image(self, image_content: SingleImage) -> str:
         # if image_content is a path to an image file, check type of the image_content to verify
         if isinstance(image_content, str):
             with open(image_content, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode("utf-8")
         else:
-            return base64.b64encode(image_content).decode("utf-8")
+            image_bytes = (
+                image_content.tobytes()
+                if isinstance(image_content, np.ndarray)
+                else image_content
+            )
+            return base64.b64encode(image_bytes).decode("utf-8")
 
-    def _append_codex_image(self, message, image_content):
-        from gui_agents.s3.core.codex_cli import _encode_image
+    def _append_codex_image(
+        self, message: LMMMessage, image_content: SingleImage
+    ) -> None:
+        from gui_agents.s3.core.codex import encode_image
 
-        payload = base64.b64encode(_encode_image(image_content)).decode("utf-8")
+        payload = base64.b64encode(encode_image(image_content)).decode("utf-8")
         message["content"].append(
             {
                 "type": "image_url",
@@ -156,7 +182,7 @@ class LMMAgent:
             }
         ]
 
-    def add_system_prompt(self, system_prompt):
+    def add_system_prompt(self, system_prompt: str) -> None:
         self.system_prompt = system_prompt
         if len(self.messages) > 0:
             self.messages[0] = {
@@ -171,21 +197,28 @@ class LMMAgent:
                 }
             )
 
-    def remove_message_at(self, index):
+    def remove_message_at(self, index: int) -> None:
         """Remove a message at a given index"""
         if index < len(self.messages):
             self.messages.pop(index)
 
     def replace_message_at(
-        self, index, text_content, image_content=None, image_detail="high"
-    ):
+        self,
+        index: int,
+        text_content: str,
+        image_content: SingleImage | None = None,
+        image_detail: ImageDetail = "high",
+    ) -> None:
         """Replace a message at a given index"""
         if index < len(self.messages):
             self.messages[index] = {
                 "role": self.messages[index]["role"],
                 "content": [{"type": "text", "text": text_content}],
             }
-            if image_content:
+            if isinstance(image_content, np.ndarray) or image_content:
+                if isinstance(self.engine, LMMEngineCodex):
+                    self._append_codex_image(self.messages[index], image_content)
+                    return
                 base64_image = self.encode_image(image_content)
                 self.messages[index]["content"].append(
                     {
@@ -199,12 +232,12 @@ class LMMAgent:
 
     def add_message(
         self,
-        text_content,
-        image_content=None,
-        role=None,
-        image_detail="high",
-        put_text_last=False,
-    ):
+        text_content: str,
+        image_content: ImageContent | None = None,
+        role: MessageRole | None = None,
+        image_detail: ImageDetail = "high",
+        put_text_last: bool = False,
+    ) -> None:
         """Add a new message to the list of messages"""
 
         # API-style inference from OpenAI and AzureOpenAI
@@ -229,8 +262,8 @@ class LMMAgent:
                 elif self.messages[-1]["role"] == "assistant":
                     role = "user"
 
-            message = {
-                "role": role,
+            message: LMMMessage = {
+                "role": role or "user",
                 "content": [{"type": "text", "text": text_content}],
             }
 
@@ -270,8 +303,8 @@ class LMMAgent:
 
             # Rotate text to be the last message if desired
             if put_text_last:
-                text_content = message["content"].pop(0)
-                message["content"].append(text_content)
+                text_part = message["content"].pop(0)
+                message["content"].append(text_part)
 
             self.messages.append(message)
 
@@ -287,7 +320,7 @@ class LMMAgent:
                     role = "user"
 
             message = {
-                "role": role,
+                "role": role or "user",
                 "content": [{"type": "text", "text": text_content}],
             }
 
@@ -334,7 +367,7 @@ class LMMAgent:
                     role = "user"
 
             message = {
-                "role": role,
+                "role": role or "user",
                 "content": [{"type": "text", "text": text_content}],
             }
 
@@ -368,32 +401,33 @@ class LMMAgent:
 
     def get_response(
         self,
-        user_message=None,
-        messages=None,
-        temperature=0.0,
-        max_new_tokens=None,
-        use_thinking=False,
+        user_message: str | None = None,
+        messages: Sequence[LMMMessage | TextMessage] | None = None,
+        temperature: float = 0.0,
+        max_new_tokens: int | None = None,
+        use_thinking: bool = False,
         **kwargs,
     ):
         """Generate the next response based on previous messages"""
-        if messages is None:
-            messages = self.messages
+        response_messages = (
+            self.messages if messages is None else normalize_messages(messages)
+        )
         if user_message:
-            messages.append(
+            response_messages.append(
                 {"role": "user", "content": [{"type": "text", "text": user_message}]}
             )
 
         # Regular generation
         if use_thinking:
             return self.engine.generate_with_thinking(
-                messages,
+                response_messages,
                 temperature=temperature,
                 max_new_tokens=max_new_tokens,
                 **kwargs,
             )
 
         return self.engine.generate(
-            messages,
+            response_messages,
             temperature=temperature,
             max_new_tokens=max_new_tokens,
             **kwargs,

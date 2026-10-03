@@ -12,8 +12,8 @@ from openai import (
 )
 
 
-class LMMEngine:
-    pass
+from gui_agents.s3.core.lmm_engine import LMMEngine
+from gui_agents.s3.core.codex import LMMEngineCodex
 
 
 class LMMEngineOpenAI(LMMEngine):
@@ -426,23 +426,6 @@ class LMMEngineHuggingFace(LMMEngine):
             .choices[0]
             .message.content
         )
-
-
-class LMMEngineCodex(LMMEngine):
-    """Planner backed by the local Codex CLI ChatGPT/Codex subscription."""
-
-    def __init__(self, model=None, timeout=None, **kwargs):
-        from gui_agents.s3.ui_config import CODEX_DEFAULT_MODEL
-
-        self.model = model or CODEX_DEFAULT_MODEL
-        self.timeout = timeout or kwargs.get("timeout") or 60
-
-    @backoff.on_exception(backoff.expo, (TimeoutError,), max_time=60)
-    def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
-        from gui_agents.s3.core.codex_cli import codex_generate
-
-        del temperature, max_new_tokens, kwargs
-        return codex_generate(messages, self.model, timeout=self.timeout)
 
 
 class LMMEngineParasail(LMMEngine):

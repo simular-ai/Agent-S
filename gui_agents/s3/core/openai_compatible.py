@@ -61,7 +61,7 @@ PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
     "codex": {
         "base_url": "",
         "api_key": "",
-        "hint": "ChatGPT/Codex subscription through the installed Codex CLI. Use Login with Codex; no API key is stored.",
+        "hint": "ChatGPT/Codex subscription through the Codex SDK. Use Login with Codex; no API key is stored.",
     },
 }
 

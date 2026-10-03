@@ -34,13 +34,14 @@ profiles; each profile keeps its own planner, grounding, and agent settings.
 Tasks record the launching profile and snapshot its settings, so switching
 profiles only affects later runs.
 
-Choose planner provider `codex` to use the ChatGPT/Codex subscription from the
-installed Codex CLI. Use **Login with Codex** (or run `codex login` in a
-terminal), then **Refresh status**, **Fetch**, and **Test connection**. Codex
-turns are read-only (`codex exec --sandbox read-only` with the shell tool
-disabled and `approval_policy="never"`); Codex never receives credentials from
-Agent S because the CLI owns sign-in, storage, and refresh. Grounding still
-uses the configured UI-TARS endpoint.
+Choose planner provider `codex` to use your ChatGPT/Codex subscription through
+the `openai-codex` Python SDK (installed with Agent S). Use **Login with Codex**,
+then **Refresh status**, **Fetch**, and **Test connection**. The SDK handles
+browser sign-in, account status, and live model discovery. Planner turns use
+ephemeral, read-only SDK threads with shell tools disabled and approvals denied.
+The SDK manages credential storage and refresh. Its package includes the Codex
+runtime; Agent S does not invoke CLI login or `codex exec` commands. Grounding
+still uses the configured UI-TARS endpoint.
 
 ## Execution contract
 

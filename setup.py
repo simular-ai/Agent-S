@@ -14,6 +14,7 @@ setup(
         "backoff",
         "pandas",
         "openai",
+        "openai-codex>=0.160,<0.161",
         "anthropic",
         "fastapi",
         "uvicorn",
