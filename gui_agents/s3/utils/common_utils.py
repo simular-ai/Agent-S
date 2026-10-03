@@ -12,6 +12,13 @@ import logging
 logger = logging.getLogger("desktopenv.agent")
 
 
+def image_media_type(image_bytes: bytes) -> str:
+    """Returns the MIME type of an encoded image, defaulting to image/png."""
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    return "image/png"
+
+
 def compress_image_bytes(image_bytes: bytes, max_bytes: Optional[int]) -> bytes:
     """
     Shrinks an encoded image until it fits within ``max_bytes``.

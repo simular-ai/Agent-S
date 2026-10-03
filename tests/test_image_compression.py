@@ -1,3 +1,4 @@
+import base64
 import io
 import unittest
 
@@ -62,6 +63,59 @@ class TestCompressImageBytes(unittest.TestCase):
         result = compress_image_bytes(data, max_bytes=1)
         self.assertLess(len(result), len(data))
         Image.open(io.BytesIO(result)).verify()
+
+
+class TestLMMAgentImageBudget(unittest.TestCase):
+    def _agent(self, **extra):
+        from gui_agents.s3.core.mllm import LMMAgent
+
+        return LMMAgent(
+            engine_params={
+                "engine_type": "openai",
+                "model": "gpt-5-2025-08-07",
+                "api_key": "test",
+                **extra,
+            }
+        )
+
+    def _image_url(self, agent):
+        for part in agent.messages[-1]["content"]:
+            if part["type"] == "image_url":
+                return part["image_url"]["url"]
+        self.fail("no image in last message")
+
+    def test_images_are_sent_as_png_without_budget(self):
+        data = _noisy_png(200, 150)
+        agent = self._agent()
+        agent.add_message("hi", image_content=data)
+        url = self._image_url(agent)
+        self.assertTrue(url.startswith("data:image/png;base64,"))
+        self.assertIn(base64.b64encode(data).decode("utf-8"), url)
+
+    def test_oversized_images_are_compressed_with_matching_mime_type(self):
+        data = _noisy_png(200, 150)
+        agent = self._agent(max_image_bytes=len(data) // 4)
+        agent.add_message("hi", image_content=data)
+        url = self._image_url(agent)
+        self.assertTrue(url.startswith("data:image/jpeg;base64,"))
+        payload = base64.b64decode(url.split(",", 1)[1])
+        self.assertLessEqual(len(payload), len(data) // 4)
+
+    def test_budget_applies_to_image_lists_and_replacements(self):
+        data = _noisy_png(200, 150)
+        agent = self._agent(max_image_bytes=len(data) // 4)
+        agent.add_message("hi", image_content=[data, data])
+        urls = [
+            p["image_url"]["url"]
+            for p in agent.messages[-1]["content"]
+            if p["type"] == "image_url"
+        ]
+        self.assertEqual(len(urls), 2)
+        self.assertTrue(all(u.startswith("data:image/jpeg;base64,") for u in urls))
+        agent.replace_message_at(
+            len(agent.messages) - 1, "replaced", image_content=data
+        )
+        self.assertTrue(self._image_url(agent).startswith("data:image/jpeg;base64,"))
 
 
 if __name__ == "__main__":

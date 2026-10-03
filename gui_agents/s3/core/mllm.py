@@ -2,6 +2,8 @@ import base64
 
 import numpy as np
 
+from gui_agents.s3.utils.common_utils import compress_image_bytes, image_media_type
+
 from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
@@ -16,6 +18,12 @@ from gui_agents.s3.core.engine import (
 
 class LMMAgent:
     def __init__(self, engine_params=None, system_prompt=None, engine=None):
+        # Optional size budget for each image sent to the engine. Images over
+        # the budget are re-encoded so the request body stays within server
+        # limits (e.g. HuggingFace TGI defaults to a 2 MB payload limit).
+        self.max_image_bytes = (
+            engine_params.get("max_image_bytes") if engine_params else None
+        )
         if engine is None:
             if engine_params is not None:
                 engine_type = engine_params.get("engine_type")
@@ -113,12 +121,25 @@ class LMMAgent:
             self.add_system_prompt("You are a helpful assistant.")
 
     def encode_image(self, image_content):
+        base64_image, _ = self.encode_image_with_media_type(image_content)
+        return base64_image
+
+    def encode_image_with_media_type(self, image_content):
+        """Base64-encode an image, compressing it to fit ``max_image_bytes`` if set.
+
+        Returns a tuple of (base64 string, media type such as "image/png").
+        """
         # if image_content is a path to an image file, check type of the image_content to verify
         if isinstance(image_content, str):
             with open(image_content, "rb") as image_file:
-                return base64.b64encode(image_file.read()).decode("utf-8")
+                image_bytes = image_file.read()
         else:
-            return base64.b64encode(image_content).decode("utf-8")
+            image_bytes = bytes(image_content)
+
+        image_bytes = compress_image_bytes(image_bytes, self.max_image_bytes)
+        return base64.b64encode(image_bytes).decode("utf-8"), image_media_type(
+            image_bytes
+        )
 
     def reset(
         self,
@@ -161,12 +182,14 @@ class LMMAgent:
                 "content": [{"type": "text", "text": text_content}],
             }
             if image_content:
-                base64_image = self.encode_image(image_content)
+                base64_image, media_type = self.encode_image_with_media_type(
+                    image_content
+                )
                 self.messages[index]["content"].append(
                     {
                         "type": "image_url",
                         "image_url": {
-                            "url": f"data:image/png;base64,{base64_image}",
+                            "url": f"data:{media_type};base64,{base64_image}",
                             "detail": image_detail,
                         },
                     }
@@ -213,24 +236,28 @@ class LMMAgent:
                 if isinstance(image_content, list):
                     # If image_content is a list of images, loop through each image
                     for image in image_content:
-                        base64_image = self.encode_image(image)
+                        base64_image, media_type = self.encode_image_with_media_type(
+                            image
+                        )
                         message["content"].append(
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/png;base64,{base64_image}",
+                                    "url": f"data:{media_type};base64,{base64_image}",
                                     "detail": image_detail,
                                 },
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
-                    base64_image = self.encode_image(image_content)
+                    base64_image, media_type = self.encode_image_with_media_type(
+                        image_content
+                    )
                     message["content"].append(
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}",
+                                "url": f"data:{media_type};base64,{base64_image}",
                                 "detail": image_detail,
                             },
                         }
@@ -264,26 +291,30 @@ class LMMAgent:
                 if isinstance(image_content, list):
                     # If image_content is a list of images, loop through each image
                     for image in image_content:
-                        base64_image = self.encode_image(image)
+                        base64_image, media_type = self.encode_image_with_media_type(
+                            image
+                        )
                         message["content"].append(
                             {
                                 "type": "image",
                                 "source": {
                                     "type": "base64",
-                                    "media_type": "image/png",
+                                    "media_type": media_type,
                                     "data": base64_image,
                                 },
                             }
                         )
                 else:
                     # If image_content is a single image, handle it directly
-                    base64_image = self.encode_image(image_content)
+                    base64_image, media_type = self.encode_image_with_media_type(
+                        image_content
+                    )
                     message["content"].append(
                         {
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/png",
+                                "media_type": media_type,
                                 "data": base64_image,
                             },
                         }
