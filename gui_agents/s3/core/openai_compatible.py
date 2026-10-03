@@ -58,6 +58,11 @@ PROVIDER_PRESETS: Dict[str, Dict[str, str]] = {
         "api_key": "",
         "hint": "Hugging Face Inference Endpoint URL. Uses HF_TOKEN.",
     },
+    "codex": {
+        "base_url": "",
+        "api_key": "",
+        "hint": "ChatGPT/Codex subscription through the installed Codex CLI. Use Login with Codex; no API key is stored.",
+    },
 }
 
 # engine_type aliases that should behave like plain OpenAI (custom base_url).

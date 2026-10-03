@@ -98,7 +98,7 @@ class Worker(BaseModule):
         engine_type = self.engine_params.get("engine_type", "")
 
         # Flush strategy for long-context models: keep all text, only keep latest images
-        if engine_type in ["anthropic", "openai", "gemini"]:
+        if engine_type in ["anthropic", "openai", "gemini", "codex"]:
             max_images = self.max_trajectory_length
             for agent in [self.generator_agent, self.reflection_agent]:
                 if agent is None:

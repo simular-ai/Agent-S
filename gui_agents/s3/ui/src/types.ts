@@ -19,6 +19,8 @@ export interface ProvidersResponse {
 }
 
 export interface AgentConfig {
+  profile_id?: string;
+  profile_name?: string;
   provider: string;
   model: string;
   model_url: string;
@@ -79,6 +81,29 @@ export interface ModelsListResponse {
   ok: boolean;
   models: string[];
   raw: Array<{ id?: string } | string>;
+}
+
+export interface ProfileSummary {
+  id: string;
+  name: string;
+  provider: string;
+  model: string;
+  ground_provider: string;
+  ground_model: string;
+  active: boolean;
+}
+
+export interface ProfilesResponse {
+  active_profile_id: string;
+  profiles: ProfileSummary[];
+  config?: AgentConfig;
+}
+
+export interface CodexStatusResponse {
+  signed_in: boolean;
+  account?: string;
+  model?: string;
+  error?: string;
 }
 
 export interface ConnectionTestResponse {

@@ -1,6 +1,6 @@
 /** Task supervision: one poll at a time, generation-bound controls and images. */
 import { api, el, inputVal, msg, screenshot } from "./api.js";
-import { readConfig } from "./configPanel.js";
+import { currentProfileId, readConfig } from "./configPanel.js";
 import { ACTIVE_STATES, taskState } from "./types.js";
 import type { TaskState } from "./types.js";
 
@@ -113,7 +113,7 @@ async function start(): Promise<void> {
   controls();
   const epoch = reset();
   try {
-    const task = taskState(await api<unknown>("/api/tasks", { method: "POST", body: JSON.stringify({ instruction, config: readConfig() }) }));
+    const task = taskState(await api<unknown>("/api/tasks", { method: "POST", body: JSON.stringify({ instruction, config: readConfig(), profile_id: currentProfileId() }) }));
     if (epoch !== generation) return;
     current = task;
     await poll(task.id, epoch);

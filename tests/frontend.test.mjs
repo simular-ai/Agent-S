@@ -1,18 +1,39 @@
 /** Compiled frontend lifecycle check; no browser or desktop required. */
 import assert from "node:assert/strict";
 const elements = new Map();
-const defaults = { instruction: "synthetic", provider: "lmstudio", model: "stub", model_url: "http://stub/v1", ground_provider: "lmstudio", ground_model: "stub", ground_url: "http://stub/v1", approval: "dry_run" };
+const defaults = { instruction: "synthetic", provider: "lmstudio", model: "stub", model_url: "http://stub/v1", ground_provider: "lmstudio", ground_model: "stub", ground_url: "http://stub/v1", approval: "dry_run", profile_pick: "default", profile_name: "Default" };
 globalThis.document = {
   querySelector: () => ({ content: "test-token" }),
   getElementById(id) {
-    if (!elements.has(id)) elements.set(id, { value: defaults[id] ?? "", checked: false, disabled: false, style: {}, textContent: "", scrollHeight: 0, replaceChildren() {}, appendChild() {} });
+    if (!elements.has(id)) {
+      const node = (id === "provider" || id === "ground_provider" || id === "approval" || id === "monitor" || id === "profile_pick" || id === "model_pick" || id === "ground_pick")
+        ? new globalThis.HTMLSelectElement()
+        : new globalThis.HTMLInputElement();
+      Object.assign(node, { value: defaults[id] ?? "", checked: false, disabled: false, style: {}, textContent: "", scrollHeight: 0, replaceChildren() {}, appendChild() {}, addEventListener() {}, className: "", innerHTML: "", onclick: null, onchange: null });
+      if (id.includes("enable") || id === "overlay") node.type = "checkbox";
+      elements.set(id, node);
+    }
     return elements.get(id);
   },
-  createElement: () => ({ appendChild() {}, append() {}, textContent: "" }),
+  createElement: (tag) => {
+    if (tag === "option") return { appendChild() {}, append() {}, textContent: "", value: "" };
+    return { appendChild() {}, append() {}, textContent: "" };
+  },
 };
+globalThis.window = globalThis.window ?? {};
+globalThis.window.confirm = () => true;
+class TestElement {}
+class TestInput extends TestElement { constructor() { super(); this.type = "text"; } }
+class TestSelect extends TestElement {}
+globalThis.HTMLElement = TestElement;
+globalThis.HTMLButtonElement = TestElement;
+globalThis.HTMLImageElement = TestElement;
+globalThis.HTMLTextAreaElement = TestElement;
+globalThis.HTMLInputElement = TestInput;
+globalThis.HTMLSelectElement = TestSelect;
 let timerId = 0;
 const timers = new Map();
-globalThis.window = { setTimeout(fn) { timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); }, addEventListener() {} };
+Object.assign(globalThis.window, { setTimeout(fn) { timers.set(++timerId, fn); return timerId; }, clearTimeout(id) { timers.delete(id); }, addEventListener() {} });
 const pending = [];
 const requests = [];
 globalThis.fetch = (path, options = {}) => {
@@ -29,6 +50,31 @@ function respond(path, value) {
   pending.splice(index, 1)[0].resolve({ ok: true, text: async () => JSON.stringify(value) });
 }
 const { initRunPanel } = await import("../gui_agents/s3/ui/static/runPanel.js");
+const { initConfigPanel, currentProfileId } = await import("../gui_agents/s3/ui/static/configPanel.js");
+const profileResponses = {
+  "/api/providers": { engine_types: ["lmstudio", "codex"], presets: { codex: { base_url: "", api_key: "", hint: "codex" } } },
+  "/api/config": { profile_id: "default", profile_name: "Default", provider: "codex", model: "gpt-6-astra", model_url: "", model_temperature: 0, ground_provider: "lmstudio", ground_model: "stub", ground_url: "http://stub/v1", max_steps: 15, max_trajectory_length: 8, enable_reflection: true, enable_local_env: false, approval: "dry_run", overlay: false, monitor: 1, inference_timeout: 60, action_timeout: 60, task_timeout: 600, azure_api_version: "", ground_azure_api_version: "" },
+  "/api/profiles": { active_profile_id: "default", profiles: [{ id: "default", name: "Default", provider: "codex", model: "gpt-6-astra", ground_provider: "lmstudio", ground_model: "stub", active: true }] },
+  "/api/status": { platform: "test", screen: { width: 8, height: 8 }, monitors: [], active_tasks: 0, server_time: 0 },
+};
+globalThis.fetch = (path, options = {}) => {
+  assert.equal(options.headers instanceof Headers ? options.headers.get("Authorization") : options.headers.Authorization, "Bearer test-token");
+  requests.push(path);
+  if (path in profileResponses || path.startsWith("/api/codex/status")) {
+    const value = path.startsWith("/api/codex/status")
+      ? { signed_in: true, account: "demo", model: "gpt-6-astra" }
+      : profileResponses[path];
+    return Promise.resolve({ ok: true, text: async () => JSON.stringify(value) });
+  }
+  return new Promise(resolve => pending.push({ path, resolve }));
+};
+await initConfigPanel();
+assert.equal(elements.get("provider").value, "codex");
+assert.equal(currentProfileId(), "default");
+// Codex planner hides URL/key inputs and shows subscription status.
+assert.equal(elements.get("codexBox").style.display, "");
+assert.equal(elements.get("model_url").disabled, true);
+assert.ok(elements.get("codexStatus").textContent.includes("Signed in"));
 const initialization = initRunPanel();
 await flush();
 respond("/api/tasks", { tasks: [] });

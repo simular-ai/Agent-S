@@ -33,6 +33,12 @@ from gui_agents.s3.ui_config import (
     request_target,
     server_token,
 )
+from gui_agents.s3.core.codex_cli import (
+    clear_status_cache,
+    codex_models,
+    codex_status,
+    test_codex_vision,
+)
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
 
@@ -41,6 +47,14 @@ class TaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     instruction: str = Field(min_length=1, max_length=8192)
     config: dict[str, Any] = Field(default_factory=dict)
+    profile_id: str = Field(default="", max_length=64)
+
+
+class ProfileRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    name: str = Field(default="", max_length=64)
+    source_id: str = Field(default="", max_length=64)
+    profile_id: str = Field(default="", max_length=64)
 
 
 class ApprovalRequest(BaseModel):
@@ -185,13 +199,108 @@ def create_app(
 
     @app.post("/api/config", dependencies=protected)
     def update_config(body: dict[str, Any]):
-        return store.update(body)
+        profile_id = body.pop("profile_id", "") if isinstance(body, dict) else ""
+        return store.update(body, profile_id=profile_id if isinstance(profile_id, str) else "")
+
+    @app.get("/api/profiles", dependencies=protected)
+    def list_profiles():
+        payload = store.list_profiles()
+        payload["config"] = store.snapshot().public()
+        return payload
+
+    @app.post("/api/profiles", dependencies=protected)
+    def create_profile(body: ProfileRequest):
+        try:
+            return store.create_profile(body.name, body.source_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/profiles/duplicate", dependencies=protected)
+    def duplicate_profile(body: ProfileRequest):
+        try:
+            return store.duplicate_profile(body.profile_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/profiles/rename", dependencies=protected)
+    def rename_profile(body: ProfileRequest):
+        try:
+            return store.rename_profile(body.profile_id, body.name)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/profiles/delete", dependencies=protected)
+    def delete_profile(body: ProfileRequest):
+        try:
+            return store.delete_profile(body.profile_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.post("/api/profiles/select", dependencies=protected)
+    def select_profile(body: ProfileRequest):
+        try:
+            return store.select_profile(body.profile_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/codex/status", dependencies=protected)
+    def codex_status_route(model: str = ""):
+        return codex_status(model[:256] if isinstance(model, str) else "")
+
+    @app.post("/api/codex/login", dependencies=protected)
+    def codex_login():
+        import shutil
+        import subprocess
+
+        binary = shutil.which("codex")
+        if not binary:
+            raise HTTPException(422, "Codex CLI is not installed or not on PATH")
+        try:
+            completed = subprocess.run(
+                [binary, "login"], capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HTTPException(502, f"Could not start Codex login: {exc}") from exc
+        clear_status_cache()
+        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+        return {
+            "started": completed.returncode == 0,
+            "output": output[-2000:],
+            "status": codex_status(refresh=True),
+        }
+
+    @app.post("/api/codex/logout", dependencies=protected)
+    def codex_logout():
+        import shutil
+        import subprocess
+
+        binary = shutil.which("codex")
+        if not binary:
+            raise HTTPException(422, "Codex CLI is not installed or not on PATH")
+        try:
+            completed = subprocess.run(
+                [binary, "logout"], capture_output=True, text=True, timeout=30
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise HTTPException(502, f"Codex logout failed: {exc}") from exc
+        clear_status_cache()
+        output = ((completed.stdout or "") + "\n" + (completed.stderr or "")).strip()
+        if completed.returncode != 0:
+            raise HTTPException(502, f"Codex logout failed: {output[-1000:]}")
+        return {"ok": True, "status": codex_status(refresh=True)}
 
     async def discover(body):
         if body.provider and body.provider not in PROVIDERS:
             raise HTTPException(422, "Unsupported provider")
+        snapshot = store.snapshot()
+        if body.provider == "codex" or (not body.provider and snapshot.provider == "codex" and body.aspect == "planner"):
+            try:
+                ids = codex_models()
+                return {"provider": "codex", "model": body.model or snapshot.model}, ids
+            except ValueError as exc:
+                raise HTTPException(502, f"Model discovery failed: {exc}") from exc
         try:
-            resolved = backend(store.snapshot(), body.aspect, body.model_dump())
+            resolved = backend(snapshot, body.aspect, body.model_dump())
             url, headers = request_target(resolved, "models")
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
@@ -225,8 +334,26 @@ def create_app(
 
     @app.post("/api/connection/test", dependencies=protected)
     async def test_connection(body: ConnectionRequest):
+        snapshot = store.snapshot()
+        provider = body.provider or (snapshot.provider if body.aspect == "planner" else snapshot.ground_provider)
+        if provider == "codex" and body.aspect == "planner":
+            try:
+                checked = test_codex_vision(
+                    body.model or snapshot.model,
+                    timeout=snapshot.inference_timeout,
+                )
+                return {
+                    "ok": True,
+                    "aspect": body.aspect,
+                    "models": [checked["model"]],
+                    "count": 1,
+                    "vision_request_accepted": True,
+                    "hint": "Read-only Codex turn using your ChatGPT/Codex sign-in. No shell, file, MCP, plugin, or hook execution.",
+                }
+            except (ValueError, TimeoutError) as exc:
+                return {"ok": False, "aspect": body.aspect, "error": str(exc)[:1000]}
         try:
-            effective = backend(store.snapshot(), body.aspect, body.model_dump())
+            effective = backend(snapshot, body.aspect, body.model_dump())
             if effective["provider"] == "azure" and body.verify_vision:
                 resolved, ids = effective, [effective["model"]]
             else:
@@ -279,8 +406,11 @@ def create_app(
         except (httpx.HTTPError, ValueError) as exc:
             return {"ok": False, "aspect": body.aspect, "error": str(exc)[:1000]}
 
-    def task_config(overrides):
-        data = store.snapshot().model_dump()
+    def task_config(overrides, profile_id=""):
+        snapshot = store.snapshot(profile_id) if profile_id else store.snapshot()
+        data = snapshot.model_dump()
+        data["profile_id"] = snapshot.profile_id
+        data["profile_name"] = snapshot.profile_name
         for provider, url, key in (
             ("provider", "model_url", "model_api_key"),
             ("ground_provider", "ground_url", "ground_api_key"),
@@ -319,7 +449,7 @@ def create_app(
     @app.post("/api/tasks", dependencies=protected)
     def create_task(body: TaskRequest, request: Request):
         try:
-            return launch(body.instruction, task_config(body.config), request)
+            return launch(body.instruction, task_config(body.config, body.profile_id), request)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 

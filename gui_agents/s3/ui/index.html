@@ -16,9 +16,20 @@
 <main>
   <div>
     <div class="card">
+      <h2>Configuration</h2>
+      <label>Profile</label>
+      <div class="row"><select id="profile_pick"></select><button id="profileNew" title="Create a profile">New</button><button id="profileDuplicate" title="Duplicate the selected profile">Duplicate</button></div>
+      <div class="row"><input id="profile_name" placeholder="profile name" /><button id="profileRename" title="Rename the selected profile">Rename</button><button id="profileDelete" title="Delete the selected profile">Delete</button></div>
+      <div class="msg" id="msgProfile"></div>
+    </div>
+    <div class="card">
       <h2>1 · Planner (chat model)</h2>
-      <p class="hint">Vision-capable chat model. LM Studio default: <code>http://localhost:1234/v1</code>, key <code>lm-studio</code>.</p>
+      <p class="hint">Vision-capable chat model. LM Studio default: <code>http://localhost:1234/v1</code>, key <code>lm-studio</code>. Choose <b>codex</b> to use your ChatGPT/Codex subscription through the installed Codex CLI.</p>
       <label>Provider</label><select id="provider"></select>
+      <div id="codexBox" style="display:none">
+        <p class="hint" id="codexStatus">Codex status unknown.</p>
+        <div class="btnrow"><button id="codexLogin">Login with Codex</button><button id="codexLogout">Sign out</button><button id="codexRefresh">Refresh status</button></div>
+      </div>
       <label>Base URL</label><input id="model_url" placeholder="http://localhost:1234/v1" />
       <label>API key</label><input id="model_api_key" type="password" placeholder="lm-studio" />
       <label>Model</label>

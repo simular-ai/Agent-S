@@ -5,6 +5,7 @@ import numpy as np
 from gui_agents.s3.core.engine import (
     LMMEngineAnthropic,
     LMMEngineAzureOpenAI,
+    LMMEngineCodex,
     LMMEngineHuggingFace,
     LMMEngineOpenAI,
     LMMEngineOpenRouter,
@@ -29,6 +30,11 @@ class LMMAgent:
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "openai":
                     self.engine = LMMEngineOpenAI(**engine_params)
+                elif engine_type == "codex":
+                    self.engine = LMMEngineCodex(
+                        model=engine_params.get("model"),
+                        timeout=engine_params.get("timeout"),
+                    )
                 elif engine_type == "anthropic":
                     self.engine = LMMEngineAnthropic(**engine_params)
                 elif engine_type == "azure":
@@ -128,6 +134,17 @@ class LMMAgent:
         else:
             return base64.b64encode(image_content).decode("utf-8")
 
+    def _append_codex_image(self, message, image_content):
+        from gui_agents.s3.core.codex_cli import _encode_image
+
+        payload = base64.b64encode(_encode_image(image_content)).decode("utf-8")
+        message["content"].append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{payload}"},
+            }
+        )
+
     def reset(
         self,
     ):
@@ -195,6 +212,7 @@ class LMMAgent:
             self.engine,
             (
                 LMMEngineOpenAI,
+                LMMEngineCodex,
                 LMMEngineAzureOpenAI,
                 LMMEngineHuggingFace,
                 LMMEngineGemini,
@@ -221,6 +239,9 @@ class LMMAgent:
                 if isinstance(image_content, list):
                     # If image_content is a list of images, loop through each image
                     for image in image_content:
+                        if isinstance(self.engine, LMMEngineCodex):
+                            self._append_codex_image(message, image)
+                            continue
                         base64_image = self.encode_image(image)
                         message["content"].append(
                             {
@@ -233,16 +254,19 @@ class LMMAgent:
                         )
                 else:
                     # If image_content is a single image, handle it directly
-                    base64_image = self.encode_image(image_content)
-                    message["content"].append(
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{base64_image}",
-                                "detail": image_detail,
-                            },
-                        }
-                    )
+                    if isinstance(self.engine, LMMEngineCodex):
+                        self._append_codex_image(message, image_content)
+                    else:
+                        base64_image = self.encode_image(image_content)
+                        message["content"].append(
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/png;base64,{base64_image}",
+                                    "detail": image_detail,
+                                },
+                            }
+                        )
 
             # Rotate text to be the last message if desired
             if put_text_last:

@@ -112,8 +112,11 @@ class TaskManager:
 
     def launch(self, instruction, config):
         config = AgentConfig.model_validate(config)
-        if not config.model or not config.ground_model:
-            raise ValueError("Configure both planner and grounding model IDs")
+        if not config.model or (not config.ground_model and config.provider != "codex"):
+            if not config.ground_model:
+                raise ValueError("Configure both planner and grounding model IDs")
+        if config.provider == "codex" and not config.ground_model:
+            raise ValueError("Codex supplies the planner; still configure a grounding model ID")
         engine_params(config)
         engine_params(config, "grounding")
         with self.lock:
@@ -408,6 +411,10 @@ class TaskManager:
             result.update(
                 max_steps=task["config"].max_steps,
                 approval=task["config"].approval,
+                profile_id=task["config"].profile_id,
+                profile_name=task["config"].profile_name,
+                provider=task["config"].provider,
+                model=task["config"].model,
                 steps=copy.deepcopy(
                     task["steps"]
                     if detail == "full"

@@ -15,7 +15,9 @@ initially disabled. Select a monitor and both model IDs before launching.
 State lives in `%LOCALAPPDATA%\AgentS` on Windows, or `$XDG_CONFIG_HOME/agent-s`
 (default `~/.config/agent-s`) elsewhere. Configuration is `ui-config.json` and
 the server token is `ui-token`. Override with `AGENT_S_UI_CONFIG` and
-`AGENT_S_UI_TOKEN`. An earlier project-local config can be selected explicitly:
+`AGENT_S_UI_TOKEN`. The config file now stores named profiles
+(`profiles`, `profile_order`, `active_profile_id`); a legacy single-config file
+is migrated into a `Default` profile on startup. An earlier project-local config can be selected explicitly:
 
 ```powershell
 $env:AGENT_S_UI_CONFIG = "C:\code\Agent-S\agent_s_ui_config.json"
@@ -27,6 +29,18 @@ using Windows user-scoped DPAPI. On other operating systems they are plaintext
 in an owner-readable/writable configuration file; environment credentials avoid
 storing them there. Config responses redact keys. Omitted keys retain their
 value; an explicit empty key clears it. Changing provider clears its old URL/key.
+Use the Configuration card to create, duplicate, rename, delete, and select
+profiles; each profile keeps its own planner, grounding, and agent settings.
+Tasks record the launching profile and snapshot its settings, so switching
+profiles only affects later runs.
+
+Choose planner provider `codex` to use the ChatGPT/Codex subscription from the
+installed Codex CLI. Use **Login with Codex** (or run `codex login` in a
+terminal), then **Refresh status**, **Fetch**, and **Test connection**. Codex
+turns are read-only (`codex exec --sandbox read-only` with the shell tool
+disabled and `approval_policy="never"`); Codex never receives credentials from
+Agent S because the CLI owns sign-in, storage, and refresh. Grounding still
+uses the configured UI-TARS endpoint.
 
 ## Execution contract
 

@@ -39,6 +39,7 @@ from gui_agents.s3.ui_config import (
     request_target,
     unprotect,
 )
+from gui_agents.s3.core import codex_cli as codex_module
 from gui_agents.s3.ui_server import create_app
 from gui_agents.s3.utils.actions import PreparedAction, parse_action
 from gui_agents.s3.utils.common_utils import create_pyautogui_code
@@ -350,6 +351,65 @@ class ConfigTests(unittest.TestCase):
             store.update({"provider": "openai"})
             self.assertEqual(store.snapshot().model_api_key, "")
 
+    def test_profile_migration_isolation_and_selection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            legacy = config().model_dump()
+            legacy["model_api_key"] = "legacy-secret"
+            path.write_text(json.dumps(legacy))
+            store = ConfigStore(path)
+            listed = store.list_profiles()
+            self.assertEqual(len(listed["profiles"]), 1)
+            self.assertEqual(store.snapshot().model_api_key, "legacy-secret")
+            self.assertEqual(store.snapshot().profile_name, "Default")
+            created = store.create_profile("Second")
+            second_id = created["active_profile_id"]
+            store.update({"model_api_key": "second-secret"})
+            store.select_profile(listed["active_profile_id"])
+            self.assertEqual(store.snapshot().model_api_key, "legacy-secret")
+            store.select_profile(second_id)
+            self.assertEqual(store.snapshot().model_api_key, "second-secret")
+            renamed = store.rename_profile(second_id, "Renamed")
+            self.assertIn("Renamed", [p["name"] for p in renamed["profiles"]])
+            deleted = store.delete_profile(second_id)
+            self.assertEqual(len(deleted["profiles"]), 1)
+            with self.assertRaises(ValueError):
+                store.delete_profile(deleted["active_profile_id"])
+
+    def test_codex_backend_requires_sign_in(self):
+        base = config().model_dump()
+        base.update({"provider": "codex", "model": "gpt-6-astra", "model_url": "", "model_api_key": ""})
+        cfg = AgentConfig.model_validate(base)
+        with patch.object(
+            codex_module, "codex_status", return_value={"signed_in": False, "error": "not signed in"}
+        ):
+            with self.assertRaises(ValueError):
+                backend(cfg)
+        with patch.object(
+            codex_module,
+            "codex_status",
+            return_value={"signed_in": True, "model": "gpt-6-astra"},
+        ):
+            resolved = backend(cfg)
+        self.assertEqual(resolved["provider"], "codex")
+        self.assertEqual(resolved["model"], "gpt-6-astra")
+
+    def test_codex_generate_parses_final_message(self):
+        stdout = (
+            '{"type":"item.completed","item":{"id":"x","type":"error","message":"noise"}}\n'
+            '{"type":"item.completed","item":{"id":"y","type":"agent_message","text":"```python\\nagent.wait(1.0)\\n```"}}\n'
+        )
+        with patch.object(codex_module, "codex_status", return_value={"signed_in": True, "model": "m"}), patch.object(
+            codex_module.subprocess, "run"
+        ) as run:
+            run.return_value = SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+            text = codex_module.codex_generate([{"role": "user", "content": "hi"}], "m")
+        self.assertIn("agent.wait", text)
+        args = run.call_args.args[0]
+        self.assertIn("read-only", args)
+        self.assertIn("features.shell_tool=false", args)
+        self.assertIn("approval_policy=\"never\"", " ".join(args))
+
 
 class StubManager:
     def __init__(self):
@@ -505,10 +565,69 @@ class APITests(unittest.TestCase):
             self.assertNotIn("agent", json.loads(request.content))
 
     def test_bad_bodies_are_validation_errors(self):
-        for path in ("/api/tasks", "/api/models/list", "/v1/chat/completions"):
+        for path in (
+            "/api/tasks",
+            "/api/models/list",
+            "/api/profiles",
+            "/api/profiles/select",
+            "/v1/chat/completions",
+        ):
             self.assertEqual(
                 self.client.post(path, headers=self.headers, json=[]).status_code, 422
             )
+
+    def test_profiles_and_task_profile_binding(self):
+        created = self.client.post(
+            "/api/profiles", headers=self.headers, json={"name": "Second"}
+        )
+        self.assertEqual(created.status_code, 200, created.text)
+        second_id = created.json()["active_profile_id"]
+        response = self.client.post(
+            "/api/profiles/select",
+            headers=self.headers,
+            json={"profile_id": second_id},
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(
+            self.client.get("/api/profiles", headers=self.headers).json()["active_profile_id"],
+            second_id,
+        )
+        task = self.client.post(
+            "/api/tasks",
+            headers=self.headers,
+            json={"instruction": "test", "config": {}, "profile_id": second_id},
+        )
+        self.assertEqual(task.status_code, 200, task.text)
+        instruction, launched = self.manager.launches[-1]
+        self.assertEqual(instruction, "test")
+        self.assertEqual(launched.profile_id, second_id)
+        self.assertEqual(launched.profile_name, "Second")
+
+    def test_codex_status_and_discovery_use_sign_in(self):
+        with patch(
+            "gui_agents.s3.ui_server.codex_status",
+            return_value={"signed_in": True, "account": "demo", "model": "gpt-6-astra"},
+        ), patch("gui_agents.s3.ui_server.codex_models", return_value=["gpt-6-astra"]):
+            status = self.client.get(
+                "/api/codex/status", headers=self.headers, params={"model": "gpt-6-astra"}
+            )
+            self.assertTrue(status.json()["signed_in"])
+            models = self.client.post(
+                "/api/models/list",
+                headers=self.headers,
+                json={"aspect": "planner", "provider": "codex", "model": "gpt-6-astra"},
+            )
+            self.assertEqual(models.json()["models"], ["gpt-6-astra"])
+        with patch(
+            "gui_agents.s3.ui_server.test_codex_vision",
+            return_value={"ok": True, "model": "gpt-6-astra", "sample": "blue"},
+        ):
+            tested = self.client.post(
+                "/api/connection/test",
+                headers=self.headers,
+                json={"aspect": "planner", "provider": "codex", "model": "gpt-6-astra"},
+            )
+            self.assertTrue(tested.json()["ok"])
 
     def test_proxy_delivers_first_chunk_before_upstream_finishes(self):
         from gui_agents.s3.ui_server import ChatRequest
