@@ -567,8 +567,8 @@ class OSWorldACI(ACI):
             starting_phrase, self.obs, alignment="start"
         )
         coords2 = self.generate_text_coords(ending_phrase, self.obs, alignment="end")
-        x1, y1 = coords1
-        x2, y2 = coords2
+        x1, y1 = self.screenshot_to_screen(coords1)
+        x2, y2 = self.screenshot_to_screen(coords2)
 
         command = "import pyautogui; "
         command += f"pyautogui.moveTo({x1}, {y1}); "
