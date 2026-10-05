@@ -325,6 +325,12 @@ class Worker(BaseModule):
         plan_code = parse_code_from_string(plan)
         try:
             assert plan_code, "Plan code should not be empty"
+            # Formatting retries can be exhausted with an invalid final response.
+            if not (
+                SINGLE_ACTION_FORMATTER(plan)[0]
+                and CODE_VALID_FORMATTER(self.grounding_agent, obs, plan)[0]
+            ):
+                raise ValueError("Plan failed action validation")
             exec_code = create_pyautogui_code(self.grounding_agent, plan_code, obs)
         except Exception as e:
             logger.error(
