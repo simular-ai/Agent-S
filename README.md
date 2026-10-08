@@ -65,6 +65,7 @@
 </div>
 
 ## 🥳 Updates
+- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 - [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
 - [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
 - [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
@@ -86,8 +87,9 @@
 3. [🛠️ Installation & Setup](#%EF%B8%8F-installation--setup) 
 4. [🚀 Usage](#-usage)
 5. [🎬 See Sai in Action](#-see-sai-in-action)
-6. [🤝 Acknowledgements](#-acknowledgements)
-7. [💬 Citation](#-citation)
+6. [🔌 Simular API](#-simular-api)
+7. [🤝 Acknowledgements](#-acknowledgements)
+8. [💬 Citation](#-citation)
 
 ## 💡 Introduction
 
@@ -348,8 +350,16 @@ To deploy Agent S3 in OSWorld, follow the [OSWorld Deployment instructions](oswo
 ## 🎬 See Sai in Action
 
 Most computer work is not one-off — it repeats. [Sai](https://www.sai.work/) turns those repeating jobs into recurring workflows: describe the routine once, set when it should run, and the agent does it on a cloud computer on your schedule. 
-Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates), or start from the [Sai API](https://www.sai.work/blog/introducing-sai-api) if you would rather trigger runs from your own code.
+Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates), or start from the [Simular API](https://platform.simular.ai/) if you would rather trigger runs from your own code.
 
+
+## 🔌 Simular API
+
+The **[Simular API](https://platform.simular.ai/)** gives you Sai, the computer use agent behind the OSWorld 2.0 result above, through one HTTP endpoint. Send a task in plain English; Sai opens apps, clicks and types on a cloud computer, then returns the result. There are no VMs, display drivers or agent harnesses to run yourself.
+
+- **For coding agents:** add Sai to Claude Code, Codex or Cursor as an MCP server with one command, then ask your agent to hand Sai the desktop work.
+- **Free to start:** the free plan includes a cloud computer. Sai asks for approval before sign-ins and other sensitive steps.
+- Create an API key and follow the quick start at **[platform.simular.ai](https://platform.simular.ai/)**, or read the [API docs](https://platform.simular.ai/documentation).
 
 ## 💬 Citations
 
