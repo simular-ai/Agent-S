@@ -1,3 +1,4 @@
+import math
 import re
 import time
 from io import BytesIO
@@ -10,6 +11,64 @@ from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 import logging
 
 logger = logging.getLogger("desktopenv.agent")
+
+
+# Image preprocessing constants shared by Qwen2.5-VL based grounding models such
+# as UI-TARS-1.5. See https://github.com/bytedance/UI-TARS/blob/main/README_coordinates.md
+IMAGE_FACTOR = 28
+MIN_PIXELS = 100 * 28 * 28
+MAX_PIXELS = 16384 * 28 * 28
+MAX_RATIO = 200
+
+
+def round_by_factor(number: float, factor: int) -> int:
+    """Returns the closest integer to 'number' that is divisible by 'factor'."""
+    return round(number / factor) * factor
+
+
+def ceil_by_factor(number: float, factor: int) -> int:
+    """Returns the smallest integer >= 'number' that is divisible by 'factor'."""
+    return math.ceil(number / factor) * factor
+
+
+def floor_by_factor(number: float, factor: int) -> int:
+    """Returns the largest integer <= 'number' that is divisible by 'factor'."""
+    return math.floor(number / factor) * factor
+
+
+def smart_resize(
+    height: int,
+    width: int,
+    factor: int = IMAGE_FACTOR,
+    min_pixels: int = MIN_PIXELS,
+    max_pixels: int = MAX_PIXELS,
+) -> Tuple[int, int]:
+    """
+    Computes the (height, width) a Qwen2.5-VL style image processor rescales an
+    image to before the model sees it. Grounding models built on that stack
+    (e.g. UI-TARS-1.5) return absolute pixel coordinates in this resized space,
+    so this is the space coordinates must be mapped back from.
+
+    Rescales so that:
+      1. Both dimensions are divisible by 'factor'.
+      2. The total number of pixels is within ['min_pixels', 'max_pixels'].
+      3. The aspect ratio is maintained as closely as possible.
+    """
+    if max(height, width) / min(height, width) > MAX_RATIO:
+        raise ValueError(
+            f"absolute aspect ratio must be smaller than {MAX_RATIO}, got {max(height, width) / min(height, width)}"
+        )
+    h_bar = max(factor, round_by_factor(height, factor))
+    w_bar = max(factor, round_by_factor(width, factor))
+    if h_bar * w_bar > max_pixels:
+        beta = math.sqrt((height * width) / max_pixels)
+        h_bar = floor_by_factor(height / beta, factor)
+        w_bar = floor_by_factor(width / beta, factor)
+    elif h_bar * w_bar < min_pixels:
+        beta = math.sqrt(min_pixels / (height * width))
+        h_bar = ceil_by_factor(height * beta, factor)
+        w_bar = ceil_by_factor(width * beta, factor)
+    return h_bar, w_bar
 
 
 def create_pyautogui_code(agent, code: str, obs: Dict) -> str:

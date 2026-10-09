@@ -295,6 +295,19 @@ def main():
         required=True,
         help="Height of screenshot image after processor rescaling",
     )
+    parser.add_argument(
+        "--grounding_coordinate_space",
+        type=str,
+        choices=["auto", "image", "fixed"],
+        default="auto",
+        help=(
+            "How to read the grounding model's coordinates. 'image': absolute pixels "
+            "of the screenshot it was shown (UI-TARS-1.5 and other Qwen2.5-VL models). "
+            "'fixed': a fixed grounding_width x grounding_height space (e.g. the "
+            "0-1000 space of UI-TARS-72B). 'auto' picks 'fixed' for a square "
+            "grounding box and 'image' otherwise."
+        ),
+    )
 
     # AgentS3 specific arguments
     parser.add_argument(
@@ -346,6 +359,7 @@ def main():
         "api_key": args.ground_api_key,
         "grounding_width": args.grounding_width,
         "grounding_height": args.grounding_height,
+        "grounding_coordinate_space": args.grounding_coordinate_space,
     }
 
     # Initialize environment based on user preference

@@ -9,11 +9,22 @@ from pytesseract import Output
 
 from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 from gui_agents.s3.core.mllm import LMMAgent
-from gui_agents.s3.utils.common_utils import call_llm_safe
+from gui_agents.s3.utils.common_utils import call_llm_safe, smart_resize
 from gui_agents.s3.agents.code_agent import CodeAgent
 import logging
 
 logger = logging.getLogger("desktopenv.agent")
+
+# How to interpret the coordinates a grounding model returns:
+#   "image": absolute pixels of the screenshot the model was shown, after the
+#            processor's smart_resize step (Qwen2.5-VL based models such as
+#            UI-TARS-1.5). The grounding box is ignored.
+#   "fixed": a fixed coordinate space of grounding_width x grounding_height,
+#            independent of the image size (e.g. UI-TARS-72B's 0-1000 space).
+#   "auto":  "fixed" when the grounding box is square, otherwise "image". A
+#            pixel space always has the screenshot's shape, so a square box for
+#            a non-square screen can only be a normalized space.
+GROUNDING_COORDINATE_SPACES = ("auto", "image", "fixed")
 
 
 class ACI:
@@ -210,6 +221,18 @@ class OSWorldACI(ACI):
         self.grounding_model = LMMAgent(engine_params_for_grounding)
         self.engine_params_for_grounding = engine_params_for_grounding
 
+        # Configure how grounding model coordinates map back onto the screen
+        self.grounding_coordinate_space = engine_params_for_grounding.get(
+            "grounding_coordinate_space", "auto"
+        )
+        if self.grounding_coordinate_space not in GROUNDING_COORDINATE_SPACES:
+            raise ValueError(
+                f"grounding_coordinate_space must be one of {GROUNDING_COORDINATE_SPACES}, "
+                f"got {self.grounding_coordinate_space!r}"
+            )
+        # Size of the screenshot handed to the grounding model on the last call
+        self.last_grounding_image_size: Optional[Tuple[int, int]] = None
+
         # Configure text grounding agent
         self.text_span_agent = LMMAgent(
             engine_params=engine_params_for_generation,
@@ -231,6 +254,10 @@ class OSWorldACI(ACI):
 
         # Reset the grounding model state
         self.grounding_model.reset()
+
+        # Remember the image size so coordinates can be mapped back from the
+        # space the model actually saw, not an assumed one.
+        self.last_grounding_image_size = Image.open(BytesIO(obs["screenshot"])).size
 
         # Configure the context, UI-TARS demo does not use system prompt
         prompt = f"Query:{ref_expr}\nOutput only the coordinate of one point in your response.\n"
@@ -333,14 +360,40 @@ class OSWorldACI(ACI):
         """Set the current task instruction for the code agent."""
         self.current_task_instruction = task_instruction
 
-    # Resize from grounding model dim into OSWorld dim (1920 * 1080)
-    def resize_coordinates(self, coordinates: List[int]) -> List[int]:
+    def grounding_output_size(self) -> Tuple[int, int]:
+        """The (width, height) of the coordinate space the grounding model answered in."""
         grounding_width = self.engine_params_for_grounding["grounding_width"]
         grounding_height = self.engine_params_for_grounding["grounding_height"]
 
+        space = self.grounding_coordinate_space
+        if space == "auto":
+            space = "fixed" if grounding_width == grounding_height else "image"
+
+        if space == "fixed" or self.last_grounding_image_size is None:
+            return grounding_width, grounding_height
+
+        sent_width, sent_height = self.last_grounding_image_size
+        resized_height, resized_width = smart_resize(sent_height, sent_width)
+        return resized_width, resized_height
+
+    # Resize from the grounding model's coordinate space into screen pixels
+    def resize_coordinates(self, coordinates: List[int]) -> List[int]:
+        space_width, space_height = self.grounding_output_size()
+
         return [
-            round(coordinates[0] * self.width / grounding_width),
-            round(coordinates[1] * self.height / grounding_height),
+            round(coordinates[0] * self.width / space_width),
+            round(coordinates[1] * self.height / space_height),
+        ]
+
+    # Resize from screenshot pixels (e.g. OCR boxes) into screen pixels
+    def screenshot_to_screen(self, coordinates: List[int]) -> List[int]:
+        screenshot_width, screenshot_height = Image.open(
+            BytesIO(self.obs["screenshot"])
+        ).size
+
+        return [
+            round(coordinates[0] * self.width / screenshot_width),
+            round(coordinates[1] * self.height / screenshot_height),
         ]
 
     @agent_action
@@ -514,8 +567,8 @@ class OSWorldACI(ACI):
             starting_phrase, self.obs, alignment="start"
         )
         coords2 = self.generate_text_coords(ending_phrase, self.obs, alignment="end")
-        x1, y1 = coords1
-        x2, y2 = coords2
+        x1, y1 = self.screenshot_to_screen(coords1)
+        x2, y2 = self.screenshot_to_screen(coords2)
 
         command = "import pyautogui; "
         command += f"pyautogui.moveTo({x1}, {y1}); "

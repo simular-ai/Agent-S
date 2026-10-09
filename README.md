@@ -215,10 +215,13 @@ The grounding width and height should match the output coordinate resolution of 
 - **UI-TARS-1.5-7B**: Use `--grounding_width 1920 --grounding_height 1080`
 - **UI-TARS-72B**: Use `--grounding_width 1000 --grounding_height 1000`
 
+Agent S works out how to read the model's coordinates from the shape of this box. A square box such as 1000x1000 is treated as a normalized space that does not depend on the screenshot. Any other box means the model answers in pixels of the screenshot it was shown, so Agent S maps those pixels back to your screen whatever its resolution. This is what makes UI-TARS-1.5 click accurately on laptops, 1440p and 4K displays, not only on 1920x1080. Use `--grounding_coordinate_space image` or `fixed` to override the detection.
+
 #### Optional Parameters
 - **`--model_url`**: Custom API URL for main generation model - Default: ""
 - **`--model_api_key`**: API key for main generation model - Default: ""
 - **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
+- **`--grounding_coordinate_space`**: How to read the grounding model's coordinates: `image` (pixels of the screenshot it saw), `fixed` (the grounding box, e.g. a 0-1000 space) or `auto` - Default: "auto"
 - **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 - **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
