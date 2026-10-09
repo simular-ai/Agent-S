@@ -304,6 +304,17 @@ def main():
         help="Maximum number of image turns to keep in trajectory",
     )
     parser.add_argument(
+        "--max_image_mb",
+        type=float,
+        default=None,
+        help=(
+            "Maximum size in MB of each screenshot sent to the main and grounding "
+            "models. Larger screenshots are re-encoded as JPEG and downscaled as "
+            "needed. Set this (e.g. 1.0) when a self-hosted endpoint fails with "
+            "'Failed to buffer the request body: length limit exceeded'."
+        ),
+    )
+    parser.add_argument(
         "--enable_reflection",
         action="store_true",
         default=True,
@@ -329,6 +340,12 @@ def main():
         screen_width, screen_height, max_dim_size=2400
     )
 
+    # Self-hosted endpoints often cap the request body size (HuggingFace TGI
+    # defaults to 2 MB), so optionally bound the size of every screenshot.
+    max_image_bytes = (
+        int(args.max_image_mb * 1024 * 1024) if args.max_image_mb else None
+    )
+
     # Load the general engine params
     engine_params = {
         "engine_type": args.provider,
@@ -336,6 +353,7 @@ def main():
         "base_url": args.model_url,
         "api_key": args.model_api_key,
         "temperature": getattr(args, "model_temperature", None),
+        "max_image_bytes": max_image_bytes,
     }
 
     # Load the grounding engine from a custom endpoint
@@ -346,6 +364,7 @@ def main():
         "api_key": args.ground_api_key,
         "grounding_width": args.grounding_width,
         "grounding_height": args.grounding_height,
+        "max_image_bytes": max_image_bytes,
     }
 
     # Initialize environment based on user preference
