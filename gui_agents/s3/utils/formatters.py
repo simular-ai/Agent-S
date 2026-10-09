@@ -39,7 +39,16 @@ CODE_VALID_FORMATTER = lambda agent, obs, response: (
     code_valid_error_msg,
 )
 
-thoughts_answer_tag_check = lambda response: split_thinking_response(response)[1] != ""
+
+def thoughts_answer_tag_check(response):
+    tags = ("<thoughts>", "</thoughts>", "<answer>", "</answer>")
+    tag_positions = [response.find(tag) for tag in tags]
+    if -1 in tag_positions or tag_positions != sorted(tag_positions):
+        return False
+
+    return split_thinking_response(response)[1] != ""
+
+
 thoughts_answer_tag_error_msg = "Incorrect response: The response must contain both <thoughts>...</thoughts> and <answer>...</answer> tags."
 THOUGHTS_ANSWER_TAG_FORMATTER = lambda response: (
     thoughts_answer_tag_check(response),
