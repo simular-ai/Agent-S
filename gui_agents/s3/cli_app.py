@@ -335,8 +335,9 @@ def main():
         "model": args.model,
         "base_url": args.model_url,
         "api_key": args.model_api_key,
-        "temperature": getattr(args, "model_temperature", None),
     }
+    if args.model_temperature is not None:
+        engine_params["temperature"] = args.model_temperature
 
     # Load the grounding engine from a custom endpoint
     engine_params_for_grounding = {

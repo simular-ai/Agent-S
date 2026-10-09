@@ -11,6 +11,10 @@ import numpy as np
 import openai
 import requests
 from anthropic import Anthropic
+from gui_agents.utils import (
+    anthropic_supports_temperature,
+    extract_anthropic_text,
+)
 from openai import APIConnectionError, APIError, AzureOpenAI, OpenAI, RateLimitError
 from PIL import Image
 
@@ -115,18 +119,16 @@ class LMMEngineAnthropic(LMMEngine):
     )
     def generate(self, messages, temperature=0.0, max_new_tokens=None, **kwargs):
         """Generate the next message based on previous messages"""
-        return (
-            self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
-            )
-            .content[0]
-            .text
-        )
+        request_kwargs = {
+            "system": messages[0]["content"][0]["text"],
+            "model": self.model,
+            "messages": messages[1:],
+            "max_tokens": max_new_tokens if max_new_tokens else 4096,
+            **kwargs,
+        }
+        if anthropic_supports_temperature(self.model):
+            request_kwargs["temperature"] = temperature
+        return extract_anthropic_text(self.llm_client.messages.create(**request_kwargs))
 
 
 class OpenAIEmbeddingEngine(LMMEngine):
