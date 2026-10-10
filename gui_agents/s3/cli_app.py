@@ -14,6 +14,7 @@ from PIL import Image
 from gui_agents.s3.agents.grounding import OSWorldACI
 from gui_agents.s3.agents.agent_s import AgentS3
 from gui_agents.s3.utils.local_env import LocalEnv
+from gui_agents.s3.utils.common_utils import terminal_action
 
 current_platform = platform.system().lower()
 
@@ -183,46 +184,43 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
         # Get next action code from the agent
         info, code = agent.predict(instruction=instruction, observation=obs)
 
-        if "done" in code[0].lower() or "fail" in code[0].lower():
+        # done()/fail() return the literal strings "DONE"/"FAIL" instead of code.
+        # Compare exactly: any other action (e.g. typed text) may legitimately
+        # contain those words and must still be executed.
+        outcome = terminal_action(code[0])
+        if outcome is not None:
+            message = "Task Completed" if outcome == "DONE" else "Task Failed"
+            print(f"\n{'✅' if outcome == 'DONE' else '❌'} {message}")
             if platform.system() == "Darwin":
                 os.system(
-                    f'osascript -e \'display dialog "Task Completed" with title "OpenACI Agent" buttons "OK" default button "OK"\''
+                    f'osascript -e \'display dialog "{message}" with title "OpenACI Agent" buttons "OK" default button "OK"\''
                 )
             elif platform.system() == "Linux":
                 os.system(
-                    f'zenity --info --title="OpenACI Agent" --text="Task Completed" --width=200 --height=100'
+                    f'zenity --info --title="OpenACI Agent" --text="{message}" --width=200 --height=100'
                 )
 
             break
 
-        if "next" in code[0].lower():
-            continue
+        time.sleep(1.0)
+        print("EXECUTING CODE:", code[0])
 
-        if "wait" in code[0].lower():
-            print("⏳ Agent requested wait...")
-            time.sleep(5)
-            continue
+        # Check for pause state before execution
+        while paused:
+            time.sleep(0.1)
 
-        else:
-            time.sleep(1.0)
-            print("EXECUTING CODE:", code[0])
+        # Ask for permission before executing
+        exec(code[0])
+        time.sleep(1.0)
 
-            # Check for pause state before execution
-            while paused:
-                time.sleep(0.1)
-
-            # Ask for permission before executing
-            exec(code[0])
-            time.sleep(1.0)
-
-            # Update task and subtask trajectories
-            if "reflection" in info and "executor_plan" in info:
-                traj += (
-                    "\n\nReflection:\n"
-                    + str(info["reflection"])
-                    + "\n\n----------------------\n\nPlan:\n"
-                    + info["executor_plan"]
-                )
+        # Update task and subtask trajectories
+        if "reflection" in info and "executor_plan" in info:
+            traj += (
+                "\n\nReflection:\n"
+                + str(info["reflection"])
+                + "\n\n----------------------\n\nPlan:\n"
+                + info["executor_plan"]
+            )
 
 
 def main():
