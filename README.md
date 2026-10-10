@@ -223,6 +223,39 @@ The grounding width and height should match the output coordinate resolution of 
 - **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
 - **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
 
+#### Supported Providers
+`--provider` (and `engine_type` in the SDK) accepts the following values for the main generation model. The model you pick must accept image input, because Agent S sends a screenshot with every step.
+
+| Provider | `--provider` | Credentials | Endpoint |
+|---|---|---|---|
+| OpenAI | `openai` | `OPENAI_API_KEY` | default, or `--model_url` for any OpenAI-compatible server |
+| Anthropic | `anthropic` | `ANTHROPIC_API_KEY` | default |
+| Google Gemini | `gemini` | `GEMINI_API_KEY` | default |
+| Azure OpenAI | `azure` | `AZURE_OPENAI_API_KEY` | `AZURE_OPENAI_ENDPOINT` |
+| OpenRouter | `open_router` | `OPENROUTER_API_KEY` | default |
+| vLLM | `vllm` | `vLLM_API_KEY` | `vLLM_ENDPOINT_URL` or `--model_url` |
+| Hugging Face TGI | `huggingface` | `HF_TOKEN` | `--model_url` |
+| Parasail | `parasail` | `PARASAIL_API_KEY` | default |
+| Ollama | `ollama` | none | `OLLAMA_HOST` or `--model_url` |
+| DeepSeek | `deepseek` | `DEEPSEEK_API_KEY` | `https://api.deepseek.com/v1`, or `DEEPSEEK_ENDPOINT_URL` / `--model_url` |
+| Qwen (DashScope) | `qwen` | `QWEN_API_KEY` | `https://dashscope.aliyuncs.com/compatible-mode/v1`, or `QWEN_ENDPOINT_URL` / `--model_url` |
+
+`--model_api_key` overrides the environment variable for any provider. For example, to drive Agent S with a Qwen vision model hosted on DashScope:
+
+```bash
+export QWEN_API_KEY=<YOUR_DASHSCOPE_KEY>
+agent_s \
+    --provider qwen \
+    --model qwen3-vl-plus \
+    --ground_provider huggingface \
+    --ground_url http://localhost:8080 \
+    --ground_model ui-tars-1.5-7b \
+    --grounding_width 1920 \
+    --grounding_height 1080
+```
+
+Self-hosted Qwen-VL or DeepSeek models behind any OpenAI-compatible server (vLLM, SGLang, LM Studio, ...) work with `--provider openai --model_url http://<host>/v1 --model_api_key <key-or-anything>`.
+
 #### Local Coding Environment Details
 The local coding environment enables Agent S3 to execute Python and Bash code directly on your machine. This is particularly useful for:
 

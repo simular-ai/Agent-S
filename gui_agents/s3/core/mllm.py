@@ -54,7 +54,7 @@ class LMMAgent:
                         engine_params["api_key"] = "ollama"
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "deepseek":
-                    if "base_url" not in engine_params:
+                    if not engine_params.get("base_url"):
                         import os
 
                         base_url = os.getenv("DEEPSEEK_ENDPOINT_URL")
@@ -123,7 +123,6 @@ class LMMAgent:
     def reset(
         self,
     ):
-
         self.messages = [
             {
                 "role": "system",
