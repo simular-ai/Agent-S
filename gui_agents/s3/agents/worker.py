@@ -330,9 +330,40 @@ class Worker(BaseModule):
             logger.error(
                 f"Could not evaluate the following plan code:\n{plan_code}\nError: {e}"
             )
-            exec_code = self.grounding_agent.wait(
-                1.333
-            )  # Skip a turn if the code cannot be evaluated
+            # FallbackManager (FASE 3): retry-of-approach — re-tenta o grounding
+            # (transiente); se ainda falhar, cai p/ wait (skip de turno). Estratégias
+            # click_coord→hotkey→type_desc não encaixam aqui: as actions são
+            # construídas como strings e executadas remotamente (cli_app exec),
+            # sem acesso semântico ao elemento/teclas no ponto de falha. Esta é
+            # a queda honesta — re-grounding + wait.
+            try:
+                from gui_agents.s3.orchestration.fallback import (
+                    FallbackManager,
+                    Strategy,
+                )
+                fm = FallbackManager(max_retries_per_strategy=1, track=True)
+                result = fm.execute_with_fallback(
+                    [
+                        Strategy(
+                            "retry_ground",
+                            lambda _ctx: create_pyautogui_code(
+                                self.grounding_agent, plan_code, obs
+                            ),
+                        ),
+                        Strategy(
+                            "wait", lambda _ctx: self.grounding_agent.wait(1.333)
+                        ),
+                    ],
+                    context=None,
+                )
+                exec_code = result.result
+                logger.info(
+                    "fallback_recovered", extra={"strategy": result.strategy}
+                )
+            except Exception:
+                exec_code = self.grounding_agent.wait(
+                    1.333
+                )  # Skip a turn if the code cannot be evaluated
 
         executor_info = {
             "plan": plan,
