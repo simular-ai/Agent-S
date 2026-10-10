@@ -537,6 +537,8 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
         Args:
             keys:List the keys to press in combination in a list format (e.g. ['ctrl', 'c'])
         """
+        if isinstance(keys, str):
+            keys = [keys]
         # add quotes around the keys
         keys = [f"'{key}'" for key in keys]
         return f"import pyautogui; pyautogui.hotkey({', '.join(keys)})"
@@ -548,6 +550,10 @@ subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_
             hold_keys:List, list of keys to hold
             press_keys:List, list of keys to press in a sequence
         """
+        if isinstance(hold_keys, str):
+            hold_keys = [hold_keys]
+        if isinstance(press_keys, str):
+            press_keys = [press_keys]
 
         press_keys_str = "[" + ", ".join([f"'{key}'" for key in press_keys]) + "]"
         command = "import pyautogui; "
