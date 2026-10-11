@@ -1,0 +1,4 @@
+include gui_agents/s3/ui/index.html
+recursive-include gui_agents/s3/ui/static *.js *.css
+recursive-include gui_agents/s3/ui/src *.ts
+include gui_agents/s3/ui/package.json gui_agents/s3/ui/package-lock.json gui_agents/s3/ui/tsconfig.json

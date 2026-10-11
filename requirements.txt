@@ -5,6 +5,11 @@ openai
 anthropic
 fastapi
 uvicorn
+mcp>=2.2,<3
+httpx>=0.27,<1
+pydantic>=2.7,<3
+mss>=9,<11
+pyperclip>=1.8,<2
 paddleocr
 paddlepaddle
 together
@@ -20,4 +25,4 @@ google-genai
 # Platform-specific dependencies
 pyobjc; platform_system == "Darwin"
 pywinauto; platform_system == "Windows"
-pywin32; platform_system == "Windows" 
+pywin32; platform_system == "Windows"

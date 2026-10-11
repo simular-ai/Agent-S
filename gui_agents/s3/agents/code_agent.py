@@ -45,6 +45,8 @@ def execute_code(code_type: str, code: str, env_controller) -> Dict:
         return result
 
     except Exception as e:
+        if isinstance(e, InterruptedError):
+            raise
         logger.error(f"Error executing {code_type} code: {e}")
         return {"status": "error", "error": str(e)}
 
@@ -136,10 +138,15 @@ class CodeAgent:
         execution_history = []
 
         while step_count < self.budget:
+            stop = getattr(env_controller, "stop_event", None)
+            if stop is not None and stop.is_set():
+                raise InterruptedError("Coding agent stopped")
             logger.info(f"Step {step_count + 1}/{self.budget}")
 
             # Get assistant response (thoughts and code)
             response = call_llm_safe(self.agent, temperature=1)
+            if stop is not None and stop.is_set():
+                raise InterruptedError("Coding agent stopped")
 
             # Print to terminal for immediate visibility
             print(f"\n🤖 CODING AGENT RESPONSE - Step {step_count + 1}/{self.budget}")

@@ -3,7 +3,6 @@
 from gui_agents.s3.utils.common_utils import (
     extract_agent_functions,
     parse_code_from_string,
-    create_pyautogui_code,
     split_thinking_response,
 )
 
@@ -20,9 +19,11 @@ SINGLE_ACTION_FORMATTER = lambda response: (
 
 
 def _attempt_code_creation(agent, code, obs):
-    """Attempts to create a pyautogui code snippet from the response code"""
+    """Validate syntax and arguments without grounding or executing an action."""
     try:
-        return create_pyautogui_code(agent, code, obs)
+        from gui_agents.s3.utils.actions import parse_action
+
+        return parse_action(agent, code)
     except Exception as e:
         return None
 

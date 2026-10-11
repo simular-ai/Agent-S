@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 from typing import Dict
 
 
@@ -46,6 +47,8 @@ class LocalController:
             }
 
     def run_python_script(self, code: str) -> Dict:
+        if hasattr(self, "stop_event"):
+            return self._supervised_python(code)
         try:
             proc = subprocess.run(
                 [sys.executable, "-c", code],
@@ -68,6 +71,35 @@ class LocalController:
                 "output": "",
                 "error": str(e),
             }
+
+    def _supervised_python(self, code):
+        process = subprocess.Popen(
+            [sys.executable, "-c", code],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + self.script_timeout
+        try:
+            while True:
+                if self.stop_event.is_set() or time.monotonic() >= deadline:
+                    process.kill()
+                    out, err = process.communicate()
+                    raise InterruptedError("Local script stopped or timed out")
+                try:
+                    out, err = process.communicate(timeout=0.2)
+                    return {
+                        "status": "ok" if process.returncode == 0 else "error",
+                        "return_code": process.returncode,
+                        "output": out[-65536:],
+                        "error": err[-65536:],
+                    }
+                except subprocess.TimeoutExpired:
+                    continue
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
 
 
 class LocalEnv:

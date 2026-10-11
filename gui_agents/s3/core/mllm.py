@@ -12,6 +12,10 @@ from gui_agents.s3.core.engine import (
     LMMEnginevLLM,
     LMMEngineGemini,
 )
+from gui_agents.s3.core.openai_compatible import (
+    OPENAI_COMPATIBLE_ALIASES,
+    resolve_lmstudio_params,
+)
 
 
 class LMMAgent:
@@ -19,7 +23,11 @@ class LMMAgent:
         if engine is None:
             if engine_params is not None:
                 engine_type = engine_params.get("engine_type")
-                if engine_type == "openai":
+                if engine_type in OPENAI_COMPATIBLE_ALIASES:
+                    # LM Studio / any OpenAI-compatible local server.
+                    engine_params = resolve_lmstudio_params(engine_params)
+                    self.engine = LMMEngineOpenAI(**engine_params)
+                elif engine_type == "openai":
                     self.engine = LMMEngineOpenAI(**engine_params)
                 elif engine_type == "anthropic":
                     self.engine = LMMEngineAnthropic(**engine_params)
