@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--AGENT_S_AUTH-->
+<title>Agent S3 — Control UI</title>
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+<header>
+  <h1>Agent S3 — Control UI</h1>
+  <span class="sub">Planner = <b>what</b> to do &nbsp;·&nbsp; Grounding (UI-TARS) = <b>where</b> to click</span>
+  <span id="status"><span class="pill" id="svpill">connecting…</span> <span id="svinfo"></span></span>
+</header>
+<main>
+  <div>
+    <div class="card">
+      <h2>Configuration</h2>
+      <label>Profile</label>
+      <div class="row"><select id="profile_pick"></select><button id="profileNew" title="Create a profile">New</button><button id="profileDuplicate" title="Duplicate the selected profile">Duplicate</button></div>
+      <div class="row"><input id="profile_name" placeholder="profile name" /><button id="profileRename" title="Rename the selected profile">Rename</button><button id="profileDelete" title="Delete the selected profile">Delete</button></div>
+      <div class="msg" id="msgProfile"></div>
+    </div>
+    <div class="card">
+      <h2>1 · Planner (chat model)</h2>
+      <p class="hint">Vision-capable chat model. LM Studio default: <code>http://localhost:1234/v1</code>, key <code>lm-studio</code>. Choose <b>codex</b> to use your ChatGPT/Codex subscription through the Codex SDK.</p>
+      <label>Provider</label><select id="provider"></select>
+      <div id="codexBox" style="display:none">
+        <p class="hint" id="codexStatus">Codex status unknown.</p>
+        <div class="btnrow"><button id="codexLogin">Login with Codex</button><button id="codexLogout">Sign out</button><button id="codexRefresh">Refresh status</button></div>
+      </div>
+      <label>Base URL</label><input id="model_url" placeholder="http://localhost:1234/v1" />
+      <label>API key</label><input id="model_api_key" type="password" placeholder="lm-studio" />
+      <label>Model</label>
+      <div class="row"><input id="model" placeholder="pick via Fetch models" /><button id="fetchPlanner" title="List models on the server">Fetch</button></div>
+      <select id="model_pick" style="margin-top:6px; display:none"></select>
+      <label>Temperature</label><input id="model_temperature" type="number" step="0.1" value="0" />
+      <label>Azure API version (Azure only)</label><input id="azure_api_version" placeholder="or OPENAI_API_VERSION" />
+      <div class="btnrow"><button id="testPlanner">Test connection</button></div>
+      <div class="msg" id="msgPlanner"></div>
+    </div>
+    <div class="card">
+      <h2>2 · Grounding (UI-TARS)</h2>
+      <p class="hint">Locates UI elements → x,y pixels. Serve <b>UI-TARS-1.5-7B</b> in LM Studio (or any hosted UI-TARS endpoint). Width/height must match the model: 7B → 1920×1080.</p>
+      <label>Provider</label><select id="ground_provider"></select>
+      <label>Base URL</label><input id="ground_url" placeholder="http://localhost:1234/v1" />
+      <label>API key</label><input id="ground_api_key" type="password" placeholder="lm-studio" />
+      <label>Azure API version (Azure only)</label><input id="ground_azure_api_version" placeholder="or OPENAI_API_VERSION" />
+      <label>Model</label>
+      <div class="row"><input id="ground_model" placeholder="ui-tars model id" /><button id="fetchGround">Fetch</button></div>
+      <select id="ground_pick" style="margin-top:6px; display:none"></select>
+      <div class="row">
+        <div><label>Grounding width</label><input id="grounding_width" type="number" value="1920" /></div>
+        <div><label>Grounding height</label><input id="grounding_height" type="number" value="1080" /></div>
+      </div>
+      <div class="btnrow"><button id="testGround">Test connection</button></div>
+      <div class="msg" id="msgGround"></div>
+    </div>
+    <div class="card">
+      <h2>3 · Agent behaviour</h2>
+      <div class="row">
+        <div><label>Max steps</label><input id="max_steps" type="number" value="15" min="1" max="60" /></div>
+        <div><label>Trajectory length</label><input id="max_trajectory_length" type="number" value="8" min="1" max="30" /></div>
+      </div>
+      <label>Execution mode</label>
+      <select id="approval">
+        <option value="auto">auto — run actions immediately (like CLI)</option>
+        <option value="manual">manual — approve every step</option>
+        <option value="dry_run" selected>dry_run — prepare actions without executing</option>
+      </select>
+      <label class="check"><input type="checkbox" id="enable_reflection" checked /> Reflection agent (2× LLM calls/step, better recovery)</label>
+      <label class="check"><input type="checkbox" id="enable_local_env" /> Local code execution (runs code on this machine!)</label>
+      <label class="check"><input type="checkbox" id="overlay" checked /> Desktop overlay (always-on-top status window, hidden for each screenshot)</label>
+      <label>Target monitor</label><select id="monitor"></select>
+      <label>Planning deadline (seconds)</label><input id="inference_timeout" type="number" value="60" min="5" max="300" />
+      <label>Action deadline (seconds)</label><input id="action_timeout" type="number" value="60" min="5" max="300" />
+      <label>Overall task deadline (seconds)</label><input id="task_timeout" type="number" value="600" min="10" max="3600" />
+      <p class="hint">Blank API keys retain saved credentials or use provider environment variables. Changing provider clears its saved key. The overlay stays hidden through capture and execution. A manual coding-agent approval covers the entire coding-agent invocation.</p>
+      <div class="btnrow"><button class="primary" id="saveCfg">Save configuration</button></div>
+      <div class="msg" id="msgCfg"></div>
+    </div>
+    <div class="card">
+      <h2>OpenAI-compatible API</h2>
+      <p class="hint">This server is itself OpenAI-compatible. Point any OpenAI client at <code>/v1</code>:</p>
+      <code class="snip" id="snipCurl">curl http://127.0.0.1:8000/v1/models</code>
+      <code class="snip">curl http://127.0.0.1:8000/v1/chat/completions -H "Authorization: Bearer $AGENT_S_UI_TOKEN" -H "Content-Type: application/json" -d '{"model":"agent-s3","messages":[{"role":"user","content":"Open notepad and type hello"}]}'   # uses the saved execution mode; manual mode requires /api/tasks</code>
+      <code class="snip">import os
+from openai import OpenAI
+c = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key=os.environ["AGENT_S_UI_TOKEN"])
+print(c.models.list())                       # planner + grounding + agent-s3
+print(c.chat.completions.create(model="gpt-x", messages=[{"role":"user","content":"hi"}]).choices[0].message.content)  # proxied to planner/LM Studio</code>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <h2>Run a task</h2>
+      <label>Existing tasks</label><select id="task_pick"></select><button id="refreshTasks">Refresh / reconnect</button>
+      <label>Instruction</label>
+      <textarea id="instruction" placeholder='e.g. Open Chrome and search for "weather in Berlin"'></textarea>
+      <div class="btnrow">
+        <button class="primary" id="start">▶ Start</button>
+        <button class="danger" id="stop" disabled>■ Stop</button>
+        <button id="approve" disabled>✓ Approve step</button>
+        <button id="reject" disabled>✗ Reject</button>
+      </div>
+      <div class="msg" id="msgRun"></div>
+    </div>
+    <div class="card">
+      <h2>Live screen</h2>
+      <img id="shot" alt="live screenshot appears while a task runs" />
+    </div>
+    <div class="card">
+      <h2>Steps</h2>
+      <div id="steps"><p class="hint">No steps yet.</p></div>
+    </div>
+    <div class="card">
+      <h2>Logs</h2>
+      <div id="logs"></div>
+    </div>
+  </div>
+</main>
+<script type="module" src="/static/main.js"></script>
+</body>
+</html>

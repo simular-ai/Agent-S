@@ -27,9 +27,16 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
     Raises:
         Exception: If there is an error in evaluating the code.
     """
-    agent.assign_screenshot(obs)  # Necessary for grounding
-    exec_code = eval(code)
-    return exec_code
+    from gui_agents.s3.utils.actions import parse_action, prepare_action
+
+    spec = parse_action(agent, code)
+    agent.assign_screenshot(obs)
+    if getattr(agent, "deferred_execution", False):
+        agent.prepared_action = prepare_action(agent, spec, obs)
+        return agent.prepared_action.preview
+    # Legacy CLI/SDK callers still receive the existing action's code string.
+    # Literal-only parsing prevents Python execution inside action arguments.
+    return getattr(agent, spec.name)(**spec.arguments)
 
 
 def call_llm_safe(

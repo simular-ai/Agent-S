@@ -1,0 +1,35 @@
+name: Supervised UI regression checks
+on:
+  pull_request:
+  push:
+    branches: [main]
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install test dependencies
+        run: |
+          python -m pip install numpy backoff openai anthropic fastapi httpx pydantic pillow pytesseract pyautogui pyperclip pywin32 mss uvicorn "mcp>=2.2,<3"
+          python -m pip install -e . --no-deps
+          python -m pip install wheel
+      - name: Python syntax, regression and MCP checks
+        run: |
+          python -m compileall -q gui_agents/s3
+          python -m unittest discover -s tests -v
+          python tests/mcp_protocol_check.py
+          python tests/wheel_smoke.py
+      - name: Frontend build and lifecycle
+        working-directory: gui_agents/s3/ui
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+          npm test
+          git diff --exit-code -- static
