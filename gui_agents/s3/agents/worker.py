@@ -1,7 +1,7 @@
 from functools import partial
 import logging
 import textwrap
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from gui_agents.s3.agents.grounding import ACI
 from gui_agents.s3.core.module import BaseModule
@@ -29,6 +29,7 @@ class Worker(BaseModule):
         platform: str = "ubuntu",
         max_trajectory_length: int = 8,
         enable_reflection: bool = True,
+        max_history_images: Optional[int] = None,
     ):
         """
         Worker receives the main task and generates actions, without the need of hierarchical planning
@@ -40,9 +41,12 @@ class Worker(BaseModule):
             platform: str
                 OS platform the agent runs on (darwin, linux, windows)
             max_trajectory_length: int
-                The amount of images turns to keep
+                The number of full turns to keep for short-context models
             enable_reflection: bool
                 Whether to enable reflection
+            max_history_images: Optional[int]
+                The number of recent images to keep for long-context models.
+                Defaults to max_trajectory_length for backwards compatibility.
         """
         super().__init__(worker_engine_params, platform)
 
@@ -56,6 +60,9 @@ class Worker(BaseModule):
         ]
         self.grounding_agent = grounding_agent
         self.max_trajectory_length = max_trajectory_length
+        self.max_history_images = (
+            max_trajectory_length if max_history_images is None else max_history_images
+        )
         self.enable_reflection = enable_reflection
 
         self.reset()
@@ -99,7 +106,7 @@ class Worker(BaseModule):
 
         # Flush strategy for long-context models: keep all text, only keep latest images
         if engine_type in ["anthropic", "openai", "gemini"]:
-            max_images = self.max_trajectory_length
+            max_images = self.max_history_images
             for agent in [self.generator_agent, self.reflection_agent]:
                 if agent is None:
                     continue

@@ -1,6 +1,6 @@
 import logging
 import platform
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from gui_agents.s3.agents.grounding import ACI
 from gui_agents.s3.agents.worker import Worker
@@ -55,6 +55,7 @@ class AgentS3(UIAgent):
         platform: str = platform.system().lower(),
         max_trajectory_length: int = 8,
         enable_reflection: bool = True,
+        max_history_images: Optional[int] = None,
     ):
         """Initialize a minimalist AgentS2 without hierarchy
 
@@ -62,12 +63,16 @@ class AgentS3(UIAgent):
             worker_engine_params: Configuration parameters for the worker agent.
             grounding_agent: Instance of ACI class for UI interaction
             platform: Operating system platform (darwin, linux, windows)
-            max_trajectory_length: Maximum number of image turns to keep
+            max_trajectory_length: Maximum number of full turns to keep for
+                short-context models
             enable_reflection: Creates a reflection agent to assist the worker agent
+            max_history_images: Maximum number of recent images to keep for
+                long-context models. Defaults to max_trajectory_length.
         """
 
         super().__init__(worker_engine_params, grounding_agent, platform)
         self.max_trajectory_length = max_trajectory_length
+        self.max_history_images = max_history_images
         self.enable_reflection = enable_reflection
 
         self.reset()
@@ -79,6 +84,7 @@ class AgentS3(UIAgent):
             grounding_agent=self.grounding_agent,
             platform=self.platform,
             max_trajectory_length=self.max_trajectory_length,
+            max_history_images=self.max_history_images,
             enable_reflection=self.enable_reflection,
         )
 

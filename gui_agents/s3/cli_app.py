@@ -301,7 +301,13 @@ def main():
         "--max_trajectory_length",
         type=int,
         default=8,
-        help="Maximum number of image turns to keep in trajectory",
+        help="Maximum number of full turns to keep for short-context models",
+    )
+    parser.add_argument(
+        "--max_history_images",
+        type=int,
+        default=3,
+        help="Maximum number of recent images to send to long-context models",
     )
     parser.add_argument(
         "--enable_reflection",
@@ -370,6 +376,7 @@ def main():
         grounding_agent,
         platform=current_platform,
         max_trajectory_length=args.max_trajectory_length,
+        max_history_images=args.max_history_images,
         enable_reflection=args.enable_reflection,
     )
 
