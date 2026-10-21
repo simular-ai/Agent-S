@@ -39,4 +39,4 @@ jobs:
 
     - name: Run Linter
       run: |
-        black --check gui_agents
+        black --check gui_agents agent_s4

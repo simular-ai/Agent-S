@@ -1,0 +1,111 @@
+# ──────────────────────────────────────────────────────────────────────
+# Python / build artifacts
+# ──────────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.egg-info/
+/dist/
+# Local backups made before ad-hoc fixes.
+*.bak-*
+# Local Python environments.  Keep named benchmark/debug venvs out too
+# (for example .venv-osworld/), not just the conventional .venv/.
+.venv/
+.venv-*/
+# uv project lockfile: unused — deps are managed via `uv pip install`, not project mode
+uv.lock
+!agent_harness/prime-agent-runtime/uv.lock
+!agent_harness/prime-agent-kernel/uv.lock
+
+# Local secrets. agent_s4.eval.osworld calls load_dotenv(), so .env is a
+# normal place for ANTHROPIC_API_KEY / OPENROUTER_API_KEY / GITLAB_* to live.
+.env
+.env.*
+!.env.example
+
+# ──────────────────────────────────────────────────────────────────────
+# Editor / agent tooling
+# ──────────────────────────────────────────────────────────────────────
+.claude/
+.worktrees/
+
+# ──────────────────────────────────────────────────────────────────────
+# Run state, DB, logs
+# ──────────────────────────────────────────────────────────────────────
+orchestrator_state.json
+island_state.json*
+island_*.log
+shadow_evolution.db
+shadow_evolution.db-wal
+shadow_evolution.db-shm
+shadow_evolution.db.pre_*
+# Benchmark-namespaced run DBs (e.g. shadow_evolution_osworld_v2.db + sqlite sidecars)
+shadow_evolution_*.db
+shadow_evolution_*.db-wal
+shadow_evolution_*.db-shm
+# ... and the same DBs after a worktree merge gave them a prefix.
+*shadow_evolution_*.db
+*shadow_evolution_*.db-wal
+*shadow_evolution_*.db-shm
+runs/
+logs/
+
+# ──────────────────────────────────────────────────────────────────────
+# Evolution caches, worktrees, archives
+# ──────────────────────────────────────────────────────────────────────
+eval_cache/
+eval_cache_*/
+builder_logs/
+builder_logs_*/
+# Durable VM-cleanup records, written per run so a crash can still be swept.
+scratch_cleanup_*/
+# Ad-hoc eval output (the named results_* dirs below are the older ones).
+results/
+results_*/
+OSWorld_Evol_*/
+OSWorldV2_Evol_*/
+_tmp_*/
+# OSWorldV2_{Base,Evol*}: local clones of xlang-ai/OSWorld-V2 pinned to release
+# tag v2026.08.08 (Evol on branch `evol`), plus per-island Evol_* worktrees.
+# Kept out of the index; promote the Base/Evol
+# templates to submodules if the pin needs to travel:
+#   git submodule add -b main <url> OSWorldV2_Base
+/OSWorldV2_Base/
+/OSWorldV2_Base
+/OSWorldV2_Evol/
+/OSWorldV2_Evol
+# Synthetic task data is downloaded separately (see data/README.md).
+/data/*
+!/data/README.md
+# _archive/: pre-refactor ad-hoc experiments (experiments/ now holds committed wrappers)
+_archive/
+_archive_*/
+# Aborted runs, isolated experiment workspaces, and rerun artifacts.
+/_aborted/
+/_isolated_*/
+/_reruns/
+
+# ──────────────────────────────────────────────────────────────────────
+# Results & generated outputs (figures, reports, paper artifacts)
+# ──────────────────────────────────────────────────────────────────────
+results_baseline/
+results_baseline_sonnet_v2/
+results_shadow/
+results_shadow_test/
+*.png
+reports/
+variant_analyses*
+
+# ──────────────────────────────────────────────────────────────────────
+# Smoke / scratch / inspection artifacts
+# ──────────────────────────────────────────────────────────────────────
+_inspect/
+scripts/_or_smoke_artifacts
+scripts/_provider_pin_smoke
+
+# Working copy of the evolution tree (OSWorldV2_Evol_*/ above only covers the
+# namespaced clones; this is the un-suffixed one, ~1.8 GiB)
+/OSWorldV2_Evol/
+# Exported run artifacts, ~7.4 GiB
+/exports/
+# Pre-recovery DB snapshots: shadow_evolution_*.db above stops at the .db suffix
+*shadow_evolution_*.db.before-recover-*

@@ -1,0 +1,16 @@
+# Host-side environment for agent_s4 runs beyond the benchmark checkouts. The
+# package's own dependencies are also declared in agent_s4/pyproject.toml.
+# desktop_env comes from the OSWorld-V2 checkout (see README.md); ScienceBoard's
+# `sci` package from ScienceBoard_Base/requirements.txt
+# (scienceboard_setup/s4/README.md).
+boto3
+python-dotenv[cli]
+requests
+httpx
+playwright
+pytest
+# OSWorld-V2 task imports
+python-gitlab
+imageio-ffmpeg
+# The optional LiteLLM proxy (scripts/proxy/) runs from its own venv:
+#   uv venv .venv-litellm && uv pip install --python .venv-litellm 'litellm[proxy]'
