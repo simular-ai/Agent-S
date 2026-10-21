@@ -43,11 +43,8 @@
 
 ## 🚀 Quick Start
 
-**No setup:** the **[Simular API](https://platform.simular.ai/)** runs [Sai](https://www.sai.work/), our production computer use agent, on a cloud computer. Send a task over HTTP, or add Sai to Claude Code, Codex or Cursor as an MCP server. The free plan includes a cloud computer. [Get an API key →](https://platform.simular.ai/) · [API docs](https://platform.simular.ai/documentation)
-
-Most computer work repeats. [Sai](https://www.sai.work/) runs those jobs as recurring workflows on a cloud computer, on your schedule. Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates).
-
-**Run Agent S on your own computer:** `pip install gui-agents`, then follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
+- **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).
+- **On your own computer:** `pip install gui-agents`, then follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
 
 ## 📚 Agent S Versions
 
