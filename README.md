@@ -8,7 +8,7 @@
 </p>
 
 <h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
-<h2 align="center">🏆 <a href="https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
+<h2 align="center">🏆 <a href="./gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
 
 <p align="center">&nbsp;
 <a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -42,7 +42,7 @@
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
 ## 🥳 Updates
-- [x] **2026/10/20**: Released **[Agent S4](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
+- [x] **2026/10/20**: Released **[Agent S4](./agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
 - [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 
 <details>
@@ -67,17 +67,17 @@
 ## 🚀 Quick Start
 
 - **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).
-- **On your own computer:** follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
+- **On your own computer:** follow the [Agent S3 README](./gui_agents/s3/README.md).
 
 ## 📚 Agent S Versions
 
 | Version | What it is | Docs | Paper |
 |---|---|---|---|
-| **Agent S4** | Evolves the tool interfaces a computer use agent works through, from its own task experience. Open-source state of the art on OSWorld V2 (21.3% with Qwen3.8-27B). | [README](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md) | [arXiv 2026](https://arxiv.org/abs/2610.28601) |
-| **Agent S3** | The agent in `gui-agents` today. First to surpass human performance on OSWorld (72.60%). | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md) | [TMLR 2026](https://arxiv.org/abs/2510.02250) |
-| **Agent S2.5** | A simpler, faster Agent S2. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2_5/README.md) | — |
-| **Agent S2** | A compositional generalist-specialist framework. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
-| **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
+| **Agent S4** | Evolves the tool interfaces a computer use agent works through, from its own task experience. Open-source state of the art on OSWorld V2 (21.3% with Qwen3.8-27B). | [README](./agent_s4/README.md) | [arXiv 2026](https://arxiv.org/abs/2610.28601) |
+| **Agent S3** | The agent in `gui-agents` today. First to surpass human performance on OSWorld (72.60%). | [README](./gui_agents/s3/README.md) | [TMLR 2026](https://arxiv.org/abs/2510.02250) |
+| **Agent S2.5** | A simpler, faster Agent S2. | [README](./gui_agents/s2_5/README.md) | — |
+| **Agent S2** | A compositional generalist-specialist framework. | [README](./gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
+| **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](./gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
 
 ## 💬 Citations
 
