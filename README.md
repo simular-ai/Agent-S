@@ -1,10 +1,10 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
-  <small>Superhuman Computer Use</small>
+  <small>Open Computer Use</small>
 </h1>
 
 <p align="center">
-  <b>An open-source computer use agent that can operate a real GUI like a human and also work in the way beyond human capacity.</b>
+  <b>An open-source computer use agent that can operate a real GUI like a human or work in the way beyond human capacity.</b>
 </p>
 
 <h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
