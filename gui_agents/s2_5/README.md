@@ -55,6 +55,8 @@ If you would like to test Agent S2.5 while making changes, clone the repository 
 pip install -e .
 ```
 
+Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
+
 ### API Configuration
 
 #### Option 1: Environment Variables

@@ -71,7 +71,7 @@ import os
 os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
 ```
 
-We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [../../models.md](models.md).
+We also support Azure OpenAI, Anthropic, and vLLM inference. For more information refer to [models.md](../../models.md).
 
 ### Setup Retrieval from Web using Perplexica
 Agent S works best with web-knowledge retrieval. To enable this feature, you need to setup Perplexica: 
@@ -217,7 +217,7 @@ This will download Agent S2's knowledge base for Linux from release tag `v0.2.2`
 
 ### OSWorld
 
-To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](OSWorld.md).
+To deploy Agent S in OSWorld, follow the [OSWorld Deployment instructions](../../osworld_setup/s1/OSWorld.md).
 
 ### WindowsAgentArena
 

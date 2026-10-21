@@ -75,6 +75,8 @@ Install the package:
 pip install gui-agents
 ```
 
+Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
+
 Set your LLM API Keys and other environment variables. You can do this by adding the following line to your .bashrc (Linux), or .zshrc (MacOS) file. 
 
 ```
