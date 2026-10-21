@@ -22,7 +22,17 @@ On OSWorld V2, Agent S4 with Qwen3.8-27B and its evolved interfaces reaches a
 **21.3%** binary score, a new state of the art for open-source computer-use
 agents and 3.8 times the same model with fixed interfaces. That is above
 GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%), at about 4.3% and 1.5% of their
-respective costs. On ScienceBoard, the evolved interfaces raise the success
+respective costs.
+
+> **Note:** OSWorld V2 scores a task as a strict binary pass/fail — 1 only if
+> every part of the task's checker succeeds, 0 otherwise, with no partial
+> credit for getting most of the way there. That's why these numbers look low
+> next to benchmarks that award partial credit: OSWorld V2 is widely regarded
+> as the hardest computer-use benchmark, and these are state-of-the-art
+> results under that strict scoring, not an indication of low real-world
+> reliability.
+
+On ScienceBoard, the evolved interfaces raise the success
 rate from 41.4% to 58.6% with the same model.
 
 ## Setup guides
