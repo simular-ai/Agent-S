@@ -8,7 +8,7 @@
 </p>
 
 <h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
-<h2 align="center">🏆 <a href="gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
+<h2 align="center">🏆 <a href="https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
 
 <p align="center">&nbsp;
 <a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -43,7 +43,7 @@
 
 ## 🚀 Quick Start
 
-**No setup:** the **[Simular API](https://platform.simular.ai/)** runs [Sai](https://www.sai.work/), our production computer use agent, on a cloud computer. Send a task over HTTP, or add Sai to Claude Code, Codex or Cursor as an MCP server. The free plan includes a cloud computer. [Get an API key →](https://platform.simular.ai/)
+**No setup:** the **[Simular API](https://platform.simular.ai/)** runs [Sai](https://www.sai.work/), our production computer use agent, on a cloud computer. Send a task over HTTP, or add Sai to Claude Code, Codex or Cursor as an MCP server. The free plan includes a cloud computer. [Get an API key →](https://platform.simular.ai/) · [API docs](https://platform.simular.ai/documentation)
 
 **Run Agent S3 on your own computer:**
 
@@ -62,21 +62,21 @@ agent_s \
     --grounding_height 1080
 ```
 
-Agent S3 needs a grounding model such as [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) at `--ground_url`. The agent runs Python code to control your computer, so use it with care. For all options, the Python SDK and OSWorld setup, see the [Agent S3 README](gui_agents/s3/README.md).
+Agent S3 needs a grounding model such as [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) at `--ground_url`. The agent runs Python code to control your computer, so use it with care. For all options, the Python SDK and OSWorld setup, see the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
 
 ## 📚 Agent S Versions
 
 | Version | What it is | Docs | Paper |
 |---|---|---|---|
-| **Agent S4** | Evolves the tool interfaces a computer use agent works through, from its own task experience. Open-source state of the art on OSWorld V2 (21.3% with Qwen3.8-27B). | [README](agent_s4/README.md) | [arXiv 2026](https://arxiv.org/abs/2610.28601) |
-| **Agent S3** | The agent in `gui-agents` today. First to surpass human performance on OSWorld (72.60%). | [README](gui_agents/s3/README.md) | [TMLR 2026](https://arxiv.org/abs/2510.02250) |
-| **Agent S2.5** | A simpler, faster Agent S2. | [README](gui_agents/s2_5/README.md) | — |
-| **Agent S2** | A compositional generalist-specialist framework. | [README](gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
-| **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
+| **Agent S4** | Evolves the tool interfaces a computer use agent works through, from its own task experience. Open-source state of the art on OSWorld V2 (21.3% with Qwen3.8-27B). | [README](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md) | [arXiv 2026](https://arxiv.org/abs/2610.28601) |
+| **Agent S3** | The agent in `gui-agents` today. First to surpass human performance on OSWorld (72.60%). | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md) | [TMLR 2026](https://arxiv.org/abs/2510.02250) |
+| **Agent S2.5** | A simpler, faster Agent S2. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2_5/README.md) | — |
+| **Agent S2** | A compositional generalist-specialist framework. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
+| **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
 
 ## 🥳 Updates
-- [x] **2026/10/20**: Released **[Agent S4](agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
-- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
+- [x] **2026/10/20**: Released **[Agent S4](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
+- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/) · [API docs](https://platform.simular.ai/documentation)
 - [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
 - [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
 - [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!

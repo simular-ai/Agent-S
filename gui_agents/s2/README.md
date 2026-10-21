@@ -137,14 +137,14 @@ For a more detailed setup and usage guide, please refer to the [Perplexica Repos
 
 ### CLI
 
-Run Agent S2 with a specific model (default is `gpt-4o`):
+Run Agent S2 with a specific model (default is `claude-3-7-sonnet-20250219`):
 
 ```sh
 python -m gui_agents.s2.cli_app \
   --provider "anthropic" \
   --model "claude-3-7-sonnet-20250219" \
   --grounding_model_provider "anthropic" \
-  --grounding_model "claude-3-7-sonnet-20250219" \
+  --grounding_model "claude-3-7-sonnet-20250219"
 ```
 
 Or use a custom endpoint:
