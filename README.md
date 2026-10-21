@@ -12,6 +12,11 @@
 
 
 <p align="center">&nbsp;
+  📄 <a href="https://arxiv.org/abs/2610.28601">[S4 Paper]</a>&nbsp;
+  💻 <a href="agent_s4/">[S4 Code]</a>
+</p>
+
+<p align="center">&nbsp;
   🌐 <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">[Sai OSWorld 2.0 report]</a>&nbsp;
   🌐 <a href="https://www.simular.ai/articles/agent-s3">[S3 blog]</a>&nbsp;
   📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper (TMLR 2026)]</a>&nbsp;
@@ -65,6 +70,7 @@
 </div>
 
 ## 🥳 Updates
+- [x] **2026/10/20**: Released **[Agent S4](#-agent-s4-evolving-agent-interfaces)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
 - [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 - [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
 - [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
@@ -86,10 +92,11 @@
 2. [🎯 OSWorld Benchmark Results](#-osworld-benchmark-results)
 3. [🛠️ Installation & Setup](#%EF%B8%8F-installation--setup) 
 4. [🚀 Usage](#-usage)
-5. [🎬 See Sai in Action](#-see-sai-in-action)
-6. [🔌 Simular API](#-simular-api)
-7. [🤝 Acknowledgements](#-acknowledgements)
-8. [💬 Citation](#-citation)
+5. [🧬 Agent S4](#-agent-s4-evolving-agent-interfaces)
+6. [🎬 See Sai in Action](#-see-sai-in-action)
+7. [🔌 Simular API](#-simular-api)
+8. [🤝 Acknowledgements](#-acknowledgements)
+9. [💬 Citation](#-citation)
 
 ## 💡 Introduction
 
@@ -134,6 +141,15 @@ pip install -e .
 ```
 
 Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
+
+#### Agent S4
+[Agent S4](#-agent-s4-evolving-agent-interfaces) is a separate package (`agent-s4`, in [`agent_s4/`](agent_s4/)); installing `gui-agents` does not include it. Agent S4 runs also read setup files from this repository (prompts, the seed interface, task splits and the Prime Agent runtime), so clone it and install the package from the clone:
+```bash
+git clone https://github.com/simular-ai/Agent-S.git
+cd Agent-S
+pip install -e ./agent_s4
+```
+`pip install agent-s4` installs the same code from PyPI; with it, set `SHADOW_EVOL_SHARED_ROOT` to `osworld_setup/s4` in your clone. See [agent_s4/README.md](agent_s4/README.md) for the rest of the setup.
 
 ### API Configuration
 
@@ -346,6 +362,23 @@ Refer to `gui_agents/s3/cli_app.py` for more details on how the inference loop w
 
 To deploy Agent S3 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s3/OSWorld.md).
 
+To run Agent S4 on OSWorld V2, see [Agent S4](#-agent-s4-evolving-agent-interfaces) below.
+
+
+## 🧬 Agent S4: Evolving Agent Interfaces
+
+📄 [Paper](https://arxiv.org/abs/2610.28601) · 💻 [Code](agent_s4/)
+
+Computer-use agents are limited by the interfaces humans give them: an agent may type a spreadsheet cell by cell when one line of code would do. **Agent S4** is an autonomous computer-use scientist that builds those interfaces itself. A meta-agent studies the task agent's trajectories on synthetic training tasks, without success labels, and writes and revises a repository of interfaces and the knowledge of when to use them. Population-based evolution then keeps developing the repositories that score best on validation tasks the meta-agent never sees, favoring changes that generalize.
+
+On OSWorld V2, Agent S4 with Qwen3.8-27B and its evolved interfaces reaches a **21.3%** binary score, a new state of the art for open-source computer-use agents and 3.8 times the same model with fixed interfaces. That is above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%), at about 4.3% and 1.5% of their respective costs. On ScienceBoard, the evolved interfaces raise the success rate from 41.4% to 58.6% with the same model.
+
+To get started, install the package (see [Installation](#agent-s4)), then follow:
+
+- [agent_s4/README.md](agent_s4/README.md): how the code is organized and how a run works.
+- [osworld_setup/s4/README.md](osworld_setup/s4/README.md): setting up and running evolution on OSWorld V2.
+- [scienceboard_setup/s4/README.md](scienceboard_setup/s4/README.md): the same for ScienceBoard.
+
 
 ## 🎬 See Sai in Action
 
@@ -366,6 +399,16 @@ The **[Simular API](https://platform.simular.ai/)** gives you Sai, the computer 
 If you find this codebase useful, please cite:
 
 ```
+@misc{Agent-S4,
+      title={Evolving Agent Interfaces}, 
+      author={Saaket Agashe and Yuzhe Yang and Gonzalo Gonzalez-Pumariega and Bhuvan Chandra Koduru and Chih-Lun Lee and Jiachen Yang and Ang Li and Xin Eric Wang},
+      year={2026},
+      eprint={2610.28601},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2610.28601}, 
+}
+
 @misc{Agent-S3,
       title={The Unreasonable Effectiveness of Scaling Agents for Computer Use}, 
       author={Gonzalo Gonzalez-Pumariega and Vincent Tu and Chih-Lun Lee and Jiachen Yang and Ang Li and Xin Eric Wang},

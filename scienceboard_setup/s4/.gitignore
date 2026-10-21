@@ -1,0 +1,21 @@
+# ScienceBoard checkouts (see README.md) and per-island clones.
+/ScienceBoard_Base/
+/ScienceBoard_Evol/
+ScienceBoard_Evol_*/
+# Run state and artefacts.
+shadow_evolution_*.db
+shadow_evolution_*.db-wal
+shadow_evolution_*.db-shm
+eval_cache_*/
+builder_logs_*/
+_migrate_transit_*/
+scratch_cleanup_*/
+runs/
+logs/
+# Synthetic task data is downloaded separately (see data/README.md).
+/data/*
+!/data/README.md
+# Local configuration.
+.env
+.venv/
+__pycache__/

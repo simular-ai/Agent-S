@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+# Agent S4 ships separately from gui-agents. The package carries only the
+# code: runs read their setup files (prompts, seed interface, splits, Prime
+# runtime) from osworld_setup/s4/ in an Agent-S checkout (see paths.py).
+[project]
+name = "agent-s4"
+version = "0.1.0"
+description = "Agent S4: evolving tool interfaces for computer-use agents"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{ name = "Simular AI" }]
+keywords = ["ai", "llm", "agent", "computer-use", "evolution"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: POSIX :: Linux",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+# desktop_env comes from the OSWorld-V2 checkout and ScienceBoard's `sci` from
+# its own checkout; osworld_setup/s4/requirements.txt lists the rest of the
+# host environment (tests, OSWorld-V2 task imports).
+dependencies = [
+    "boto3",
+    "python-dotenv[cli]",
+    "requests",
+    "playwright",
+]
+
+[project.urls]
+Source = "https://github.com/simular-ai/Agent-S"
+Paper = "https://arxiv.org/abs/2610.28601"
+Issues = "https://github.com/simular-ai/Agent-S/issues"
+
+# This directory is the agent_s4 package itself.
+[tool.setuptools]
+package-dir = { "agent_s4" = "." }
+packages = [
+    "agent_s4",
+    "agent_s4.config",
+    "agent_s4.eval",
+    "agent_s4.harness",
+    "agent_s4.harness.opencode",
+    "agent_s4.harness.prime",
+    "agent_s4.operators",
+    "agent_s4.vm",
+]
+
+[tool.setuptools.package-data]
+"agent_s4.harness.opencode" = ["*.js"]

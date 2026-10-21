@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "release": "osworld-v2-2026.08.08",
+  "status": "active",
+  "code_repository": "xlang-ai/OSWorld-V2",
+  "code_tag": "v2026.08.08",
+  "code_commit": "d578d2d4e0dc82b43e270fdaa7fa89d9708cd154",
+  "release_manifest_sha256": "afe4f61ba6f4e4dce6c9f5815578e41e084fb6b61ee96b7118d9055e5d339aab",
+  "task_set_sha256": "5534e65695517b4d4cf89367f8d420ecd500ef04066e4dea49a5926a66fef404",
+  "task_manifest_sha256": "7f2c0f531d035dd6f5886c492b96739534385f8e5369e4c764295ad52bf6e7f4",
+  "split_sha256": {
+    "osworld_v2_train_50.json": "2de60271664f897aea970cc5eb959a6d03855ab9a03a9a08891cfe310004fc49",
+    "osworld_v2_val_25.json": "78cb7991a81e5e4ca9aa3d22ac7ad019383066d1f47f492288e44478ec4d5d6d",
+    "osworld_v2_test.json": "72314de4b8531d296b07f560070c142978a406da6ebc83d15c3142cd144ce0ec"
+  },
+  "task_count": 108,
+  "split_sizes": [50, 25, 33],
+  "website_suffix": "site.hku.icu",
+  "aws_ami": {
+    "us-east-1": {
+      "1920x1080": "ami-01017272139e01feb"
+    }
+  },
+  "scratch_vm": {
+    "screen_size": [1920, 1080],
+    "instance_type": "t3.xlarge",
+    "volume_size": null,
+    "client_password": "osworld-public-evaluation",
+    "enable_proxy": false
+  },
+  "asset_repository": "xlangai/osworld_v2_assets_gated",
+  "asset_tag": "v2026.08.08",
+  "asset_commit": "acad110ef3136405f95434b54862bf9066176c2a",
+  "asset_file_count": 1061,
+  "asset_total_bytes": 4525476196,
+  "asset_min_files": 1061,
+  "asset_min_bytes": 4525476196
+}

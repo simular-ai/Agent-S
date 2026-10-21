@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "upstream": "https://github.com/PrimeIntellect-ai/prime-agent",
+  "upstream_commit": "a9b5d88b50db50860088772a408e867f8071b507",
+  "files": {
+    "LICENSE": "b288615fb31dc504623582fb790a28e6d86bc2f5c1396845af555e43386da5a0",
+    "pyproject.toml": "86ddfa4c3eff6a41dcb3f6fd8f6dc59739b27e8f70f743449cd01ae0bc0eaa8b",
+    "src/rlm/__init__.py": "d13132bc7228c062b431f046d8e5eccf772e328d42e9ad713e8d3280f9752a7a",
+    "src/rlm/harness.py": "de43f023279bd661993f6dd27d9e97cb670d10439c861c17b381962bb48d9e8e",
+    "src/rlm/mcp.py": "66eb3a7f473ea0e18011a5d71973a66889b18909541e8ff5fe15f491a3832e55",
+    "src/rlm/mcp_base.py": "8686bb326bff2dc877846d6475872be68aa5424181f333bd197ae2d9988e45ca",
+    "src/rlm/skill.py": "23f1ecba340b24a4e75880437f33fa72fbd510a2da496a87a9d033fc66b92a7a",
+    "uv.lock": "a3878cb1d1f55505f2326285b2f1b6171d19b58bf0786001459925ae41dc76ab"
+  }
+}

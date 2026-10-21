@@ -1,0 +1,9 @@
+{
+  "enabled": true,
+  "context_window_tokens": 131072,
+  "reserve_tokens": 16384,
+  "keep_recent_tokens": 20000,
+  "min_compact_tokens": 4000,
+  "summary_max_tokens": 4000,
+  "summary_instructions": "Use sections Goal, Constraints & Preferences, Progress (Done, In Progress, Blocked), Key Decisions, Next Steps, and Critical Context. Preserve exact paths, commands, error messages, task state, GUI state, and failed approaches that should not be repeated."
+}

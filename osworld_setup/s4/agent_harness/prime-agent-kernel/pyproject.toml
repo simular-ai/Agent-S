@@ -1,0 +1,26 @@
+[project]
+name = "shadow-prime-agent-kernel"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "beautifulsoup4",
+  "dill",
+  "httpx",
+  "ipykernel",
+  "lxml",
+  "mcp>=2,<3",
+  "nest-asyncio",
+  "numpy",
+  "pandas",
+  "pillow>=10",
+  "pydantic",
+  "python-dotenv",
+  "pyyaml",
+  "requests",
+  "scipy",
+  "tomli",
+  "tyro",
+]
+
+[tool.uv]
+package = false

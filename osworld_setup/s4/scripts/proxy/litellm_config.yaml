@@ -1,0 +1,30 @@
+# LiteLLM proxy fronting a vLLM deployment, adding the tool-calling layer its
+# server was started without. See hermes_tools_handler.py. run_litellm.sh
+# substitutes __HERMES_UPSTREAM_MODEL__ with $HERMES_UPSTREAM_MODEL; clients
+# request that same name (OPENAI_MODEL).
+model_list:
+  - model_name: __HERMES_UPSTREAM_MODEL__
+    litellm_params:
+      model: hermes-tools/__HERMES_UPSTREAM_MODEL__
+      api_base: os.environ/HERMES_UPSTREAM_BASE_URL
+      api_key: os.environ/HERMES_UPSTREAM_API_KEY
+    model_info:
+      supports_function_calling: true
+      supports_vision: true
+      # Verified upstream context limit (input + generated output): 262144.
+      max_input_tokens: 262144
+      # See DEFAULT_MAX_OUTPUT_TOKENS in agent_s4/harness/prime/openrouter.py:
+      # an 8000 cap was terminating most episodes under this proxy.
+      max_output_tokens: 32000
+
+litellm_settings:
+  custom_provider_map:
+    - provider: hermes-tools
+      custom_handler: hermes_tools_handler.hermes_tools
+  drop_params: true
+  # A task episode can run for a long time behind one request; the default
+  # would cut an agent step off mid-tool-call.
+  request_timeout: 1800
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
