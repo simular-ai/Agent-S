@@ -67,6 +67,67 @@ class TestProviders(unittest.TestCase):
                 "https://dashscope.aliyuncs.com/compatible-mode/v1",
             )
 
+    def test_deepseek_cli_params_resolve_default_endpoint(self):
+        """The CLI always passes base_url="" and api_key="". An empty base_url must
+        resolve to the DeepSeek endpoint, not fall through to api.openai.com."""
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
+            agent = LMMAgent(
+                engine_params={
+                    "engine_type": "deepseek",
+                    "model": "deepseek-chat",
+                    "base_url": "",
+                    "api_key": "",
+                    "temperature": None,
+                }
+            )
+            self.assertEqual(agent.engine.base_url, "https://api.deepseek.com/v1")
+            self.assertEqual(agent.engine.api_key, "sk-test")
+
+    def test_deepseek_explicit_base_url_is_kept(self):
+        with patch.dict(os.environ, {"DEEPSEEK_API_KEY": "sk-test"}):
+            agent = LMMAgent(
+                engine_params={
+                    "engine_type": "deepseek",
+                    "model": "deepseek-chat",
+                    "base_url": "http://proxy:8000/v1",
+                }
+            )
+            self.assertEqual(agent.engine.base_url, "http://proxy:8000/v1")
+
+    def test_deepseek_missing_api_key_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            LMMAgent(
+                engine_params={"engine_type": "deepseek", "model": "deepseek-chat"}
+            )
+        self.assertIn("DEEPSEEK_API_KEY", str(cm.exception))
+
+    def test_qwen_cli_params_resolve_default_endpoint(self):
+        with patch.dict(os.environ, {"QWEN_API_KEY": "sk-qwen"}):
+            agent = LMMAgent(
+                engine_params={
+                    "engine_type": "qwen",
+                    "model": "qwen3-vl-plus",
+                    "base_url": "",
+                    "api_key": "",
+                    "temperature": None,
+                }
+            )
+            self.assertEqual(
+                agent.engine.base_url,
+                "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            )
+            self.assertEqual(agent.engine.api_key, "sk-qwen")
+
+    def test_qwen_missing_api_key_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            LMMAgent(engine_params={"engine_type": "qwen", "model": "qwen3-vl-plus"})
+        self.assertIn("QWEN_API_KEY", str(cm.exception))
+
+    def test_unknown_provider_raises(self):
+        with self.assertRaises(ValueError) as cm:
+            LMMAgent(engine_params={"engine_type": "nope", "model": "m"})
+        self.assertIn("not supported", str(cm.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

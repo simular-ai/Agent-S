@@ -231,7 +231,10 @@ def main():
         "--provider",
         type=str,
         default="openai",
-        help="Specify the provider to use (e.g., openai, anthropic, etc.)",
+        help=(
+            "Specify the provider to use: openai, anthropic, gemini, azure, "
+            "open_router, vllm, huggingface, parasail, ollama, deepseek, qwen"
+        ),
     )
     parser.add_argument(
         "--model",
