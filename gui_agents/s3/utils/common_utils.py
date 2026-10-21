@@ -3,13 +3,88 @@ import time
 from io import BytesIO
 from PIL import Image
 
-from typing import Tuple, Dict
+from typing import Tuple, Dict, Optional
 
 from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 
 import logging
 
 logger = logging.getLogger("desktopenv.agent")
+
+
+def image_media_type(image_bytes: bytes) -> str:
+    """Returns the MIME type of an encoded image, defaulting to image/png."""
+    if image_bytes[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    return "image/png"
+
+
+def compress_image_bytes(image_bytes: bytes, max_bytes: Optional[int]) -> bytes:
+    """
+    Shrinks an encoded image until it fits within ``max_bytes``.
+
+    Self-hosted inference servers often cap the request body size (e.g. the
+    HuggingFace text-generation-inference default is 2 MB), and a full
+    resolution PNG screenshot easily exceeds that once base64 encoded. This
+    helper first re-encodes the image as JPEG at decreasing quality, and only
+    downscales the image once quality reduction alone is not enough.
+
+    Args:
+        image_bytes (bytes): The encoded image (PNG, JPEG, ...).
+        max_bytes (Optional[int]): The size budget. ``None`` disables compression.
+
+    Returns:
+        bytes: ``image_bytes`` unchanged if it already fits, otherwise the
+        smallest re-encoded image that fits, or the smallest attempt if the
+        budget could not be reached.
+    """
+    if max_bytes is None or len(image_bytes) <= max_bytes:
+        return image_bytes
+
+    image = Image.open(BytesIO(image_bytes)).convert("RGB")
+    best = image_bytes
+
+    def encode(img: Image.Image, quality: int) -> bytes:
+        buffer = BytesIO()
+        img.save(buffer, format="JPEG", quality=quality, optimize=True)
+        return buffer.getvalue()
+
+    qualities = [90, 80, 70, 60, 50]
+    scale = 1.0
+    min_scale = 0.3
+    while True:
+        if scale < 1.0:
+            size = (
+                max(1, round(image.width * scale)),
+                max(1, round(image.height * scale)),
+            )
+            candidate_image = image.resize(size, Image.LANCZOS)
+        else:
+            candidate_image = image
+
+        for quality in qualities:
+            encoded = encode(candidate_image, quality)
+            if len(encoded) < len(best):
+                best = encoded
+            if len(encoded) <= max_bytes:
+                logger.info(
+                    "Compressed image from %d to %d bytes (scale=%.2f, quality=%d) to fit %d byte budget",
+                    len(image_bytes),
+                    len(encoded),
+                    scale,
+                    quality,
+                    max_bytes,
+                )
+                return encoded
+
+        scale *= 0.8
+        if scale < min_scale:
+            logger.warning(
+                "Could not compress image under %d bytes; sending smallest attempt (%d bytes)",
+                max_bytes,
+                len(best),
+            )
+            return best
 
 
 def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
@@ -32,6 +107,27 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
     return exec_code
 
 
+PAYLOAD_TOO_LARGE_MARKERS = (
+    "length limit exceeded",
+    "payload too large",
+    "request entity too large",
+    "413",
+)
+
+
+def payload_too_large_hint(error: Exception) -> Optional[str]:
+    """Returns guidance when an endpoint rejected the request for being too big."""
+    message = str(error).lower()
+    if any(marker in message for marker in PAYLOAD_TOO_LARGE_MARKERS):
+        return (
+            "The endpoint rejected the request body as too large. This usually means "
+            "the screenshot exceeds the server's payload limit (HuggingFace TGI "
+            "defaults to 2 MB). Re-run with --max_image_mb (e.g. --max_image_mb 1.0) "
+            "or raise the server's payload limit."
+        )
+    return None
+
+
 def call_llm_safe(
     agent, temperature: float = 0.0, use_thinking: bool = False, **kwargs
 ) -> str:
@@ -50,6 +146,9 @@ def call_llm_safe(
         except Exception as e:
             attempt += 1
             print(f"Attempt {attempt} failed: {e}")
+            hint = payload_too_large_hint(e)
+            if hint:
+                print(f"Hint: {hint}")
             if attempt == max_retries:
                 print("Max retries reached. Handling failure.")
         time.sleep(1.0)
