@@ -8,6 +8,25 @@ interface on the host. A **task agent** then runs benchmark tasks on fresh AWS
 VMs with that interface installed, and its score becomes the variant's
 fitness.
 
+Computer-use agents are limited by the interfaces humans give them: an agent
+may type a spreadsheet cell by cell when one line of code would do. Agent S4
+builds those interfaces itself. The Builder studies the task agent's
+trajectories on synthetic training tasks, without success labels, and writes
+and revises the interfaces and the knowledge of when to use them.
+Population-based evolution then keeps the variants that score best on
+validation tasks the Builder never sees, which favors changes that generalize.
+
+## Results
+
+On OSWorld V2, Agent S4 with Qwen3.8-27B and its evolved interfaces reaches a
+**21.3%** binary score, a new state of the art for open-source computer-use
+agents and 3.8 times the same model with fixed interfaces. That is above
+GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%), at about 4.3% and 1.5% of their
+respective costs. On ScienceBoard, the evolved interfaces raise the success
+rate from 41.4% to 58.6% with the same model.
+
+## Setup guides
+
 This file describes the code. For setup, credentials and the launch scripts
 behind the published runs, see the workspace READMEs in the
 [Agent-S repository](https://github.com/simular-ai/Agent-S):

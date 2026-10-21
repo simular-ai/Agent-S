@@ -1,10 +1,18 @@
+import re
+
 from setuptools import find_packages, setup
+
+# PyPI cannot resolve the README's relative links, so point them at GitHub.
+long_description = re.sub(
+    r'(\]\(|href=")\./', r"\1https://github.com/simular-ai/Agent-S/blob/main/",
+    open("README.md", encoding="utf-8").read(),
+)
 
 setup(
     name="gui-agents",
     version="0.3.2",
     description="A library for creating general purpose GUI agents using multimodal LLMs.",
-    long_description=open("README.md", encoding="utf-8").read(),
+    long_description=long_description,
     long_description_content_type="text/markdown",
     author="Simular AI",
     author_email="eric@simular.ai",
