@@ -7,8 +7,10 @@
   <b>An open-source computer use agent that can operate a real GUI like a human or work in the way beyond human capacity.</b>
 </p>
 
-<h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
-<h2 align="center">🏆 <a href="./gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
+<p align="center">
+  🏆 <a href="https://www.sai.work/">Sai</a> <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">tops OSWorld 2.0</a>, beating GPT and Opus at lower cost (73%) &nbsp;·&nbsp;
+  🏆 <a href="./gui_agents/s3/README.md">Agent S3</a> is the <a href="https://www.simular.ai/articles/agent-s3">first to surpass human performance on OSWorld</a> (72.60%)
+</p>
 
 <p align="center">&nbsp;
 <a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -42,7 +44,7 @@
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
 ## 🥳 Updates
-- [x] **2026/10/20**: Released **[Agent S4](./agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
+- [x] **2026/10/20**: Released **[Agent S4](./agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost. *(OSWorld V2 is scored as a strict binary pass/fail with no partial credit, so 21.3% reflects benchmark difficulty, not low reliability — see the [Agent S4 README](./agent_s4/README.md) for details.)*
 - [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 
 <details>
