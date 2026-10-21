@@ -45,6 +45,8 @@
 
 **No setup:** the **[Simular API](https://platform.simular.ai/)** runs [Sai](https://www.sai.work/), our production computer use agent, on a cloud computer. Send a task over HTTP, or add Sai to Claude Code, Codex or Cursor as an MCP server. The free plan includes a cloud computer. [Get an API key →](https://platform.simular.ai/) · [API docs](https://platform.simular.ai/documentation)
 
+Most computer work repeats. [Sai](https://www.sai.work/) runs those jobs as recurring workflows on a cloud computer, on your schedule. Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates).
+
 **Run Agent S3 on your own computer:**
 
 ```bash
@@ -76,7 +78,7 @@ Agent S3 needs a grounding model such as [UI-TARS-1.5-7B](https://huggingface.co
 
 ## 🥳 Updates
 - [x] **2026/10/20**: Released **[Agent S4](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
-- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/) · [API docs](https://platform.simular.ai/documentation)
+- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 - [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
 - [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
 - [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
