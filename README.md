@@ -1,6 +1,6 @@
 <h1 align="center">
   <img src="images/agent_s.png" alt="Logo" style="vertical-align:middle" width="60"> Agent S:
-  <small>Use Computer Like a Human</small>
+  <small>Superhuman Computer Use</small>
 </h1>
 
 <p align="center">
