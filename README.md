@@ -41,6 +41,29 @@
 
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
+## 🥳 Updates
+- [x] **2026/10/20**: Released **[Agent S4](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
+- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
+
+<details>
+<summary>Older updates</summary>
+
+- [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
+- [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
+- [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
+- [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
+- [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
+- [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
+- [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
+- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
+- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
+- [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
+- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
+- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
+- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
+
+</details>
+
 ## 🚀 Quick Start
 
 - **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).
@@ -55,29 +78,6 @@
 | **Agent S2.5** | A simpler, faster Agent S2. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2_5/README.md) | — |
 | **Agent S2** | A compositional generalist-specialist framework. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
 | **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
-
-## 🥳 Updates
-- [x] **2026/10/20**: Released **[Agent S4](https://github.com/simular-ai/Agent-S/blob/main/agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
-- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
-- [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
-- [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
-- [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
-- [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
-- [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
-
-<details>
-<summary>Older updates</summary>
-
-- [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
-- [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
-- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
-- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
-- [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
-- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
-- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
-- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
-
-</details>
 
 ## 💬 Citations
 
