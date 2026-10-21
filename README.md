@@ -44,7 +44,7 @@
 ## 🚀 Quick Start
 
 - **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).
-- **On your own computer:** `pip install gui-agents`, then follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
+- **On your own computer:** follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
 
 ## 📚 Agent S Versions
 
