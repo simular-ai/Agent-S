@@ -8,32 +8,7 @@
 </p>
 
 <h2 align="center">🏆 <a href="https://www.sai.work/">Sai</a>: <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">Tops OSWorld 2.0, Beating GPT and Opus with Lower Costs (73%)</a></h2>
-<h2 align="center">🏆 <a href="https://github.com/simular-ai/Agent-S">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
-
-
-<p align="center">&nbsp;
-  📄 <a href="https://arxiv.org/abs/2610.28601">[S4 Paper]</a>&nbsp;
-  💻 <a href="agent_s4/">[S4 Code]</a>
-</p>
-
-<p align="center">&nbsp;
-  🌐 <a href="https://www.simular.ai/articles/sai-tops-osworld-2-0">[Sai OSWorld 2.0 report]</a>&nbsp;
-  🌐 <a href="https://www.simular.ai/articles/agent-s3">[S3 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2510.02250">[S3 Paper (TMLR 2026)]</a>&nbsp;
-  🎥 <a href="https://www.youtube.com/watch?v=VHr0a3UBsh4">[S3 Video]</a>
-</p>
-
-<p align="center">&nbsp;
-  🌐 <a href="https://www.simular.ai/articles/agent-s2-technical-review">[S2 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2504.00906">[S2 Paper (COLM 2025)]</a>&nbsp;
-  🎥 <a href="https://www.youtube.com/watch?v=wUGVQl7c0eg">[S2 Video]</a>
-</p>
-
-<p align="center">&nbsp;
-  🌐 <a href="https://www.simular.ai/agent-s">[S1 blog]</a>&nbsp;
-  📄 <a href="https://arxiv.org/abs/2410.08164">[S1 Paper (ICLR 2025)]</a>&nbsp;
-  🎥 <a href="https://www.youtube.com/watch?v=OBDE3Knte0g">[S1 Video]</a>
-</p>
+<h2 align="center">🏆 <a href="gui_agents/s3/README.md">Agent S3</a>: <a href="https://www.simular.ai/articles/agent-s3">First to Surpass Human Performance on OSWorld (72.60%)</a></h2>
 
 <p align="center">&nbsp;
 <a href="https://trendshift.io/repositories/13151" target="_blank"><img src="https://trendshift.io/api/badge/repositories/13151" alt="simular-ai%2FAgent-S | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
@@ -64,129 +39,19 @@
   <a href="https://www.readme-i18n.com/simular-ai/Agent-S?lang=zh">中文</a>
 </div>
 
-<div align="center">
-  &nbsp;&nbsp;
-<p>Skip the setup? Try Agent S in <a href="https://cloud.simular.ai/">Simular Cloud</a>
-</div>
+**Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
-## 🥳 Updates
-- [x] **2026/10/20**: Released **[Agent S4](#-agent-s4-evolving-agent-interfaces)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
-- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
-- [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
-- [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
-- [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
-- [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
-- [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
-- [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
-- [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
-- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
-- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
-- [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
-- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
-- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
-- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
+## 🚀 Quick Start
 
-## Table of Contents
+**No setup:** the **[Simular API](https://platform.simular.ai/)** runs [Sai](https://www.sai.work/), our production computer use agent, on a cloud computer. Send a task over HTTP, or add Sai to Claude Code, Codex or Cursor as an MCP server. The free plan includes a cloud computer. [Get an API key →](https://platform.simular.ai/)
 
-1. [💡 Introduction](#-introduction)
-2. [🎯 OSWorld Benchmark Results](#-osworld-benchmark-results)
-3. [🛠️ Installation & Setup](#%EF%B8%8F-installation--setup) 
-4. [🚀 Usage](#-usage)
-5. [🧬 Agent S4](#-agent-s4-evolving-agent-interfaces)
-6. [🎬 See Sai in Action](#-see-sai-in-action)
-7. [🔌 Simular API](#-simular-api)
-8. [🤝 Acknowledgements](#-acknowledgements)
-9. [💬 Citation](#-citation)
+**Run Agent S3 on your own computer:**
 
-## 💡 Introduction
-
-**Agent S** is an open source computer use agent framework from [Simular](https://www.simular.ai). It takes a natural-language task, looks at the screen, and completes the task by clicking, typing, and scrolling in ordinary desktop and web applications — no API integration and no per-app scripting required. Agent S3 is the third generation of the framework and was the first computer use agent to surpass human performance on the OSWorld benchmark, at **72.60%**. It runs on macOS, Windows, and Linux, and works with models from OpenAI, Anthropic, and open-weight providers.
-
-The research continues in production: in August 2026, **[Sai](https://www.sai.work/)** — Simular's hosted computer use agent, built on the ideas in this repo — reached a **73% success rate on OSWorld 2.0**, ahead of GPT-5.6 Sol at 62.57% as reported by OpenAI, and at lower cost. If you are looking for a hosted, production version of this technology rather than a research framework, [see Sai](https://www.sai.work/).
-
-Whether you're researching OS agents, automating your own desktop, or contributing to open source computer use, we're excited to have you here.
-
-## 🎯 OSWorld Benchmark Results
-
-### August 2026 — Sai tops OSWorld 2.0 (73%)
-
-Our flagship product **Sai** reaches a **73% success rate on OSWorld 2.0**, a 108-task benchmark of long professional and everyday tasks that take skilled humans more than an hour to complete. That places Sai ahead of GPT-5.6 Sol at 62.57% as reported by OpenAI, and it does so at lower cost per task. Full write-up: [Sai Tops OSWorld 2.0](https://www.simular.ai/articles/sai-tops-osworld-2-0).
-
-### Agent S3 on OSWorld, WindowsAgentArena and AndroidWorld
-
-<p align="center">
-  <img src="images/s3_results_new.png" alt="Agent S3 Results" width="700"/>
-</p>
-
-On OSWorld, Agent S3 alone reaches 66% in the 100-step setting, already exceeding the previous state of the art of 63.4% (GTA1 w/ GPT-5). With the addition of Behavior Best-of-N, performance climbs even higher to 72.6%, *surpassing* human-level performance on OSWorld (~72%)!
-
-Agent S3 also demonstrates strong zero-shot generalization! On WindowsAgentArena, accuracy rises from 50.2% using only Agent S3 to 56.6% by selecting from 3 rollouts. Similarly on AndroidWorld, performance improves from 68.1% to 71.6%
-
-## 🛠️ Installation & Setup
-
-### Prerequisites
-- **Single Monitor**: Our agent is designed for single monitor screens
-- **Security**: The agent runs Python code to control your computer - use with care
-- **Supported Platforms**: Linux, Mac, and Windows
-
-
-### Installation
-To install Agent S3 without cloning the repository, run
 ```bash
 pip install gui-agents
-```
-If you would like to test Agent S3 while making changes, clone the repository and install using
-```
-pip install -e .
-```
-
-Don't forget to also `brew install tesseract`! Pytesseract requires this extra installation to work.
-
-#### Agent S4
-[Agent S4](#-agent-s4-evolving-agent-interfaces) is a separate package (`agent-s4`, in [`agent_s4/`](agent_s4/)); installing `gui-agents` does not include it. Agent S4 runs also read setup files from this repository (prompts, the seed interface, task splits and the Prime Agent runtime), so clone it and install the package from the clone:
-```bash
-git clone https://github.com/simular-ai/Agent-S.git
-cd Agent-S
-pip install -e ./agent_s4
-```
-`pip install agent-s4` installs the same code from PyPI; with it, set `SHADOW_EVOL_SHARED_ROOT` to `osworld_setup/s4` in your clone. See [agent_s4/README.md](agent_s4/README.md) for the rest of the setup.
-
-### API Configuration
-
-#### Option 1: Environment Variables
-Add to your `.bashrc` (Linux) or `.zshrc` (MacOS):
-```bash
+brew install tesseract   # macOS; pytesseract needs it
 export OPENAI_API_KEY=<YOUR_API_KEY>
-export ANTHROPIC_API_KEY=<YOUR_ANTHROPIC_API_KEY>
-export HF_TOKEN=<YOUR_HF_TOKEN>
-```
 
-#### Option 2: Python Script
-```python
-import os
-os.environ["OPENAI_API_KEY"] = "<YOUR_API_KEY>"
-```
-
-### Supported Models
-We support Azure OpenAI, Anthropic, Gemini, Open Router, and vLLM inference. See [models.md](models.md) for details.
-
-### Grounding Models (Required)
-For optimal performance, we recommend [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) hosted on Hugging Face Inference Endpoints or another provider. See [Hugging Face Inference Endpoints](https://huggingface.co/learn/cookbook/en/enterprise_dedicated_endpoints) for setup instructions.
-
-## 🚀 Usage
-
-
-> ⚡️ **Recommended Setup:**  
-> For the best configuration, we recommend using **OpenAI gpt-5-2025-08-07** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
-
-
-### CLI
-
-Note, this is running Agent S3, our improved agent, without bBoN. 
-
-Run Agent S3 with the required parameters:
-
-```bash
 agent_s \
     --provider openai \
     --model gpt-5-2025-08-07 \
@@ -197,202 +62,40 @@ agent_s \
     --grounding_height 1080
 ```
 
-#### Local Coding Environment (Optional)
-For tasks that require code execution (e.g., data processing, file manipulation, system automation), you can enable the local coding environment:
+Agent S3 needs a grounding model such as [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) at `--ground_url`. The agent runs Python code to control your computer, so use it with care. For all options, the Python SDK and OSWorld setup, see the [Agent S3 README](gui_agents/s3/README.md).
 
-```bash
-agent_s \
-    --provider openai \
-    --model gpt-5-2025-08-07 \
-    --ground_provider huggingface \
-    --ground_url http://localhost:8080 \
-    --ground_model ui-tars-1.5-7b \
-    --grounding_width 1920 \
-    --grounding_height 1080 \
-    --enable_local_env
-```
+## 📚 Agent S Versions
 
-⚠️ **WARNING**: The local coding environment executes arbitrary Python and Bash code locally on your machine. Only use this feature in trusted environments and with trusted inputs.
+| Version | What it is | Docs | Paper |
+|---|---|---|---|
+| **Agent S4** | Evolves the tool interfaces a computer use agent works through, from its own task experience. Open-source state of the art on OSWorld V2 (21.3% with Qwen3.8-27B). | [README](agent_s4/README.md) | [arXiv 2026](https://arxiv.org/abs/2610.28601) |
+| **Agent S3** | The agent in `gui-agents` today. First to surpass human performance on OSWorld (72.60%). | [README](gui_agents/s3/README.md) | [TMLR 2026](https://arxiv.org/abs/2510.02250) |
+| **Agent S2.5** | A simpler, faster Agent S2. | [README](gui_agents/s2_5/README.md) | — |
+| **Agent S2** | A compositional generalist-specialist framework. | [README](gui_agents/s2/README.md) | [COLM 2025](https://arxiv.org/abs/2504.00906) |
+| **Agent S** | The first version: uses computers like a human, through an agent-computer interface. | [README](gui_agents/s1/README.md) | [ICLR 2025](https://arxiv.org/abs/2410.08164) |
 
-#### Required Parameters
-- **`--provider`**: Main generation model provider (e.g., openai, anthropic, etc.) - Default: "openai"
-- **`--model`**: Main generation model name (e.g., gpt-5-2025-08-07) - Default: "gpt-5-2025-08-07"
-- **`--ground_provider`**: The provider for the grounding model - **Required**
-- **`--ground_url`**: The URL of the grounding model - **Required**
-- **`--ground_model`**: The model name for the grounding model - **Required**
-- **`--grounding_width`**: Width of the output coordinate resolution from the grounding model - **Required**
-- **`--grounding_height`**: Height of the output coordinate resolution from the grounding model - **Required**
+## 🥳 Updates
+- [x] **2026/10/20**: Released **[Agent S4](agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost.
+- [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
+- [x] **2026/08/28**: [Sai tops OSWorld 2.0, beating GPT and Opus with lower costs (73%)](https://www.simular.ai/articles/sai-tops-osworld-2-0) — our production computer use agent is now state of the art on the hardest desktop benchmark!
+- [x] **2026/07/30**: The [Agent S3 paper "Scaling Agents for Computer Use"](https://arxiv.org/abs/2510.02250) is accepted to TMLR 2026!
+- [x] **2025/12/15**: Agent S3 is the **first** to surpass human-level performance on OSWorld with an impressive score of **72.60%**!
+- [x] **2025/10/02**: Released Agent S3 and its [technical paper](https://arxiv.org/abs/2510.02250), setting a new SOTA of **69.9%** on OSWorld (approaching 72% human performance), with strong generalizability on WindowsAgentArena and AndroidWorld! It is also simpler, faster, and more flexible.
+- [x] **2025/08/01**: Agent S2.5 is released (gui-agents v0.2.5): simpler, better, and faster! New SOTA on [OSWorld-Verified](https://os-world.github.io)!
 
-#### Optional Parameters
-- **`--model_temperature`**: The temperature to fix all model calls to (necessary to set to 1.0 for models like o3 but can be left blank for other models)
+<details>
+<summary>Older updates</summary>
 
-#### Grounding Model Dimensions
-The grounding width and height should match the output coordinate resolution of your grounding model:
-- **UI-TARS-1.5-7B**: Use `--grounding_width 1920 --grounding_height 1080`
-- **UI-TARS-72B**: Use `--grounding_width 1000 --grounding_height 1000`
+- [x] **2025/07/07**: The [Agent S2 paper](https://arxiv.org/abs/2504.00906) is accepted to COLM 2025! See you in Montreal!
+- [x] **2025/04/27**: The Agent S paper won the Best Paper Award 🏆 at ICLR 2025 Agentic AI for Science Workshop!
+- [x] **2025/04/01**: Released the [Agent S2 paper](https://arxiv.org/abs/2504.00906) with new SOTA results on OSWorld, WindowsAgentArena, and AndroidWorld!
+- [x] **2025/03/12**: Released Agent S2 along with v0.2.0 of [gui-agents](https://github.com/simular-ai/Agent-S), the new state-of-the-art for computer use agents (CUA), outperforming OpenAI's CUA/Operator and Anthropic's Claude 3.7 Sonnet Computer-Use!
+- [x] **2025/01/22**: The [Agent S paper](https://arxiv.org/abs/2410.08164) is accepted to ICLR 2025!
+- [x] **2025/01/21**: Released v0.1.2 of [gui-agents](https://github.com/simular-ai/Agent-S) library, with support for Linux and Windows!
+- [x] **2024/12/05**: Released v0.1.0 of [gui-agents](https://github.com/simular-ai/Agent-S) library, allowing you to use Agent-S for Mac, OSWorld, and WindowsAgentArena with ease!
+- [x] **2024/10/10**: Released the [Agent S paper](https://arxiv.org/abs/2410.08164) and codebase!
 
-#### Optional Parameters
-- **`--model_url`**: Custom API URL for main generation model - Default: ""
-- **`--model_api_key`**: API key for main generation model - Default: ""
-- **`--ground_api_key`**: API key for grounding model endpoint - Default: ""
-- **`--max_trajectory_length`**: Maximum number of image turns to keep in trajectory - Default: 8
-- **`--enable_reflection`**: Enable reflection agent to assist the worker agent - Default: True
-- **`--enable_local_env`**: Enable local coding environment for code execution (WARNING: Executes arbitrary code locally) - Default: False
-
-#### Local Coding Environment Details
-The local coding environment enables Agent S3 to execute Python and Bash code directly on your machine. This is particularly useful for:
-
-- **Data Processing**: Manipulating spreadsheets, CSV files, or databases
-- **File Operations**: Bulk file processing, content extraction, or file organization
-- **System Automation**: Configuration changes, system setup, or automation scripts
-- **Code Development**: Writing, editing, or executing code files
-- **Text Processing**: Document manipulation, content editing, or formatting
-
-When enabled, the agent can use the `call_code_agent` action to execute code blocks for tasks that can be completed through programming rather than GUI interaction.
-
-**Requirements:**
-- **Python**: The same Python interpreter used to run Agent S3 (automatically detected)
-- **Bash**: Available at `/bin/bash` (standard on macOS and Linux)
-- **System Permissions**: The agent runs with the same permissions as the user executing it
-
-**Security Considerations:**
-- The local environment executes arbitrary code with the same permissions as the user running the agent
-- Only enable this feature in trusted environments
-- Be cautious when the agent generates code for system-level operations
-- Consider running in a sandboxed environment for untrusted tasks
-- Bash scripts are executed with a 30-second timeout to prevent hanging processes
-
-### `gui_agents` SDK
-
-First, we import the necessary modules. `AgentS3` is the main agent class for Agent S3. `OSWorldACI` is our grounding agent that translates agent actions into executable python code.
-```python
-import pyautogui
-import io
-from gui_agents.s3.agents.agent_s import AgentS3
-from gui_agents.s3.agents.grounding import OSWorldACI
-from gui_agents.s3.utils.local_env import LocalEnv  # Optional: for local coding environment
-
-# Load in your API keys.
-from dotenv import load_dotenv
-load_dotenv()
-
-current_platform = "linux"  # "darwin", "windows"
-```
-
-Next, we define our engine parameters. `engine_params` is used for the main agent, and `engine_params_for_grounding` is for grounding. For `engine_params_for_grounding`, we support custom endpoints like HuggingFace TGI, vLLM, and Open Router.
-
-```python
-engine_params = {
-  "engine_type": provider,
-  "model": model,
-  "base_url": model_url,           # Optional
-  "api_key": model_api_key,        # Optional
-  "temperature": model_temperature # Optional
-}
-
-# Load the grounding engine from a custom endpoint
-ground_provider = "<your_ground_provider>"
-ground_url = "<your_ground_url>"
-ground_model = "<your_ground_model>"
-ground_api_key = "<your_ground_api_key>"
-
-# Set grounding dimensions based on your model's output coordinate resolution
-# UI-TARS-1.5-7B: grounding_width=1920, grounding_height=1080
-# UI-TARS-72B: grounding_width=1000, grounding_height=1000
-grounding_width = 1920  # Width of output coordinate resolution
-grounding_height = 1080  # Height of output coordinate resolution
-
-engine_params_for_grounding = {
-  "engine_type": ground_provider,
-  "model": ground_model,
-  "base_url": ground_url,
-  "api_key": ground_api_key,  # Optional
-  "grounding_width": grounding_width,
-  "grounding_height": grounding_height,
-}
-```
-
-Then, we define our grounding agent and Agent S3.
-
-```python
-# Optional: Enable local coding environment
-enable_local_env = False  # Set to True to enable local code execution
-local_env = LocalEnv() if enable_local_env else None
-
-grounding_agent = OSWorldACI(
-    env=local_env,  # Pass local_env for code execution capability
-    platform=current_platform,
-    engine_params_for_generation=engine_params,
-    engine_params_for_grounding=engine_params_for_grounding,
-    width=1920,  # Optional: screen width
-    height=1080  # Optional: screen height
-)
-
-agent = AgentS3(
-    engine_params,
-    grounding_agent,
-    platform=current_platform,
-    max_trajectory_length=8,  # Optional: maximum image turns to keep
-    enable_reflection=True     # Optional: enable reflection agent
-)
-```
-
-Finally, let's query the agent!
-
-```python
-# Get screenshot.
-screenshot = pyautogui.screenshot()
-buffered = io.BytesIO() 
-screenshot.save(buffered, format="PNG")
-screenshot_bytes = buffered.getvalue()
-
-obs = {
-  "screenshot": screenshot_bytes,
-}
-
-instruction = "Close VS Code"
-info, action = agent.predict(instruction=instruction, observation=obs)
-
-exec(action[0])
-```
-
-Refer to `gui_agents/s3/cli_app.py` for more details on how the inference loop works.
-
-### OSWorld
-
-To deploy Agent S3 in OSWorld, follow the [OSWorld Deployment instructions](osworld_setup/s3/OSWorld.md).
-
-To run Agent S4 on OSWorld V2, see [Agent S4](#-agent-s4-evolving-agent-interfaces) below.
-
-
-## 🧬 Agent S4: Evolving Agent Interfaces
-
-📄 [Paper](https://arxiv.org/abs/2610.28601) · 💻 [Code](agent_s4/)
-
-Computer-use agents are limited by the interfaces humans give them: an agent may type a spreadsheet cell by cell when one line of code would do. **Agent S4** is an autonomous computer-use scientist that builds those interfaces itself. A meta-agent studies the task agent's trajectories on synthetic training tasks, without success labels, and writes and revises a repository of interfaces and the knowledge of when to use them. Population-based evolution then keeps developing the repositories that score best on validation tasks the meta-agent never sees, favoring changes that generalize.
-
-On OSWorld V2, Agent S4 with Qwen3.8-27B and its evolved interfaces reaches a **21.3%** binary score, a new state of the art for open-source computer-use agents and 3.8 times the same model with fixed interfaces. That is above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%), at about 4.3% and 1.5% of their respective costs. On ScienceBoard, the evolved interfaces raise the success rate from 41.4% to 58.6% with the same model.
-
-To get started, install the package (see [Installation](#agent-s4)), then follow:
-
-- [agent_s4/README.md](agent_s4/README.md): how the code is organized and how a run works.
-- [osworld_setup/s4/README.md](osworld_setup/s4/README.md): setting up and running evolution on OSWorld V2.
-- [scienceboard_setup/s4/README.md](scienceboard_setup/s4/README.md): the same for ScienceBoard.
-
-
-## 🎬 See Sai in Action
-
-Most computer work is not one-off — it repeats. [Sai](https://www.sai.work/) turns those repeating jobs into recurring workflows: describe the routine once, set when it should run, and the agent does it on a cloud computer on your schedule. 
-Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates), or start from the [Simular API](https://platform.simular.ai/) if you would rather trigger runs from your own code.
-
-
-## 🔌 Simular API
-
-The **[Simular API](https://platform.simular.ai/)** gives you Sai, the computer use agent behind the OSWorld 2.0 result above, through one HTTP endpoint. Send a task in plain English; Sai opens apps, clicks and types on a cloud computer, then returns the result. There are no VMs, display drivers or agent harnesses to run yourself.
-
-- **For coding agents:** add Sai to Claude Code, Codex or Cursor as an MCP server with one command, then ask your agent to hand Sai the desktop work.
-- **Free to start:** the free plan includes a cloud computer. Sai asks for approval before sign-ins and other sensitive steps.
-- Create an API key and follow the quick start at **[platform.simular.ai](https://platform.simular.ai/)**, or read the [API docs](https://platform.simular.ai/documentation).
+</details>
 
 ## 💬 Citations
 
