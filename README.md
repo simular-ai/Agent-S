@@ -47,24 +47,7 @@
 
 Most computer work repeats. [Sai](https://www.sai.work/) runs those jobs as recurring workflows on a cloud computer, on your schedule. Browse ready-made routines in the [Sai workflow template gallery](https://www.simular.ai/workflow-templates).
 
-**Run Agent S3 on your own computer:**
-
-```bash
-pip install gui-agents
-brew install tesseract   # macOS; pytesseract needs it
-export OPENAI_API_KEY=<YOUR_API_KEY>
-
-agent_s \
-    --provider openai \
-    --model gpt-5-2025-08-07 \
-    --ground_provider huggingface \
-    --ground_url http://localhost:8080 \
-    --ground_model ui-tars-1.5-7b \
-    --grounding_width 1920 \
-    --grounding_height 1080
-```
-
-Agent S3 needs a grounding model such as [UI-TARS-1.5-7B](https://huggingface.co/ByteDance-Seed/UI-TARS-1.5-7B) at `--ground_url`. The agent runs Python code to control your computer, so use it with care. For all options, the Python SDK and OSWorld setup, see the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
+**Run Agent S on your own computer:** `pip install gui-agents`, then follow the [Agent S3 README](https://github.com/simular-ai/Agent-S/blob/main/gui_agents/s3/README.md).
 
 ## 📚 Agent S Versions
 
