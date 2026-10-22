@@ -1,9 +1,11 @@
 """This file contains various formatting checks used to reprompt an agent for correctly formatted responses."""
 
+import ast
+import inspect
+
 from gui_agents.s3.utils.common_utils import (
     extract_agent_functions,
     parse_code_from_string,
-    create_pyautogui_code,
     split_thinking_response,
 )
 
@@ -19,19 +21,38 @@ SINGLE_ACTION_FORMATTER = lambda response: (
 )
 
 
-def _attempt_code_creation(agent, code, obs):
-    """Attempts to create a pyautogui code snippet from the response code"""
+def _valid_action_signature(agent, code):
+    """Check one agent action and its literal arguments without executing it."""
     try:
-        return create_pyautogui_code(agent, code, obs)
-    except Exception as e:
-        return None
+        action = ast.parse(code.strip(), mode="eval").body
+        if not (
+            isinstance(action, ast.Call)
+            and isinstance(action.func, ast.Attribute)
+            and isinstance(action.func.value, ast.Name)
+            and action.func.value.id == "agent"
+        ):
+            return False
+
+        method = getattr(agent, action.func.attr, None)
+        if not callable(method) or not getattr(method, "is_agent_action", False):
+            return False
+
+        # Reject argument expressions that would themselves execute code.
+        args = [ast.literal_eval(arg) for arg in action.args]
+        names = [keyword.arg for keyword in action.keywords]
+        if None in names or len(names) != len(set(names)):
+            return False
+        kwargs = {
+            keyword.arg: ast.literal_eval(keyword.value) for keyword in action.keywords
+        }
+        inspect.signature(method).bind(*args, **kwargs)
+        return True
+    except (SyntaxError, ValueError, TypeError, AttributeError):
+        return False
 
 
-code_valid_check = (
-    lambda agent, obs, response: _attempt_code_creation(
-        agent, parse_code_from_string(response), obs
-    )
-    is not None
+code_valid_check = lambda agent, obs, response: _valid_action_signature(
+    agent, parse_code_from_string(response)
 )
 code_valid_error_msg = "Incorrect code: The agent action must be a valid function and use valid parameters from the docstring list."
 CODE_VALID_FORMATTER = lambda agent, obs, response: (
