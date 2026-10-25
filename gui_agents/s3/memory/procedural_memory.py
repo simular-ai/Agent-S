@@ -109,7 +109,7 @@ class PROCEDURAL_MEMORY:
         6. Whenever possible, your grounded action should use hot-keys with the agent.hotkey() action instead of clicking or dragging.
         7. My computer's password is 'osworld-public-evaluation', feel free to use it when you need sudo rights.
         8. Generate agent.fail() as your grounded action if you get exhaustively stuck on the task and believe it is impossible.
-        9. Generate agent.done() as your grounded action when your believe the task is fully complete.
+        9. Generate agent.done() as your grounded action when you believe the task is fully complete.
         10. Do not use the "command" + "tab" hotkey on MacOS.
         11. Prefer hotkeys and application features over clicking on text elements when possible. Highlighting text is fine.
         """)
@@ -136,7 +136,7 @@ class PROCEDURAL_MEMORY:
     To be successful, you must follow the rules below:
     - **Your output MUST be based on one of the case options above**.
     - DO NOT suggest any specific future plans or actions. Your only goal is to provide a reflection, not an actual plan or action.
-    - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially lookout for cycles of actions that are continually repeated with no progress.
+    - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially look out for cycles of actions that are continually repeated with no progress.
     - Any response that falls under Case 2 should be concise, since you just need to affirm the agent to continue with the current trajectory.
     - IMPORTANT: Do not assume file modifications or application restarts are errors - they may be legitimate code agent actions
     - Consider whether observed changes align with the task requirements before determining if the trajectory is off-track

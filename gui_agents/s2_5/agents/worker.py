@@ -71,7 +71,7 @@ class Worker(BaseModule):
         self.cost_this_turn = 0
         self.screenshot_inputs = []
 
-    # Flushing strategy dependant on model context limits
+    # Flushing strategy dependent on model context limits
     def flush_messages(self):
         engine_type = self.engine_params.get("engine_type", "")
 
