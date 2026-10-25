@@ -1,3 +1,4 @@
+import ast
 import re
 import time
 from io import BytesIO
@@ -10,6 +11,65 @@ from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 import logging
 
 logger = logging.getLogger("desktopenv.agent")
+
+
+def dispatch_agent_action(agent, code: str):
+    """Safely evaluate a single grounded ``agent.<action>(...)`` call.
+
+    The model-produced grounded action is parsed with ``ast`` and dispatched to
+    the corresponding grounding-agent method instead of being run through
+    ``eval``. Only a single call on the ``agent`` object is allowed, the target
+    must be a method flagged with ``is_agent_action``, and every argument must be
+    a plain Python literal (``ast.literal_eval``). This preserves every valid
+    grounded action while preventing arbitrary expressions/builtins (e.g.
+    ``__import__``, tuple side effects, attribute walks) from executing during
+    response validation or action conversion.
+
+    Args:
+        agent (ACI): The grounding agent that owns the action method.
+        code (str): The grounded-action call string to evaluate.
+
+    Returns:
+        The return value of the grounding-agent action (the pyautogui code).
+
+    Raises:
+        ValueError: If ``code`` is not a single allowed ``agent.<action>(...)``
+            call with literal-only arguments.
+    """
+    try:
+        tree = ast.parse(code.strip(), mode="eval")
+    except SyntaxError as e:
+        raise ValueError(f"Invalid grounded action syntax: {e}") from e
+
+    call = tree.body
+    if not isinstance(call, ast.Call):
+        raise ValueError("Grounded action must be a single agent action call.")
+
+    func = call.func
+    if (
+        not isinstance(func, ast.Attribute)
+        or not isinstance(func.value, ast.Name)
+        or func.value.id != "agent"
+    ):
+        raise ValueError("Grounded action must call a method on 'agent'.")
+
+    method_name = func.attr
+    method = getattr(agent, method_name, None)
+    if method is None or not getattr(method, "is_agent_action", False):
+        raise ValueError(f"Unknown or disallowed agent action: {method_name!r}.")
+
+    try:
+        args = [ast.literal_eval(arg) for arg in call.args]
+        kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in call.keywords}
+    except (ValueError, SyntaxError) as e:
+        raise ValueError(
+            "Grounded action arguments must be literals (no expressions/calls)."
+        ) from e
+
+    if any(kw.arg is None for kw in call.keywords):
+        raise ValueError("Grounded action does not support **kwargs unpacking.")
+
+    return method(*args, **kwargs)
 
 
 def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
@@ -28,7 +88,7 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
         Exception: If there is an error in evaluating the code.
     """
     agent.assign_screenshot(obs)  # Necessary for grounding
-    exec_code = eval(code)
+    exec_code = dispatch_agent_action(agent, code)
     return exec_code
 
 
