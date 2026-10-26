@@ -46,12 +46,22 @@ class LMMEngineOpenAI(LMMEngine):
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named OPENAI_API_KEY"
             )
         organization = self.organization or os.getenv("OPENAI_ORG_ID")
+        # PRD PATCH (2026-09-26): explicit request timeout. Without it a hung
+        # backend stalls the agent forever (backoff only fires on exceptions,
+        # and no timeout = no exception). Configurable via OPENAI_TIMEOUT_S.
+        import os as _os
+        _timeout = float(_os.getenv("OPENAI_TIMEOUT_S", "300"))
         if not self.llm_client:
             if not self.base_url:
-                self.llm_client = OpenAI(api_key=api_key, organization=organization)
+                self.llm_client = OpenAI(
+                    api_key=api_key, organization=organization, timeout=_timeout
+                )
             else:
                 self.llm_client = OpenAI(
-                    base_url=self.base_url, api_key=api_key, organization=organization
+                    base_url=self.base_url,
+                    api_key=api_key,
+                    organization=organization,
+                    timeout=_timeout,
                 )
         return (
             self.llm_client.chat.completions.create(
