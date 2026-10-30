@@ -82,7 +82,7 @@ class Worker(BaseModule):
                 # keep latest k images
                 img_count = 0
                 for i in range(len(agent.messages) - 1, -1, -1):
-                    for j in range(len(agent.messages[i]["content"])):
+                    for j in range(len(agent.messages[i]["content"]) - 1, -1, -1):
                         if "image" in agent.messages[i]["content"][j].get("type", ""):
                             img_count += 1
                             if img_count > max_images:
