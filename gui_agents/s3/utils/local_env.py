@@ -1,6 +1,14 @@
+import locale
 import subprocess
 import sys
-from typing import Dict
+from typing import Dict, Optional, Union
+
+
+def _decode_output(output: Optional[Union[bytes, str]]) -> str:
+    # TimeoutExpired captures bytes even with text=True, possibly ending mid-character.
+    if isinstance(output, bytes):
+        return output.decode(locale.getpreferredencoding(False), errors="replace")
+    return output or ""
 
 
 class LocalController:
@@ -34,7 +42,7 @@ class LocalController:
             return {
                 "status": "error",
                 "returncode": -1,
-                "output": e.stdout or "",
+                "output": _decode_output(e.stdout) + _decode_output(e.stderr),
                 "error": f"TimeoutExpired: {str(e)}",
             }
         except Exception as e:
