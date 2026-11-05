@@ -212,7 +212,11 @@ def run_agent(agent, instruction: str, scaled_width: int, scaled_height: int):
                 time.sleep(0.1)
 
             # Ask for permission before executing
-            exec(code[0])
+            try:
+                exec(code[0])
+            except Exception as exec_err:
+                print(f"⚠️ Action execution error (continuing): {exec_err}")
+                print("The agent will see the unchanged screen and can retry.")
             time.sleep(1.0)
 
             # Update task and subtask trajectories
