@@ -37,14 +37,16 @@ output = subprocess.check_output(['wmctrl', '-lx']);
 output = output.decode('utf-8').splitlines();
 window_titles = [line.split(None, 4)[2] for line in output];
 closest_matches = difflib.get_close_matches('APP_NAME', window_titles, n=1, cutoff=0.1);
+window_id = None;
 if closest_matches:
     closest_match = closest_matches[0];
     for line in output:
         if closest_match in line:
             window_id = line.split()[0]
             break;
-subprocess.run(['wmctrl', '-ia', window_id])
-subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_horz'])
+if window_id:
+    subprocess.run(['wmctrl', '-ia', window_id])
+    subprocess.run(['wmctrl', '-ir', window_id, '-b', 'add,maximized_vert,maximized_horz'])
 """
 
 
