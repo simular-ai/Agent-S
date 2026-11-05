@@ -405,6 +405,8 @@ class WindowsACI(ACI):
         Args:
             keys:List[str] the keys to press in combination in a list format (e.g. ['shift', 'c'])
         """
+        if isinstance(keys, str):
+            keys = [keys]
         keys = [_normalize_key(k) for k in keys]
         keys = [f"'{key}'" for key in keys]
         command = f"import pyautogui; pyautogui.hotkey({', '.join(keys)}, interval=0.5)"
@@ -417,6 +419,10 @@ class WindowsACI(ACI):
             hold_keys:List[str], list of keys to hold
             press_keys:List[str], list of keys to press in a sequence
         """
+        if isinstance(hold_keys, str):
+            hold_keys = [hold_keys]
+        if isinstance(press_keys, str):
+            press_keys = [press_keys]
         hold_keys = [_normalize_key(k) for k in hold_keys]
         press_keys = [_normalize_key(k) for k in press_keys]
 
