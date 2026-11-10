@@ -1,10 +1,51 @@
 """General utility."""
 
 import platform
+import re
 import requests
 import zipfile
 import io
 import os
+
+# Anthropic models that reject non-default sampling params (temperature, top_p, top_k).
+_ANTHROPIC_NO_TEMPERATURE_PATTERNS = (
+    re.compile(r"sonnet-5"),
+    re.compile(r"opus-4-7"),
+    re.compile(r"opus-4-8"),
+)
+
+
+def anthropic_supports_temperature(model: str) -> bool:
+    """Return False for Anthropic models that reject the temperature parameter."""
+    model_lower = model.lower()
+    return not any(
+        pattern.search(model_lower) for pattern in _ANTHROPIC_NO_TEMPERATURE_PATTERNS
+    )
+
+
+def extract_anthropic_text(response) -> str:
+    """Concatenate text from an Anthropic Messages response.
+
+    Newer models (e.g. Sonnet 5) enable adaptive thinking by default, so the
+    response content can contain ThinkingBlocks that have no `text` attribute.
+    This skips non-text blocks and returns only the assistant's text output.
+    """
+    texts = [
+        block.text
+        for block in response.content
+        if getattr(block, "type", None) == "text"
+    ]
+    return "".join(texts)
+
+
+def extract_anthropic_thinking(response) -> str:
+    """Concatenate thinking/reasoning text from an Anthropic Messages response."""
+    thoughts = [
+        getattr(block, "thinking", "")
+        for block in response.content
+        if getattr(block, "type", None) == "thinking"
+    ]
+    return "".join(thoughts)
 
 
 def download_kb_data(
