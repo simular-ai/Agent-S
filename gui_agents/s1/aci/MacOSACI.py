@@ -423,8 +423,8 @@ class MacOSACI(ACI):
         """
         # Normalize any 'cmd' to 'command'
         keys = [_normalize_key(k) for k in keys]
-        # add quotes around the keys
-        keys = [f"'{key}'" for key in keys]
+        # repr() quotes each key as a Python string literal, escaping \ and '
+        keys = [repr(key) for key in keys]
         return f"import pyautogui; pyautogui.hotkey({', '.join(keys)}, interval=1)"
 
     @agent_action
@@ -438,7 +438,7 @@ class MacOSACI(ACI):
         hold_keys = [_normalize_key(k) for k in hold_keys]
         press_keys = [_normalize_key(k) for k in press_keys]
 
-        press_keys_str = "[" + ", ".join([f"'{key}'" for key in press_keys]) + "]"
+        press_keys_str = "[" + ", ".join(repr(key) for key in press_keys) + "]"
         command = "import pyautogui; "
         for k in hold_keys:
             command += f"pyautogui.keyDown({repr(k)}); "
