@@ -12,6 +12,16 @@ from openai import (
 )
 
 
+# OpenAI's reasoning models (o-series, gpt-5, gpt-6) don't take sampling settings:
+# the GPT-6 guide says to omit `temperature` when migrating Chat Completions requests.
+_NO_TEMPERATURE_PREFIXES = ("o1", "o3", "o4", "gpt-5", "gpt-6")
+
+
+def accepts_temperature(model):
+    name = model.split("/")[-1]
+    return not (name.startswith(_NO_TEMPERATURE_PREFIXES) and "chat" not in name)
+
+
 class LMMEngine:
     pass
 
@@ -53,19 +63,18 @@ class LMMEngineOpenAI(LMMEngine):
                 self.llm_client = OpenAI(
                     base_url=self.base_url, api_key=api_key, organization=organization
                 )
-        return (
-            self.llm_client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=(
-                    temperature if self.temperature is None else self.temperature
-                ),
-                **kwargs,
-            )
-            .choices[0]
-            .message.content
+        params = dict(
+            model=self.model,
+            messages=messages,
+            max_completion_tokens=max_new_tokens if max_new_tokens else 4096,
+            **kwargs,
         )
+        if accepts_temperature(self.model):
+            params["temperature"] = (
+                temperature if self.temperature is None else self.temperature
+            )
+        response = self.llm_client.chat.completions.create(**params)
+        return response.choices[0].message.content
 
 
 class LMMEngineAnthropic(LMMEngine):
