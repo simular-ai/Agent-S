@@ -37,6 +37,8 @@ When building locally, run the resulting `AgentS.Windows.exe` from its build out
 
 Add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Accounts**, refresh computers, then create an agent. It uses your existing Sai account/computers; it does not provision a free computer or enroll the local Windows machine.
 
+Publishing must preserve `resources.pri`. `EnableMsixTooling` generates the XAML resource index even for this unpackaged app; without it, compilation can pass while startup fails to locate `MainWindow.xaml`. CI checks the published index and launches the actual executable to catch this regression. Startup diagnostics are opt-in via `AGENT_S_STARTUP_DIAGNOSTICS` for the credential-free smoke run; they do not handle or hide the failure.
+
 The dependency-free core contract checks also run on Linux/macOS with .NET 10. They use a fake HTTP transport, not a production account, and do not establish live API or UI correctness.
 
 ## Route to feature parity

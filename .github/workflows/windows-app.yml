@@ -20,7 +20,10 @@ jobs:
       - name: API and stream contract tests (no credentials)
         run: dotnet run --project app/windows/AgentS.Core.Tests -c Release
       - name: Publish native WinUI app
-        run: dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "${{ runner.temp }}/agent-s-windows"
+        run: |
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "${{ runner.temp }}/agent-s-windows"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "${{ runner.temp }}/agent-s-windows/resources.pri")) { throw "Published XAML resource index is missing." }
       - name: Native startup and Accounts smoke test (no credentials)
         timeout-minutes: 3
         shell: powershell
