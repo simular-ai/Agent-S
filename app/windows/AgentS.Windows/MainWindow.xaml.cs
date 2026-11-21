@@ -96,6 +96,7 @@ public sealed partial class MainWindow : Window
     {
         if (busy) return;
         var password = new PasswordBox { Header = "Sai API key", PlaceholderText = "Paste a key from platform.simular.ai" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(password, "SaiApiKey");
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "The key is saved in Windows Credential Locker. Conversations stay on this Windows account.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(password);
