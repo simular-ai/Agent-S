@@ -196,6 +196,9 @@ final class AppModel: ObservableObject {
             self?.objectWillChange.send()
             self?.saveAgents()
         }
+        session.onMacUIActivity = { [weak self] session, needsApproval in
+            self?.showMacTurnPanel(for: session, presentation: .macUI(needsApproval: needsApproval))
+        }
         agents.append(session)
     }
 
@@ -646,10 +649,10 @@ final class AppModel: ObservableObject {
 
     private let macTurnPanel = MacTurnPanelController()
 
-    func showMacTurnPanel(for session: AgentSession) {
+    func showMacTurnPanel(for session: AgentSession, presentation: MacTurnPanelController.Presentation = .manual) {
         guard session.config.privacy == .thisMac else { return }
         let mainWindow = NSApp.mainWindow
-        macTurnPanel.show(session) { [weak self, weak mainWindow] session in
+        macTurnPanel.show(session, presentation: presentation) { [weak self, weak mainWindow] session in
             guard let self, self.agents.contains(where: { $0.id == session.id }) else { return }
             self.select(session)
             NSApp.unhide(nil)
@@ -675,8 +678,6 @@ final class AppModel: ObservableObject {
 
     /// A This Mac agent's turn. The harness asks Agent S for approval before acting on the Mac.
     private func sendToMac(_ prompt: String) {
-        let session = agent
-        defer { if session.isRunning { showMacTurnPanel(for: session) } }
         do {
             try MacAccess.install()
             if harness == .claudeCode { try approvals.start() }

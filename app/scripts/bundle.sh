@@ -6,14 +6,16 @@
 set -e
 cd "$(dirname "$0")/.."
 CONFIG=${1:-release}
-swift build -c "$CONFIG"
-BIN=$(swift build -c "$CONFIG" --show-bin-path)/AgentS
+if [ "$#" -gt 0 ]; then shift; fi
+swift build -c "$CONFIG" "$@"
+BIN=$(swift build -c "$CONFIG" "$@" --show-bin-path)/AgentS
 APP="build/Agent S.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/AgentS"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+cp Resources/ThirdPartyNotices.txt "$APP/Contents/Resources/ThirdPartyNotices.txt"
 IDENTITY=${SIGN_IDENTITY:-}
 if [ -z "$IDENTITY" ] && security find-certificate -c "Agent S Development" >/dev/null 2>&1; then
   IDENTITY="Agent S Development"

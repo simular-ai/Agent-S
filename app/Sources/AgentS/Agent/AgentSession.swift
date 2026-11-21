@@ -79,6 +79,7 @@ final class AgentSession: ObservableObject, Identifiable {
     private var boxSessions: [String: String] = [:]
     /// Called when something worth saving changed (the definition, or a finished turn).
     var onChange: (() -> Void)?
+    var onMacUIActivity: ((_ session: AgentSession, _ needsApproval: Bool) -> Void)?
 
     nonisolated var id: UUID { MainActor.assumeIsolated { config.id } }
 
@@ -278,7 +279,11 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Looking (screenshots, the window's tree, the app list) runs without asking.
     func requestApproval(tool: String, input: [String: Any], macToolPath: String) async -> Bool {
         guard isRunning else { return false }
-        if allowRestOfTurn || MacAgent.isLookOnly(tool: tool, input: input, macToolPath: macToolPath) { return true }
+        let needsApproval = !allowRestOfTurn && !MacAgent.isLookOnly(tool: tool, input: input, macToolPath: macToolPath)
+        if MacAgent.isUICommand(tool: tool, input: input, macToolPath: macToolPath) {
+            onMacUIActivity?(self, needsApproval)
+        }
+        guard needsApproval else { return true }
         let id = UUID().uuidString
         return await withCheckedContinuation { continuation in
             pendingApprovals[id] = continuation

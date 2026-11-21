@@ -19,7 +19,7 @@ Simular Box. Each agent has its own conversation and can pick up where it left o
 ## Build and run
 
 Agent S requires an Apple Silicon Mac with macOS 14 or later. To build from source, install
-Xcode or the Command Line Tools with Swift 6. Build and open the app from the repository root.
+Xcode with Swift 6.2 or later. Build and open the app from the repository root.
 
 ```sh
 cd app
