@@ -151,6 +151,11 @@ public sealed partial class MainWindow : Window
         conversations.Remove(selected); Agents.SelectedItem = conversations.FirstOrDefault(); await Persist();
     }
 
+    private static void SetButtonsEnabled(StackPanel panel, bool enabled)
+    {
+        foreach (var control in panel.Children.OfType<Control>()) control.IsEnabled = enabled;
+    }
+
     private void Draw(ChatEntry entry)
     {
         var panel = new StackPanel { Spacing = 6 };
@@ -177,14 +182,14 @@ public sealed partial class MainWindow : Window
                     var button = new Button { Content = label };
                     button.Click += async (_, _) =>
                     {
-                        buttons.IsEnabled = false;
+                        SetButtonsEnabled(buttons, false);
                         try
                         {
                             if (client is null) throw new SaiException("Connect your Sai account first.");
                             await client.Approve(entry.ApprovalId, answer);
                             entry.Answered = true; text.Text = entry.Text += $"\n{label} confirmed.";
                         }
-                        catch (Exception error) { Error(error); buttons.IsEnabled = true; }
+                        catch (Exception error) { Error(error); SetButtonsEnabled(buttons, true); }
                     };
                     buttons.Children.Add(button);
                 }
@@ -273,7 +278,7 @@ public sealed partial class MainWindow : Window
             { entry.Answered = true; entry.Text += "\nTurn disconnected. Check pending approvals in Sai."; Change(entry); }
             // Disable remaining controls without silently approving or denying anything.
             running = busy = false; run.Dispose(); run = null; Controls(); await Persist();
-            foreach (var controls in approvalControls.Values) controls.IsEnabled = false;
+            foreach (var controls in approvalControls.Values) SetButtonsEnabled(controls, false);
         }
     }
     private async Task Stop(Conversation owner)
