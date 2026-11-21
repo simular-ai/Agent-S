@@ -78,11 +78,11 @@ try {
     $cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Milliseconds 300
     Assert-State (Find-Element 'AccountsButton').Current.IsEnabled 'Accounts cancels back to the native window'
-    $report = @{ result = 'passed'; checks = @($checks); revision = $env:GITHUB_SHA; os = [Environment]::OSVersion.VersionString }
-    $report | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceDirectory 'smoke.json')
     $null = $process.CloseMainWindow()
     if (-not $process.WaitForExit(10000)) { throw 'Agent S did not close cleanly.' }
     Assert-State ($process.ExitCode -eq 0) 'Native window exits cleanly'
+    $report = @{ result = 'passed'; checks = @($checks); revision = $env:GITHUB_SHA; os = [Environment]::OSVersion.VersionString }
+    $report | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceDirectory 'smoke.json')
 }
 catch {
     @{ result = 'failed'; error = $_.Exception.Message; checks = @($checks) } |
