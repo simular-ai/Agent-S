@@ -6,6 +6,7 @@
     <UseWinUI>true</UseWinUI>
     <!-- Required for PRI/XAML resource indexing even when WindowsPackageType is None. -->
     <EnableMsixTooling>true</EnableMsixTooling>
+    <ProjectPriFileName>resources.pri</ProjectPriFileName>
     <WindowsPackageType>None</WindowsPackageType>
     <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
     <SelfContained>true</SelfContained>
@@ -20,4 +21,6 @@
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.9457" PrivateAssets="all" />
     <ProjectReference Include="../AgentS.Core/AgentS.Core.csproj" />
   </ItemGroup>
+  <!-- Publishing must run the SDK resource target, not just managed compilation. -->
+  <Target Name="BuildXamlResourceIndex" BeforeTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="GenerateProjectPriFile" />
 </Project>
