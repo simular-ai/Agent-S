@@ -48,6 +48,8 @@ function Capture([string]$name) {
     finally { $graphics.Dispose(); $bitmap.Dispose() }
 }
 try {
+    $env:AGENT_S_STARTUP_DIAGNOSTICS = Join-Path $EvidenceDirectory 'startup-error.txt'
+    $startedAt = Get-Date
     $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path $Executable) -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -85,6 +87,13 @@ try {
     $report | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceDirectory 'smoke.json')
 }
 catch {
+    Get-WinEvent -FilterHashtable @{ LogName = 'Application'; StartTime = $startedAt } -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProviderName -in @('Application Error', '.NET Runtime', 'Windows Error Reporting') } |
+        Select-Object TimeCreated, ProviderName, Id, Message | Format-List | Out-String |
+        Set-Content (Join-Path $EvidenceDirectory 'windows-events.txt')
+    if (Test-Path (Join-Path $EvidenceDirectory 'startup-error.txt')) {
+        Get-Content (Join-Path $EvidenceDirectory 'startup-error.txt') | Write-Host
+    }
     @{ result = 'failed'; error = $_.Exception.Message; checks = @($checks) } |
         ConvertTo-Json -Depth 4 | Set-Content (Join-Path $EvidenceDirectory 'smoke.json')
     throw
