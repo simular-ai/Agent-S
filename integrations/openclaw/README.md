@@ -177,7 +177,7 @@ By default, the wrapper uses Anthropic's Claude Sonnet 4.5. To use a different p
 cmd = [
     agent_s_path,
     "--provider", "openai",
-    "--model", "gpt-5-2025-08-07",  # or other OpenAI models
+    "--model", "gpt-6.1-sol",  # or other OpenAI models
     ...
 ]
 
