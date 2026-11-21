@@ -28,7 +28,12 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         Agents.ItemsSource = conversations;
-        AppWindow.Resize(new global::Windows.Graphics.SizeInt32(1120, 820));
+        var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var width = Math.Min(1120, area.Width);
+        var height = Math.Min(820, area.Height);
+        AppWindow.Resize(new global::Windows.Graphics.SizeInt32(width, height));
+        AppWindow.Move(new global::Windows.Graphics.PointInt32(area.X + (area.Width - width) / 2,
+            area.Y + (area.Height - height) / 2));
         AppWindow.Closing += Closing;
         Closed += (_, _) => { run?.Cancel(); client?.Dispose(); };
     }

@@ -64,6 +64,7 @@ try {
     if ($null -eq $root) { throw 'Agent S did not expose a window within 45 seconds.' }
     $accounts = Find-Element 'AccountsButton'
     Assert-State $accounts.Current.IsEnabled 'Native window starts and Accounts is available'
+    Assert-State (-not $accounts.Current.IsOffscreen) 'Accounts is visible inside the desktop work area'
     Assert-State (-not (Find-Element 'SendButton').Current.IsEnabled) 'Send stays disabled without credentials'
     Assert-State (-not (Find-Element 'StopButton').Current.IsEnabled) 'Stop stays disabled without a running turn'
     Assert-State (-not (Find-Element 'NewAgentButton').Current.IsEnabled) 'Agent creation stays disabled without an account'

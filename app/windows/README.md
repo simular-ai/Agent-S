@@ -56,7 +56,7 @@ Keep the provider/agent behavior and Sai API unchanged as Windows UI lands incre
 
 ## Verification and release gates
 
-Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening the window without credentials, disabled Send/Stop/New agent controls, opening/cancelling Accounts, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
+Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening and fitting the window to the desktop without credentials, visible Accounts, disabled Send/Stop/New agent controls, opening/cancelling Accounts, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
 
 Before marking ready, use a test Sai account on Windows and record:
 
