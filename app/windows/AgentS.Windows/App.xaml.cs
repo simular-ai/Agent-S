@@ -9,14 +9,17 @@ public partial class App : Application
     {
         // Opt-in startup-only diagnostics for the credential-free Windows CI smoke run.
         // Leave the exception unhandled: the smoke check must fail on a startup crash.
-        UnhandledException += (_, args) => WriteStartupFailure(args.Exception.ToString());
+        UnhandledException += (_, args) => WriteStartupFailure(args.Exception);
         try { InitializeComponent(); }
-        catch (Exception error) { WriteStartupFailure(error.ToString()); throw; }
+        catch (Exception error) { WriteStartupFailure(error); throw; }
     }
     private bool startup = true;
-    private void WriteStartupFailure(string text)
+    private void WriteStartupFailure(Exception error)
     {
         if (!startup || Environment.GetEnvironmentVariable("AGENT_S_STARTUP_DIAGNOSTICS") is not { } path) return;
+        var text = error.ToString();
+        foreach (System.Collections.DictionaryEntry detail in error.Data)
+            if (detail.Value is string value) text += $"\n{detail.Key}: {value}";
         try { File.WriteAllText(path, text); }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
@@ -29,6 +32,6 @@ public partial class App : Application
             window.Activate();
             startup = false;
         }
-        catch (Exception error) { WriteStartupFailure(error.ToString()); throw; }
+        catch (Exception error) { WriteStartupFailure(error); throw; }
     }
 }
