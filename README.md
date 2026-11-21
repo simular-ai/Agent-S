@@ -68,6 +68,10 @@
 
 ## 🚀 Quick Start
 
+- **[Agent S for macOS](./app/README.md)** is a native app for Apple Silicon Macs running macOS 14 or later. Build it from source and choose where your agent works.
+  - **Private** runs in a local Linux VM in the background while you keep using your Mac. Choose a local Ollama model for on-device inference.
+  - **This Mac** works in your apps, Terminal, and files with approvals for actions.
+  - **Cloud** works on a Sai computer or Simular Box.
 - **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).
 - **On your own computer:** follow the [Agent S3 README](./gui_agents/s3/README.md).
 
