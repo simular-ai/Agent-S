@@ -1,0 +1,23 @@
+name: Windows app
+on:
+  pull_request:
+    paths: ['app/windows/**', '.github/workflows/windows-app.yml']
+  push:
+    branches: [main]
+    paths: ['app/windows/**', '.github/workflows/windows-app.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: API and stream contract tests (no credentials)
+        run: dotnet run --project app/windows/AgentS.Core.Tests -c Release
+      - name: Build native WinUI app
+        run: dotnet build app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64

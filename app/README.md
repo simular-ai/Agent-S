@@ -1,5 +1,7 @@
 # Agent S for Mac
 
+For the initial native Windows client and its current feature scope, see [Agent S for Windows](windows/README.md).
+
 Agent S is a native macOS app for computer-use agents. Choose a private Linux computer on
 your Mac, let an agent work in your Mac apps with approvals, or connect a Sai computer or
 Simular Box. Each agent has its own conversation and can pick up where it left off.

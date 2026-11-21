@@ -1,0 +1,21 @@
+<Window x:Class="AgentS.Windows.MainWindow" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="Agent S">
+  <Grid x:Name="Root" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="20" ColumnSpacing="20" Loaded="OnLoaded">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="220" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+    <Grid RowSpacing="12">
+      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+      <TextBlock Text="Agent S" Style="{StaticResource TitleTextBlockStyle}" />
+      <Button x:Name="NewAgentButton" Grid.Row="1" Content="New agent" Click="NewAgent" HorizontalAlignment="Stretch" />
+      <ListView x:Name="Agents" Grid.Row="2" SelectionChanged="SelectAgent" SelectionMode="Single" />
+      <StackPanel Grid.Row="3" Spacing="8"><Button x:Name="AccountsButton" Content="Accounts" Click="Accounts" HorizontalAlignment="Stretch" /><Button x:Name="DeleteButton" Content="Delete selected agent" Click="DeleteAgent" HorizontalAlignment="Stretch" /></StackPanel>
+    </Grid>
+    <Grid Grid.Column="1" RowSpacing="12">
+      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+      <TextBlock x:Name="Heading" Text="Choose an agent or create one" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
+      <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"><Button x:Name="ScreenButton" Content="Open computer" Click="OpenComputer" /><Button x:Name="WakeButton" Content="Wake computer" Click="WakeComputer" /><Button x:Name="RefreshButton" Content="Refresh computers" Click="RefreshComputers" /></StackPanel>
+      <InfoBar x:Name="Notice" Grid.Row="2" IsOpen="False" IsClosable="True" />
+      <ScrollViewer x:Name="Transcript" Grid.Row="3" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Messages" Spacing="16" Padding="4,12" /></ScrollViewer>
+      <TextBox x:Name="Composer" Grid.Row="4" PlaceholderText="Ask this agent to work on its Sai computer…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" MaxHeight="180" AutomationProperties.Name="Message" />
+      <Grid Grid.Row="5"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock x:Name="Status" Text="Cloud mode · Sai API" VerticalAlignment="Center" TextWrapping="Wrap" /><Button x:Name="StopButton" Grid.Column="1" Content="Stop" Click="StopTurn" Margin="0,0,8,0" IsEnabled="False" /><Button x:Name="SendButton" Grid.Column="2" Content="Send" Click="Send" IsEnabled="False" /></Grid>
+    </Grid>
+  </Grid>
+</Window>
