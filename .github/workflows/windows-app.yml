@@ -23,7 +23,11 @@ jobs:
         run: |
           dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "${{ runner.temp }}/agent-s-windows"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (-not (Test-Path "${{ runner.temp }}/agent-s-windows/resources.pri")) { throw "Published XAML resource index is missing." }
+          if (-not (Test-Path "${{ runner.temp }}/agent-s-windows/resources.pri")) {
+            Get-ChildItem app/windows/AgentS.Windows -Recurse -Include *.pri,*.xbf | Select-Object FullName
+            dotnet msbuild app/windows/AgentS.Windows -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -getProperty:AppxGeneratePriEnabled,EnablePriGenTooling,EnableCoreMrtTooling,ProjectPriFullPath,ProjectPriFileName,MsixPackageSupport,ShouldImportMsixCommonTargets,TargetPlatformIdentifier -getItem:Page,ApplicationDefinition
+            throw "Published XAML resource index is missing."
+          }
       - name: Native startup and Accounts smoke test (no credentials)
         timeout-minutes: 3
         shell: powershell
