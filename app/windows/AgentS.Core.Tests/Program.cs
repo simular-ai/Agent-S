@@ -69,6 +69,7 @@ try { await client.Abort("s1"); throw new Exception("Redirect accepted"); }
 catch (SaiException) { Check(true, "Non-success redirect not treated as confirmed abort"); }
 var saved = JsonSerializer.Serialize(new Conversation { Entries = [new ChatEntry { Text = "Approval", ApprovalId = "id", ApprovalUrl = new Uri("https://example.test/private-token") }] });
 Check(!saved.Contains("private-token") && !saved.Contains("ApprovalId"), "Approval URLs and actionable IDs are excluded from local history");
+await PrivateAgentTests.Run(Check);
 Console.WriteLine($"{passed} assertions passed.");
 
 sealed class RecordingHandler : HttpMessageHandler

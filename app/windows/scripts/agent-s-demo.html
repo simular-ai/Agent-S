@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent S offline demo</title>
+<style>
+  :root { color-scheme: light; font: 18px system-ui, sans-serif; color: #1b2838; background: #eef3f8; }
+  main { max-width: 32rem; margin: 2.6rem auto; padding: 2rem; background: #fff; border: 1px solid #c8d4e1; border-radius: 1rem; }
+  h1 { margin: 0 0 .6rem; font-size: 1.8rem; }
+  p { line-height: 1.45; }
+  label { display: block; margin: 1rem 0 .35rem; font-weight: 650; }
+  input, textarea { box-sizing: border-box; width: 100%; padding: .55rem; border: 1px solid #8c9cad; border-radius: .35rem; font: inherit; }
+  button { margin-top: 1rem; padding: .55rem .85rem; border: 0; border-radius: .35rem; background: #203c5c; color: #fff; font: inherit; cursor: pointer; }
+  #result { margin-bottom: 0; min-height: 1.4rem; color: #264f39; font-weight: 650; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agent S offline demo</h1>
+  <p>Fill in the form and save it. The result appears below without sending any data.</p>
+  <form id="demo">
+    <label for="person">Name</label>
+    <input id="person" name="person" maxlength="120" autocomplete="off" required>
+    <label for="notes">Notes</label>
+    <textarea id="notes" name="notes" rows="3" maxlength="1000"></textarea>
+    <button type="submit">Save demo entry</button>
+    <p id="result" role="status">Ready</p>
+  </form>
+</main>
+<script>
+  document.getElementById('demo').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const name = document.getElementById('person').value.trim();
+    document.getElementById('result').textContent = name ? 'Saved for ' + name : 'Enter a name';
+  });
+</script>
+</body>
+</html>

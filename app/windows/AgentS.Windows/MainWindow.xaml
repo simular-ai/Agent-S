@@ -13,7 +13,17 @@
       <TextBlock x:Name="Heading" Text="Choose an agent or create one" Style="{StaticResource TitleTextBlockStyle}" TextWrapping="Wrap" />
       <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8"><Button x:Name="ScreenButton" Content="Open computer" Click="OpenComputer" /><Button x:Name="WakeButton" Content="Wake computer" Click="WakeComputer" /><Button x:Name="RefreshButton" Content="Refresh computers" Click="RefreshComputers" /></StackPanel>
       <InfoBar x:Name="Notice" Grid.Row="2" IsOpen="False" IsClosable="True" />
-      <ScrollViewer x:Name="Transcript" Grid.Row="3" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Messages" Spacing="16" Padding="4,12" /></ScrollViewer>
+      <Grid Grid.Row="3">
+        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+        <ScrollViewer x:Name="Transcript" HorizontalScrollBarVisibility="Disabled"><StackPanel x:Name="Messages" Spacing="16" Padding="4,12" /></ScrollViewer>
+        <Border x:Name="PrivatePreview" Grid.Column="1" Width="288" Margin="12,0,0,0" Padding="8"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Visibility="Collapsed">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Private computer" FontWeight="SemiBold" />
+            <Image x:Name="PrivateScreen" Stretch="Uniform" AutomationProperties.Name="Private computer screen" />
+          </StackPanel>
+        </Border>
+      </Grid>
       <TextBox x:Name="Composer" Grid.Row="4" PlaceholderText="Ask this agent to work on its Sai computer…" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" MaxHeight="180" AutomationProperties.Name="Message" />
       <Grid Grid.Row="5"><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock x:Name="Status" Text="Cloud mode · Sai API" VerticalAlignment="Center" TextWrapping="Wrap" /><Button x:Name="StopButton" AutomationProperties.AutomationId="StopButton" Grid.Column="1" Content="Stop" Click="StopTurn" Margin="0,0,8,0" IsEnabled="False" /><Button x:Name="SendButton" AutomationProperties.AutomationId="SendButton" Grid.Column="2" Content="Send" Click="Send" IsEnabled="False" /></Grid>
     </Grid>

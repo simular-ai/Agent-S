@@ -5,6 +5,14 @@ param(
 
 # Run with Windows PowerShell -STA on a fresh Windows CI desktop. No API key or tasks.
 $ErrorActionPreference = 'Stop'
+$tokens = $null
+$privateVmParseErrors = $null
+$null = [System.Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path $PSScriptRoot 'setup-private-vm.ps1'), [ref]$tokens, [ref]$privateVmParseErrors)
+if ($privateVmParseErrors.Count -gt 0) {
+    $privateVmParseErrors | Format-List | Out-Host
+    throw 'Private VM provisioning script has parse errors.'
+}
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Drawing
@@ -67,8 +75,19 @@ try {
     Assert-State (-not $accounts.Current.IsOffscreen) 'Accounts is visible inside the desktop work area'
     Assert-State (-not (Find-Element 'SendButton').Current.IsEnabled) 'Send stays disabled without credentials'
     Assert-State (-not (Find-Element 'StopButton').Current.IsEnabled) 'Stop stays disabled without a running turn'
-    Assert-State (-not (Find-Element 'NewAgentButton').Current.IsEnabled) 'Agent creation stays disabled without an account'
+    $newAgent = Find-Element 'NewAgentButton'
+    Assert-State $newAgent.Current.IsEnabled 'New agent is available without a Sai account'
     Capture 'startup'
+    $newAgent.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $localModel = Find-Element 'PrivateModel'
+    Assert-State (-not $localModel.Current.IsOffscreen) 'New agent defaults to a local Ollama model'
+    Capture 'private-agent'
+    $cancelCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Cancel')
+    $cancel = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cancelCondition)
+    if ($null -eq $cancel) { throw 'New agent dialog has no Cancel control.' }
+    $cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep -Milliseconds 300
     $invoke = $accounts.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
     $invoke.Invoke()
     $key = Find-Element 'SaiApiKey'

@@ -22,10 +22,14 @@ public sealed record SaiModel(string Id, string Name, bool Allowed = true)
     public override string ToString() => Name;
 }
 
+[JsonConverter(typeof(JsonStringEnumConverter<ConversationTarget>))]
+public enum ConversationTarget { Sai, Private }
+
 public sealed class Conversation
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "New agent";
+    public ConversationTarget Target { get; set; } = ConversationTarget.Sai;
     public string ComputerId { get; set; } = "";
     public string? ModelId { get; set; }
     public string? SessionId { get; set; }

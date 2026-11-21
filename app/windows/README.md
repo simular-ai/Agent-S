@@ -1,6 +1,6 @@
 # Agent S for Windows — native first increment
 
-A C# / WinUI 3 desktop client for Agent S, alongside the existing SwiftUI Mac app. This first increment supports **Sai cloud computers only**. It is not yet a Windows release or full feature parity with the Mac app. The Windows CI job publishes the native project and runs a no-credential startup/Accounts smoke test; manual Windows verification is required before merge/release.
+Agent S for Windows is a native WinUI 3 app for running agents on a private Linux computer. New conversations default to **Private**. Existing Sai conversations keep their cloud target. Select **Cloud · Sai computer** to create another one. Windows CI publishes the development app and runs credential-free startup checks. The Private VM still needs hands-on verification on a Hyper-V-capable Windows computer.
 
 ## Framework choice
 
@@ -11,7 +11,26 @@ Use **WinUI 3 with the Windows App SDK**, Microsoft's recommended native Windows
 
 WPF is a reasonable mature alternative, but there is no existing .NET UI to preserve here. Avalonia is useful when sharing the UI across platforms; Agent S already has a native SwiftUI app and this request is for native Windows. This PR uses the current stable Windows App SDK 2.7.0 and .NET 10, pinned in the project and SDK selection respectively.
 
-## Included
+## Set up the Private computer
+
+The prototype uses Windows 11 x64 Pro or Enterprise with Hyper-V, the Windows OpenSSH Client, and Ollama on the Windows host. Use the same Windows account for setup and for Agent S. The account needs access to manage Hyper-V VMs. Set `OLLAMA_NO_CLOUD=1` for Ollama, restart it, and pull a local vision model with tool calling such as `gemma4`. Keep Ollama listening at `127.0.0.1:11434`. The host runs the model, so its memory is separate from the VM.
+
+Provide a fresh, trusted Debian 13 amd64 generic cloud disk in VHDX format. Verify the original image against Debian’s signed checksums. To convert the Debian QCOW2 disk, run `qemu-img convert -f qcow2 -O vhdx input.qcow2 debian.vhdx`. The setup script uses an app-owned copy of that disk. Run setup from an elevated Windows PowerShell:
+
+```powershell
+.\app\windows\scripts\setup-private-vm.ps1 -VhdxPath C:\path\to\debian.vhdx
+```
+
+Setup installs the guest packages over the Hyper-V Default Switch, then removes that temporary adapter. The running guest uses the dedicated internal network `192.168.247.0/30` without a default gateway. Agent S connects to a pinned SSH host key for screenshots and a small set of desktop actions. Host drives and clipboard are outside the guest. The VM starts with 2 GiB of assigned memory and two vCPUs.
+
+Create a **Private** agent and enter the installed Ollama model tag. To exercise the local path, disconnect the computer from the internet and send “Open the demo, enter Sample in the name field, and submit.” Agent S boots the guest and shows screenshots as it works. **Stop** stops the turn, **Stop computer** shuts down the guest, and **Reset computer** restores the clean checkpoint while keeping Windows chat history. Use **Stop computer** to release the guest’s memory before closing the app.
+
+- [Debian cloud images](https://cloud.debian.org/images/cloud/)
+- [Hyper-V requirements](https://learn.microsoft.com/en-us/windows-server/virtualization/hyper-v/get-started/install-hyper-v)
+- [Ollama on Windows](https://docs.ollama.com/windows)
+- [Disable Ollama cloud features](https://docs.ollama.com/faq#how-do-i-disable-ollamas-cloud-features)
+
+## Sai cloud
 
 - Create named local agent conversations with a Sai computer and allowed model; resume their Sai session after restarting.
 - Stream chat and activity using the same `/v1/agents` contracts as `app/Sources/AgentS/Models/SaiAPI.swift`.
@@ -35,7 +54,7 @@ The PR’s **Windows app** Actions run provides an `agent-s-windows-x64` artifac
 
 When building locally, run the resulting `AgentS.Windows.exe` from its build output directory. Keep its adjacent self-contained runtime files together. The project runs unelevated and unpackaged; signing, installer/update distribution and clean-machine installation are separate release work. ARM64 is declared as a future build target but not yet validated by the x64 CI job.
 
-Add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Accounts**, refresh computers, then create an agent. It uses your existing Sai account/computers; it does not provision a free computer or enroll the local Windows machine.
+To use Sai, add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Accounts**, then create an agent with **Cloud · Sai computer** selected. This uses computers in your existing Sai account.
 
 Publishing must preserve `resources.pri`. The project invokes the SDK’s `GenerateProjectPriFile` target before resolving publish output and names the application index `resources.pri`; without it, compilation can pass while startup fails to locate `MainWindow.xaml`. CI checks the published index and launches the actual executable to catch this regression. Startup diagnostics are opt-in via `AGENT_S_STARTUP_DIAGNOSTICS` for the credential-free smoke run; they do not handle or hide the failure.
 
@@ -49,16 +68,22 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Computer display and context | Browser screen link, native status | Embedded screen panel, context/usage parity |
 | This Mac → This PC | Not included | Windows simulang adapter, accessibility/screenshot/input boundary and per-action approval bridge; reuse CLI protocols rather than invent a new agent loop |
 | Claude Code / Codex / DeepSeek and Box | Not included | Windows process lifecycle and account-profile adapters; port/test the existing stream contracts and provider matrix |
-| Private Linux VM + Ollama | Not included | Prototype Hyper-V versus WSL2 against display/input isolation, shared files, resource limits, hardware requirements and Windows editions before choosing. WSLg windows alone do not establish an isolated private desktop |
+| Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |
 | 1Password, guest file sharing, model downloads | Not included | Platform-specific integrations and explicit data/consent handling |
 
-Keep the provider/agent behavior and Sai API unchanged as Windows UI lands incrementally. There is no background agent process in this first client. Closing during a remote turn offers server abort when its session ID is known; closing without it warns that remote work may continue. Losing the stream is not treated as completion.
+Conversations store their target. Private turns use the installed Ollama model and the local guest. Sai turns use the existing API and retain their server session IDs. Closing during a remote turn offers server abort when its session ID is known. Losing the stream leaves completion unconfirmed.
 
 ## Verification and release gates
 
-Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening and fitting the window to the desktop without credentials, visible Accounts, disabled Send/Stop/New agent controls, opening/cancelling Accounts, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
+Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening and fitting the window to the desktop without credentials, disabled Send/Stop, opening the Private agent form, opening/cancelling Accounts, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
 
-Before marking ready, use a test Sai account on Windows and record:
+Hosted runners do not exercise the Hyper-V guest. Before marking the draft ready, verify on a Windows 11 x64 Hyper-V host:
+
+1. Provision the guest and complete a demo task with networking disconnected. Verify that the model runs on the Windows host and the guest has only the dedicated internal adapter.
+2. Watch screenshots update, stop a turn, restart the VM, and reset it to the clean checkpoint. Confirm that Windows chat history remains available.
+3. Record cold boot time, idle and peak guest memory, host model memory, and actual disk usage.
+
+For Sai, use a Windows test account and record:
 
 1. Build/run on a fresh Windows 11 x64 machine; verify Credential Locker save/read/remove and restart without printing keys.
 2. Create two named agents and switch/restart them. Confirm computer/session/history isolation; change credentials and confirm old sessions/live links are not reused.
