@@ -32,6 +32,7 @@ public sealed class AgentRow(Conversation conversation) : INotifyPropertyChanged
             {
                 ConversationTarget.Private => "Private · this PC",
                 ConversationTarget.ThisPc => "This PC · asks before each action",
+                ConversationTarget.Box => "Simular Box",
                 _ => "Sai cloud computer",
             };
             return (last.Role is "Agent" or "Sai" ? Markdown.Plain(last.Text) : last.Text).ReplaceLineEndings(" ").Trim();

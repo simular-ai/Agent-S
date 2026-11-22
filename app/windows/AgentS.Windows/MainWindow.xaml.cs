@@ -31,8 +31,19 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.Xaml.Data.CollectionViewSource agentGroups = new() { IsSourceGrouped = true };
     private bool panelOpen = true, rebuilding, privateScreenShown, preferPrivate;
     private HarnessUsage? usage;
-    /// <summary>Whether the screen panel's image came from This PC (a pc screenshot) rather than the Private computer.</summary>
-    private bool screenFromPc;
+    /// <summary>Whose screen the panel's image shows: the Private computer, This PC (a pc screenshot) or a Box, by key.</summary>
+    private string screenKind = "private";
+    private bool IsBox => selected?.Target == ConversationTarget.Box;
+    /// <summary>The selected Box's state as shown ("Running", "Asleep"), or null before it's known.</summary>
+    private string? boxState;
+    /// <summary>The key the panel's image needs for the selected agent; a different agent's screen is never shown.</summary>
+    private string? ScreenKindFor(Conversation? owner) => owner?.Target switch
+    {
+        ConversationTarget.Private => "private",
+        ConversationTarget.ThisPc => "pc",
+        ConversationTarget.Box => "box:" + (owner.BoxName ?? ""),
+        _ => null,
+    };
     /// <summary>This PC: approve the rest of the current turn's actions without asking (reset every turn).</summary>
     private bool approveRestOfTurn;
     private Uri? liveViewUri;
@@ -84,7 +95,7 @@ public sealed partial class MainWindow : Window
         foreach (var gone in rows.Keys.Except(conversations).ToArray()) rows.Remove(gone);
         var groups = new List<AgentGroup>();
         var local = conversations.Where(c => c.Target == ConversationTarget.Private).Select(Row).ToArray();
-        var cloud = conversations.Where(c => c.Target == ConversationTarget.Sai).Select(Row).ToArray();
+        var cloud = conversations.Where(c => c.Target is ConversationTarget.Sai or ConversationTarget.Box).Select(Row).ToArray();
         var pc = conversations.Where(c => c.Target == ConversationTarget.ThisPc).Select(Row).ToArray();
         if (local.Length > 0) groups.Add(new AgentGroup("Private", "", local));
         if (pc.Length > 0) groups.Add(new AgentGroup("This PC", "", pc));
@@ -141,9 +152,9 @@ public sealed partial class MainWindow : Window
         if (selected is not { } owner || busy) return;
         var menu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
         IEnumerable<(string Id, string Label)> choices;
-        if (owner.Target == ConversationTarget.ThisPc)
+        if (owner.Target is ConversationTarget.ThisPc or ConversationTarget.Box)
         {
-            // Claude Code on this PC: a model from Ollama, or from OpenRouter with the saved key.
+            // Claude Code on this PC (or driving a Box): a model from Ollama, or from OpenRouter with the saved key.
             string[] installed = [];
             try { using var agent = new LocalAgent(); installed = await agent.Models(); } catch { }
             void AddChoice(ModelProvider provider, string id)
@@ -226,7 +237,7 @@ public sealed partial class MainWindow : Window
         Composer.IsEnabled = !busy && selected is not null;
         SendButton.IsEnabled = !busy && storageReady && !string.IsNullOrWhiteSpace(Composer.Text) && (selected?.Target switch
         {
-            ConversationTarget.Private or ConversationTarget.ThisPc => true,
+            ConversationTarget.Private or ConversationTarget.ThisPc or ConversationTarget.Box => true,
             ConversationTarget.Sai => client is not null,
             _ => false,
         });
@@ -261,6 +272,13 @@ public sealed partial class MainWindow : Window
             Composer.PlaceholderText = $"Ask {selected.Name} to do something on this PC…";
             EmptyChatText.Text = "It works on this PC itself and asks you before every action.";
         }
+        if (IsBox && selected is not null)
+        {
+            ModelPillIcon.Glyph = ""; // Cloud
+            ModelPillText.Text = $"Box · Claude Code · {(selected.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{selected.ModelId}";
+            Composer.PlaceholderText = $"Ask {selected.Name} to do something on {selected.BoxName ?? "your Simular Box"}…";
+            EmptyChatText.Text = "It works on your Simular Box, a cloud desktop. Watch it on the right.";
+        }
 
         // Computer header and actions.
         ScreenButton.IsEnabled = IsPrivate ? !busy && PrivateComputer.IsConfigured : !busy && CurrentComputer is not null;
@@ -285,6 +303,19 @@ public sealed partial class MainWindow : Window
             ComputerName.Text = "This PC";
             ComputerState.Text = running ? "Working… it asks before each action" : "Your apps and files";
         }
+        if (IsBox && selected is not null)
+        {
+            // ⋯ menu: open the live view, wake the box, refresh the screen.
+            bool hasBox = Secrets.ReadBox() is not null;
+            ScreenButton.IsEnabled = !busy && hasBox;
+            ToolTipService.SetToolTip(ScreenButton, "Open the live view in your browser");
+            WakeButton.Text = "Wake box"; WakeButton.IsEnabled = !busy && hasBox;
+            RefreshButton.Text = "Refresh screen"; RefreshButton.IsEnabled = !busy && hasBox;
+            ComputerName.Text = selected.BoxName ?? "Simular Box";
+            ComputerState.Text = !hasBox ? "Add your Box key in Accounts" : running ? "Working…" : boxState ?? "Simular Box";
+            StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(running || boxState is "Running"
+                ? global::Windows.UI.Color.FromArgb(255, 52, 199, 89) : global::Windows.UI.Color.FromArgb(255, 154, 154, 154));
+        }
         UpdatePlaceholder();
         UpdateContext();
     }
@@ -293,8 +324,9 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlaceholder()
     {
-        bool showImage = (IsPrivate && !screenFromPc || IsThisPc && screenFromPc) && PrivateScreen.Source is not null;
-        bool showLive = !IsPrivate && !IsThisPc && liveViewUri is not null && CurrentComputer?.Online == true;
+        bool showImage = ScreenKindFor(selected) is { } kind && kind == screenKind && PrivateScreen.Source is not null
+            && (!IsBox || (boxState == "Running" && Secrets.ReadBox() is not null));
+        bool showLive = !IsPrivate && !IsThisPc && !IsBox && liveViewUri is not null && CurrentComputer?.Online == true;
         PrivateScreen.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
         LiveView.Visibility = showLive ? Visibility.Visible : Visibility.Collapsed;
         ScreenPlaceholder.Visibility = showImage || showLive ? Visibility.Collapsed : Visibility.Visible;
@@ -303,6 +335,17 @@ public sealed partial class MainWindow : Window
         { PlaceholderTitle.Text = "No computer yet"; PlaceholderText.Text = "Create an agent to see its computer here."; return; }
         if (IsThisPc)
         { PlaceholderTitle.Text = "This PC"; PlaceholderText.Text = "The agent works on this desktop. Screenshots it takes appear here."; return; }
+        if (IsBox)
+        {
+            if (Secrets.ReadBox() is null)
+            { PlaceholderTitle.Text = "Connect Simular Box"; PlaceholderText.Text = "Add your Box key to see this computer."; PlaceholderAction.Content = "Accounts"; }
+            else if (boxState is "Asleep")
+            { PlaceholderTitle.Text = "Your Box is asleep"; PlaceholderText.Text = "It wakes with the next task, or wake it now."; PlaceholderAction.Content = "Wake box"; }
+            else
+            { PlaceholderTitle.Text = "Simular Box"; PlaceholderText.Text = "Its screen appears here."; PlaceholderAction.Content = "Refresh screen"; }
+            PlaceholderAction.Visibility = Visibility.Visible;
+            return;
+        }
         if (IsPrivate)
         {
             if (!PrivateComputer.IsConfigured)
@@ -333,8 +376,28 @@ public sealed partial class MainWindow : Window
             case "Start computer": await StartPrivateScreen(); break;
             case "Accounts": Accounts(sender, e); break;
             case "Refresh": await Refresh(); await UpdateScreen(); break;
-            case "Wake computer": WakeComputer(sender, e); break;
+            case "Wake computer": case "Wake box": WakeComputer(sender, e); break;
+            case "Refresh screen": await RefreshBoxScreen(); break;
         }
+    }
+
+    /// <summary>Shows the selected Box's state and screen (asking doesn't wake it; a sleeping box shows no screen).</summary>
+    private async Task RefreshBoxScreen()
+    {
+        if (selected is not { Target: ConversationTarget.Box } owner || !panelOpen || BoxRunner.Client() is not { } box) { Controls(); return; }
+        try
+        {
+            var (state, _) = await box.Status(owner.BoxName);
+            if (selected != owner) return;
+            boxState = Box.IsAsleep(state) ? "Asleep" : "Running";
+            if (boxState == "Running" && await box.Screenshot(owner.BoxName) is { } png && selected == owner)
+                await ShowPrivateScreen(png, ScreenKindFor(owner)!);
+        }
+        catch (Exception error) when (error is BoxException or TaskCanceledException or HttpRequestException)
+        {
+            if (selected == owner && !running) { boxState = null; Show(Describe(error)); }
+        }
+        Controls();
     }
 
     private async Task StartPrivateScreen()
@@ -349,6 +412,7 @@ public sealed partial class MainWindow : Window
     /// <summary>Shows the selected computer: a live Sai page in the panel, or the latest private screenshot.</summary>
     private async Task UpdateScreen()
     {
+        if (IsBox) { await RefreshBoxScreen(); return; }
         if (!panelOpen || selected is null || IsPrivate || client is null || CurrentComputer is not { Online: true } computer)
         { Controls(); return; }
         try
@@ -389,11 +453,12 @@ public sealed partial class MainWindow : Window
             if (owner == selected && usage is { } used)
                 Pair("Last turn", $"{used.Input:N0} tokens in · {used.Output:N0} out");
         }
-        else if (owner.Target == ConversationTarget.ThisPc)
+        else if (owner.Target is ConversationTarget.ThisPc or ConversationTarget.Box)
         {
-            Pair("Harness", "Claude Code · on this PC");
+            bool onBox = owner.Target == ConversationTarget.Box;
+            Pair("Harness", onBox ? "Claude Code · Box tools only" : "Claude Code · on this PC");
             Pair("Model", owner.Provider == ModelProvider.OpenRouter ? $"{owner.ModelId} · OpenRouter" : $"{owner.ModelId} · Ollama on this PC");
-            Pair("Computer", "This PC · asks before each action");
+            Pair("Computer", onBox ? $"Simular Box · {owner.BoxName ?? "default box"}" : "This PC · asks before each action");
             Pair("Session", owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode) ?? "New (starts with the next message)", mono: true);
             if (owner == selected && usage is { } used)
                 Pair("Last turn", $"{used.Input:N0} tokens in · {used.Output:N0} out");
@@ -426,7 +491,7 @@ public sealed partial class MainWindow : Window
     private void Show(string text, bool error = true)
     { Notice.Message = text; Notice.Severity = error ? InfoBarSeverity.Error : InfoBarSeverity.Informational; Notice.IsOpen = true; }
     private void Error(Exception error) => Show(Describe(error));
-    private static string Describe(Exception error) => error is SaiException or PrivateComputerException or LocalAgentException ? error.Message :
+    private static string Describe(Exception error) => error is SaiException or PrivateComputerException or LocalAgentException or BoxException ? error.Message :
         error is OperationCanceledException ? "The request timed out or was interrupted. Its remote result is not confirmed." :
         "The operation failed. Check your connection, credential access and local storage, then retry.";
     private async Task Persist()
@@ -470,6 +535,7 @@ public sealed partial class MainWindow : Window
 
     private async void RefreshComputers(object sender, RoutedEventArgs e)
     {
+        if (IsBox) { await RefreshBoxScreen(); return; }
         if (!IsPrivate) { await Refresh(); await UpdateScreen(); return; }
         if (busy) return;
         var dialog = Dialog("Reset the Private computer?",
@@ -497,7 +563,7 @@ public sealed partial class MainWindow : Window
         var openRouterKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = Secrets.ReadOpenRouter() is null ? "Paste a key from openrouter.ai" : "A key is saved. Paste a new one to replace it." };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(openRouterKey, "OpenRouterApiKey");
         var openRouterStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7,
-            Text = "Used by This PC agents you set to OpenRouter. Agent S adds it to requests itself, so agents never see it." };
+            Text = "Used by agents you set to OpenRouter. Agent S adds it to requests itself, so agents never see it." };
         var saveOpenRouter = new Button { Content = "Save OpenRouter key" };
         var removeOpenRouter = new Button { Content = "Remove", IsEnabled = Secrets.ReadOpenRouter() is not null };
         saveOpenRouter.Click += (_, _) =>
@@ -516,6 +582,29 @@ public sealed partial class MainWindow : Window
         openRouterButtons.Children.Add(saveOpenRouter); openRouterButtons.Children.Add(removeOpenRouter);
         content.Children.Add(new MenuFlyoutSeparator());
         content.Children.Add(openRouterKey); content.Children.Add(openRouterButtons); content.Children.Add(openRouterStatus);
+        // Simular Box, for Box agents: also saved or removed right here.
+        var boxKey = new PasswordBox { Header = "Simular Box key", PlaceholderText = Secrets.ReadBox() is null ? "Paste your Box key" : "A key is saved. Paste a new one to replace it." };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(boxKey, "BoxApiKey");
+        var boxStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7,
+            Text = "Used by Box agents. Claude Code gets it only through its environment, to reach your Box's tools." };
+        var saveBox = new Button { Content = "Save Box key" };
+        var removeBox = new Button { Content = "Remove", IsEnabled = Secrets.ReadBox() is not null };
+        saveBox.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(boxKey.Password)) return;
+            try { Secrets.SaveBox(boxKey.Password.Trim()); boxStatus.Text = "Simular Box key saved."; removeBox.IsEnabled = true; }
+            catch (Exception failure) { boxStatus.Text = Describe(failure); }
+            boxKey.Password = "";
+        };
+        removeBox.Click += (_, _) =>
+        {
+            try { Secrets.DeleteBox(); boxStatus.Text = "Simular Box key removed."; removeBox.IsEnabled = false; }
+            catch (Exception failure) { boxStatus.Text = Describe(failure); }
+        };
+        var boxButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        boxButtons.Children.Add(saveBox); boxButtons.Children.Add(removeBox);
+        content.Children.Add(new MenuFlyoutSeparator());
+        content.Children.Add(boxKey); content.Children.Add(boxButtons); content.Children.Add(boxStatus);
         var dialog = Dialog("Accounts", content, "Save Sai key");
         dialog.SecondaryButtonText = "Remove Sai key";
         var result = await dialog.ShowAsync();
@@ -529,7 +618,7 @@ public sealed partial class MainWindow : Window
             else if (result == ContentDialogResult.Secondary) await UseSaiKey(null);
         }
         catch (Exception error) { Error(error); }
-        finally { password.Password = ""; openRouterKey.Password = ""; Controls(); }
+        finally { password.Password = ""; openRouterKey.Password = ""; boxKey.Password = ""; Controls(); }
     }
 
     private async void NewAgent(object sender, RoutedEventArgs e)
@@ -540,8 +629,8 @@ public sealed partial class MainWindow : Window
         var secondary = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var brush)
             ? brush as Microsoft.UI.Xaml.Media.Brush : null;
         // Modes in the order of the "Where should it work?" options.
-        const int PrivateMode = 0, PcMode = 1, CloudMode = 2;
-        static string Suggested(int mode) => mode switch { CloudMode => "Cloud agent", PcMode => "PC agent", _ => "Private agent" };
+        const int PrivateMode = 0, PcMode = 1, CloudMode = 2, BoxMode = 3;
+        static string Suggested(int mode) => mode switch { CloudMode => "Cloud agent", PcMode => "PC agent", BoxMode => "Box agent", _ => "Private agent" };
         static void Id(UIElement element, string id) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(element, id);
         TextBlock Note(string text = "")
         {
@@ -570,8 +659,10 @@ public sealed partial class MainWindow : Window
             "Works on this PC itself. It asks you before every action, and you can stop it any time.");
         var cloudOption = Option("TargetCloud", "Cloud · Sai computer",
             "Works on a computer in your Sai account. Nothing to install.");
+        var boxOption = Option("TargetBox", "Cloud · Simular Box",
+            "Works on your Simular Box, a cloud Ubuntu desktop. Claude Code drives it from this PC.");
         var target = new RadioButtons { Header = "Where should it work?" };
-        target.Items.Add(privateOption); target.Items.Add(pcOption); target.Items.Add(cloudOption);
+        target.Items.Add(privateOption); target.Items.Add(pcOption); target.Items.Add(cloudOption); target.Items.Add(boxOption);
         target.SelectedIndex = startCloud ? CloudMode : PrivateMode;
 
         // ---- This PC: one checklist, one button ----
@@ -704,7 +795,10 @@ public sealed partial class MainWindow : Window
         var openRouterPanel = new StackPanel { Spacing = 8 };
         openRouterPanel.Children.Add(openRouterKey); openRouterPanel.Children.Add(openRouterActions);
         var desktop = new StackPanel { Spacing = 12 };
-        desktop.Children.Add(Note("Harness: Claude Code, installed on this PC. Agent S uses its own Claude Code profile, and asks you before every command, click or file change. Looking (a screenshot or a window's contents) runs without asking."));
+        const string pcNote = "Harness: Claude Code, installed on this PC. Agent S uses its own Claude Code profile, and asks you before every command, click or file change. Looking (a screenshot or a window's contents) runs without asking.";
+        const string boxNote = "Harness: Claude Code, installed on this PC, with no tools on this PC: it works only through your Box's tools (browser, desktop, shell and files on the Box).";
+        var desktopNote = Note(pcNote);
+        desktop.Children.Add(desktopNote);
         desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModel);
         pcNotice.IsOpen = claudePath is null || !hasGitBash;
         pcNotice.Message = claudePath is null ? "Claude Code isn't installed on this PC." : "Claude Code on Windows needs Git for Windows (Git Bash).";
@@ -721,9 +815,23 @@ public sealed partial class MainWindow : Window
             pcModel.Description = UseOpenRouter() ? "Any id from openrouter.ai/models. Prompts go to OpenRouter." : "Runs on this PC through Ollama.";
         }
 
+        // ---- Simular Box: the key (if not saved) and which box ----
+        var boxKey = new PasswordBox { Header = "Simular Box key", PlaceholderText = "Paste your key", Description = "Saved in Windows Credential Locker." };
+        Id(boxKey, "BoxKey");
+        var saveBoxKey = new Button { Content = "Save key" };
+        var getBoxKey = new HyperlinkButton { Content = "Open Simular Box", NavigateUri = Box.Portal };
+        var boxKeyActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        boxKeyActions.Children.Add(saveBoxKey); boxKeyActions.Children.Add(getBoxKey);
+        var boxKeyPanel = new StackPanel { Spacing = 8 };
+        boxKeyPanel.Children.Add(boxKey); boxKeyPanel.Children.Add(boxKeyActions);
+        var boxName = new TextBox { Header = "Box", PlaceholderText = "Your default box", Description = "Leave empty for the account's default box, or type a box's name." };
+        Id(boxName, "BoxName");
+        var boxPanel = new StackPanel { Spacing = 12 };
+        boxPanel.Children.Add(boxKeyPanel); boxPanel.Children.Add(boxName);
+
         var hint = Note();
         var form = new StackPanel { Spacing = 16, MinWidth = 420 };
-        form.Children.Add(name); form.Children.Add(target); form.Children.Add(local); form.Children.Add(desktop); form.Children.Add(cloud); form.Children.Add(hint);
+        form.Children.Add(name); form.Children.Add(target); form.Children.Add(local); form.Children.Add(boxPanel); form.Children.Add(desktop); form.Children.Add(cloud); form.Children.Add(hint);
         var dialog = Dialog("New agent", new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, "Create");
         dialog.DefaultButton = ContentDialogButton.Primary;
 
@@ -734,7 +842,13 @@ public sealed partial class MainWindow : Window
             int mode = Mode();
             bool useCloud = mode == CloudMode;
             local.Visibility = mode == PrivateMode ? Visibility.Visible : Visibility.Collapsed;
-            desktop.Visibility = mode == PcMode ? Visibility.Visible : Visibility.Collapsed;
+            desktop.Visibility = mode is PcMode or BoxMode ? Visibility.Visible : Visibility.Collapsed;
+            desktopNote.Text = mode == BoxMode ? boxNote : pcNote;
+            // Git Bash is only for This PC's shell; a Box agent has no tools on this PC.
+            pcNotice.IsOpen = claudePath is null || (mode == PcMode && !hasGitBash);
+            boxPanel.Visibility = mode == BoxMode ? Visibility.Visible : Visibility.Collapsed;
+            bool hasBoxKey = Secrets.ReadBox() is not null;
+            boxKeyPanel.Visibility = hasBoxKey ? Visibility.Collapsed : Visibility.Visible;
             cloud.Visibility = useCloud ? Visibility.Visible : Visibility.Collapsed;
             keyPanel.Visibility = client is null ? Visibility.Visible : Visibility.Collapsed;
             choices.Visibility = client is not null && computers.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -746,8 +860,9 @@ public sealed partial class MainWindow : Window
                 CloudMode => client is null ? "Connect your Sai account to continue."
                     : loadingCloud ? "Loading your computers…"
                     : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null,
-                PcMode => claudePath is null ? "Install Claude Code on this PC to continue."
-                    : !hasGitBash ? "Install Git for Windows to continue."
+                PcMode or BoxMode => claudePath is null ? "Install Claude Code on this PC to continue."
+                    : mode == PcMode && !hasGitBash ? "Install Git for Windows to continue."
+                    : mode == BoxMode && !hasBoxKey ? "Add your Simular Box key to continue."
                     : UseOpenRouter() && !hasOpenRouterKey ? "Add your OpenRouter key to continue."
                     : !UseOpenRouter() && !checkedPc ? "Checking Ollama…"
                     : !UseOpenRouter() && !ollamaReady ? "Start Ollama on this PC, or choose OpenRouter."
@@ -919,8 +1034,8 @@ public sealed partial class MainWindow : Window
 
         target.SelectionChanged += async (_, _) =>
         {
-            if (name.Text.Trim() is "" or "Private agent" or "PC agent" or "Cloud agent") name.Text = Suggested(Mode());
-            if (Mode() == PcMode) ShowPcModels();
+            if (name.Text.Trim() is "" or "Private agent" or "PC agent" or "Cloud agent" or "Box agent") name.Text = Suggested(Mode());
+            if (Mode() is PcMode or BoxMode) ShowPcModels();
             SetMode();
             if (UseCloud() && client is not null && computers.Length == 0 && !loadingCloud) await LoadCloud(Refresh);
         };
@@ -952,6 +1067,13 @@ public sealed partial class MainWindow : Window
         pcModel.SelectionChanged += (_, _) => SetMode();
         pcModel.TextSubmitted += (_, _) => SetMode();
         pcModel.LostFocus += (_, _) => SetMode();
+        saveBoxKey.Click += (_, _) =>
+        {
+            var value = boxKey.Password.Trim();
+            if (value.Length == 0) return;
+            try { Secrets.SaveBox(value); } catch (Exception failure) { Error(failure); }
+            boxKey.Password = ""; SetMode();
+        };
         saveOpenRouter.Click += (_, _) =>
         {
             var value = openRouterKey.Password.Trim();
@@ -985,10 +1107,11 @@ public sealed partial class MainWindow : Window
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         var conversation = new Conversation { Name = name.Text.Trim() };
-        if (Mode() == PcMode)
+        if (Mode() is PcMode or BoxMode)
         {
             if (PcModelText() is not { Length: > 0 } pcChoice) return;
-            conversation.Target = ConversationTarget.ThisPc;
+            conversation.Target = Mode() == BoxMode ? ConversationTarget.Box : ConversationTarget.ThisPc;
+            if (Mode() == BoxMode && boxName.Text.Trim() is { Length: > 0 } chosenBox) conversation.BoxName = chosenBox;
             conversation.Harness = PrivateHarness.ClaudeCode;
             conversation.Provider = UseOpenRouter() ? ModelProvider.OpenRouter : ModelProvider.Ollama;
             conversation.ModelId = pcChoice;
@@ -1020,7 +1143,7 @@ public sealed partial class MainWindow : Window
         if (rebuilding) return;
         var next = (Agents.SelectedItem as AgentRow)?.Conversation;
         if (next is null && selected is not null && conversations.Contains(selected)) { Agents.SelectedItem = Row(selected); return; }
-        selected = next; usage = null;
+        selected = next; usage = null; boxState = null;
         Composer.Text = ""; Messages.Children.Clear(); entryText.Clear(); entryMarkdown.Clear(); approvalControls.Clear();
         if (selected is not null) foreach (var entry in selected.Entries) Draw(entry);
         Controls();
@@ -1227,8 +1350,9 @@ public sealed partial class MainWindow : Window
         var owner = selected;
         bool local = owner.Target == ConversationTarget.Private;
         bool pc = owner.Target == ConversationTarget.ThisPc;
-        if (!local && !pc && (owner.Target != ConversationTarget.Sai || client is null)) return;
-        if (!local && !pc && CurrentComputer is null) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return; }
+        bool onBox = owner.Target == ConversationTarget.Box;
+        if (!local && !pc && !onBox && (owner.Target != ConversationTarget.Sai || client is null)) return;
+        if (!local && !pc && !onBox && CurrentComputer is null) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return; }
         if (local && !PrivateComputer.IsConfigured)
         {
             Show("This PC's Private computer isn't set up yet. Choose New agent › This PC › Set up.");
@@ -1249,6 +1373,11 @@ public sealed partial class MainWindow : Window
             if (pc)
             {
                 await RunThisPc(owner, message, cancellation.Token);
+            }
+            else if (onBox)
+            {
+                if (!panelOpen) TogglePanel(this, new RoutedEventArgs());
+                await RunBox(owner, message, cancellation.Token);
             }
             else if (local && (owner.Harness ?? PrivateHarness.AgentS) is var harness && harness.RunsInComputer())
             {
@@ -1277,7 +1406,7 @@ public sealed partial class MainWindow : Window
             }
         }
         catch (OperationCanceledException) when (stopped)
-        { Show(local ? "Private turn stopped." : pc ? "Stopped. Nothing else runs on this PC." : "Sai confirmed the stop request.", false); }
+        { Show(local ? "Private turn stopped." : pc ? "Stopped. Nothing else runs on this PC." : onBox ? "Stopped. Claude Code was closed; a Box action already sent may still finish." : "Sai confirmed the stop request.", false); }
         catch (Exception error) { Error(error); }
         finally
         {
@@ -1332,7 +1461,7 @@ public sealed partial class MainWindow : Window
                         }
                         else if (done.Screenshot && File.Exists(ThisPcRunner.ScreenshotPath))
                         {
-                            try { await ShowPrivateScreen(await File.ReadAllBytesAsync(ThisPcRunner.ScreenshotPath, token), fromPc: true); } catch (IOException) { }
+                            try { await ShowPrivateScreen(await File.ReadAllBytesAsync(ThisPcRunner.ScreenshotPath, token), "pc"); } catch (IOException) { }
                         }
                         break;
                     case HarnessUsage used:
@@ -1347,6 +1476,75 @@ public sealed partial class MainWindow : Window
         {
             owner.HarnessSessions.Remove(PrivateHarness.ClaudeCode);
             throw new PrivateComputerException("Claude Code couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+        }
+    }
+
+    /// <summary>One Claude Code turn on a Simular Box, through Box's tools only, as on macOS.</summary>
+    private async Task RunBox(Conversation owner, string message, CancellationToken token)
+    {
+        var model = owner.ModelId ?? "gemma4";
+        Add(owner, new ChatEntry { Role = "Activity", Text = $"Claude Code · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model} · {owner.BoxName ?? "Simular Box"}" });
+        using var screens = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var watching = WatchBoxScreen(owner, screens.Token);
+        var calls = new Dictionary<string, ChatEntry>();
+        var resume = owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode);
+        bool started = false, reportedError = false;
+        try
+        {
+            await foreach (var item in BoxRunner.Run(owner, message, resume, model, token))
+            {
+                switch (item)
+                {
+                    case HarnessStarted begun:
+                        started = true; owner.HarnessSessions[PrivateHarness.ClaudeCode] = begun.SessionId; UpdateContext(); break;
+                    case HarnessText said:
+                        Add(owner, new ChatEntry { Role = "Agent", Text = said.Text }); break;
+                    case HarnessToolCall call:
+                        // "browser_navigate · https://…" rather than "mcp__box__browser_navigate".
+                        var label = Box.ToolLabel(call.Name);
+                        var activity = new ChatEntry { Role = "Activity", Text = call.Summary == call.Name ? label : $"{label} · {call.Summary}" };
+                        calls[call.Id] = activity; Add(owner, activity); break;
+                    case HarnessToolResult { IsError: true } result when calls.TryGetValue(result.Id, out var failed):
+                        var first = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+                        failed.Text += $"\nFailed{(first.Length > 0 ? ": " + first : "")}"; Change(failed); break;
+                    case HarnessUsage used:
+                        usage = used; UpdateContext(); break;
+                    case HarnessFinished { IsError: true } end when !reportedError:
+                        reportedError = true;
+                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? "Claude Code reported an error." }); break;
+                }
+            }
+        }
+        catch (PrivateComputerException) when (!started && resume is not null)
+        {
+            owner.HarnessSessions.Remove(PrivateHarness.ClaudeCode);
+            throw new PrivateComputerException("Claude Code couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+        }
+        finally
+        {
+            screens.Cancel();
+            try { await watching; } catch (OperationCanceledException) { }
+        }
+        if (selected == owner) await RefreshBoxScreen();
+    }
+
+    /// <summary>Refreshes the Box's screen while its agent works, so the person can watch.</summary>
+    private async Task WatchBoxScreen(Conversation owner, CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(4000, token);
+                if (selected != owner || !panelOpen || BoxRunner.Client() is not { } box) continue;
+                if (await box.Screenshot(owner.BoxName, token) is { } png && selected == owner)
+                {
+                    boxState = "Running";
+                    await ShowPrivateScreen(png, ScreenKindFor(owner)!);
+                }
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception) { /* A missed frame is fine; the next one follows. */ }
         }
     }
 
@@ -1474,7 +1672,7 @@ public sealed partial class MainWindow : Window
     {
         var cancellation = run;
         if (cancellation is null || !running || selected != owner) return;
-        if (owner.Target is ConversationTarget.Private or ConversationTarget.ThisPc)
+        if (owner.Target is ConversationTarget.Private or ConversationTarget.ThisPc or ConversationTarget.Box)
         {
             stopped = true;
             cancellation.Cancel();
@@ -1494,12 +1692,25 @@ public sealed partial class MainWindow : Window
     {
         if (!running || selected is null) return;
         stopRequested = true; Controls();
-        if (!IsPrivate && !IsThisPc && currentSession is null) Show("Waiting for the session ID before sending the stop request…", false);
+        if (!IsPrivate && !IsThisPc && !IsBox && currentSession is null) Show("Waiting for the session ID before sending the stop request…", false);
         else await Stop(selected);
     }
     private async void OpenComputer(object sender, RoutedEventArgs e)
     {
         if (IsThisPc) return;
+        if (IsBox)
+        {
+            // The live view opens in the browser, where the person is signed in to box.simular.ai.
+            if (busy || selected is not { } owner || BoxRunner.Client() is not { } box) return;
+            try
+            {
+                var (_, view) = await box.Status(owner.BoxName);
+                if (view is null) Show("Simular Box didn't return a live view link. Open box.simular.ai instead.");
+                else if (!await Launcher.LaunchUriAsync(view)) Show("Could not open the live view in your browser.");
+            }
+            catch (Exception error) when (error is BoxException or TaskCanceledException or HttpRequestException) { Error(error); }
+            return;
+        }
         if (IsPrivate)
         {
             if (!busy) await StartPrivateScreen();
@@ -1518,6 +1729,16 @@ public sealed partial class MainWindow : Window
     }
     private async void WakeComputer(object sender, RoutedEventArgs e)
     {
+        if (IsBox)
+        {
+            if (busy || selected is not { } owner || BoxRunner.Client() is not { } box) return;
+            busy = true; Controls();
+            try { await box.Wake(owner.BoxName); boxState = "Running"; Show("Simular Box is waking up.", false); }
+            catch (Exception error) when (error is BoxException or TaskCanceledException or HttpRequestException) { Error(error); }
+            finally { busy = false; Controls(); }
+            await RefreshBoxScreen();
+            return;
+        }
         if (IsPrivate)
         {
             await UsePrivateComputer(async computer =>
@@ -1542,9 +1763,10 @@ public sealed partial class MainWindow : Window
         finally { busy = false; Controls(); }
     }
 
-    private async Task ShowPrivateScreen(byte[] png, bool fromPc = false)
+    private async Task ShowPrivateScreen(byte[] png, string kind = "private")
     {
-        screenFromPc = fromPc;
+        bool fromPc = kind != "private";
+        screenKind = kind;
         using var stream = new InMemoryRandomAccessStream();
         using (var writer = new DataWriter(stream))
         {
@@ -1566,7 +1788,7 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         if (closing) return;
         closing = true;
-        bool local = IsPrivate || IsThisPc;
+        bool local = IsPrivate || IsThisPc || IsBox;
         var hasSession = currentSession is not null;
         var pending = run;
         var dialog = local

@@ -17,6 +17,12 @@ internal static class Secrets
     public static void SaveOpenRouter(string key) => new PasswordVault().Add(new PasswordCredential(OpenRouterResource, "api-key", key));
     public static void DeleteOpenRouter() => Delete(OpenRouterResource);
 
+    /// <summary>The Simular Box key; given to Claude Code only through its environment for Box's MCP server.</summary>
+    private const string BoxResource = "ai.simular.agent-s.windows.box";
+    public static string? ReadBox() => Read(BoxResource);
+    public static void SaveBox(string key) => new PasswordVault().Add(new PasswordCredential(BoxResource, "api-key", key));
+    public static void DeleteBox() => Delete(BoxResource);
+
     private static string? Read(string resource)
     {
         try

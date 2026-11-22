@@ -106,7 +106,8 @@ try {
     $invoke = $accounts.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
     $invoke.Invoke()
     $key = Find-Element 'SaiApiKey'
-    Assert-State $key.Current.IsPassword 'Accounts opens a masked API-key field'
+    Assert-State $key.Current.IsPassword 'Accounts opens a masked Sai API-key field'
+    Assert-State (Find-Element 'BoxApiKey').Current.IsPassword 'Accounts opens a masked Simular Box key field'
     Capture 'accounts'
     $cancelCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Cancel')

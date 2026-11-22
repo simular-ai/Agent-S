@@ -73,6 +73,7 @@ await PrivateAgentTests.Run(Check);
 await HarnessTests.Run(Check);
 await ThisPcTests.Run(Check);
 MarkdownTests.Run(Check);
+await BoxTests.Run(Check);
 Console.WriteLine($"{passed} assertions passed.");
 
 sealed class RecordingHandler : HttpMessageHandler

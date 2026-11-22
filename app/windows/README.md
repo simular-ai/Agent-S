@@ -64,6 +64,14 @@ Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps
 
 Chat history contains the text you send and the agent's responses. It is ordinary local JSON under the Windows user profile, not an encrypted database. Do not share that directory. Cloud prompts/tool results are processed by Sai and its configured providers. No analytics or new backend endpoints are added.
 
+## Simular Box
+
+Choose **Cloud · Simular Box** in **New agent**. Install the Claude Code CLI on Windows and add a [Simular Box key](https://box.simular.ai/access) in **Accounts**. Leave the box name blank to use your account's default box, or enter a name. Choose a local Ollama model or an OpenRouter model.
+
+Claude Code runs on Windows with only the Box MCP tools. Browser, desktop, shell, and file actions run on the selected Box. The app saves the Box key in Windows Credential Locker and passes it to the CLI through its environment. With OpenRouter, prompts and Box tool results can be sent to the hosted model provider.
+
+The computer panel shows screenshots and offers **Open computer**, **Wake box**, and **Refresh screen**. **Stop** ends the local Claude Code process. A Box action already sent may still finish.
+
 ## Build
 
 Use Windows 11 x64, Visual Studio with the **WinUI application development** workload and the **.NET 10 SDK**. Windows App SDK/WebView/native build tooling must be available on the machine. From the repository root:
@@ -91,7 +99,7 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Computer display and context | Browser screen link, native status | Embedded screen panel, context/usage parity |
 | This Mac → This PC | Claude Code with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Codex with a Codex account, Claude Code account sign-in, floating Agent Activity panel |
 | Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
-| Claude Code / Codex / DeepSeek on Box, and account providers | Not included | Windows process lifecycle and account-profile adapters; port/test the provider matrix |
+| Simular Box | Claude Code with Ollama or OpenRouter, screenshot and live view | Verify a live Box turn, session resume, wake and stop; Codex, DeepSeek and account sign-in remain follow-ups |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |
 | 1Password, guest file sharing, model downloads | Not included | Platform-specific integrations and explicit data/consent handling |
 

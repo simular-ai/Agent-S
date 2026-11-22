@@ -23,7 +23,7 @@ public sealed record SaiModel(string Id, string Name, bool Allowed = true)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ConversationTarget>))]
-public enum ConversationTarget { Sai, Private, ThisPc }
+public enum ConversationTarget { Sai, Private, ThisPc, Box }
 
 public sealed class Conversation
 {
@@ -37,8 +37,10 @@ public sealed class Conversation
     public PrivateHarness? Harness { get; set; }
     /// <summary>The harness's own session to resume, per harness, so switching back continues where it was.</summary>
     public Dictionary<PrivateHarness, string> HarnessSessions { get; set; } = [];
-    /// <summary>This PC agents: how the model is reached. Private agents always use Ollama.</summary>
+    /// <summary>How the model is reached: Ollama on this PC, or OpenRouter through the app's proxy.</summary>
     public ModelProvider Provider { get; set; } = ModelProvider.Ollama;
+    /// <summary>Simular Box agents: the box to work on, by name; null is the account's default box.</summary>
+    public string? BoxName { get; set; }
     public List<ChatEntry> Entries { get; set; } = [];
     public override string ToString() => Name;
 }
