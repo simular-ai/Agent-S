@@ -176,8 +176,7 @@ struct ChatView: View {
             }
             .padding(.trailing, 16)
         }
-        .frame(height: Theme.titleBarHeight + 8)
-        .padding(.top, 4)
+        .frame(height: Theme.titleBarHeight)
     }
 
     /// Picks the harness, provider and model for the next message.

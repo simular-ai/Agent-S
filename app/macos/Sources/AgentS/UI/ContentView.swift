@@ -48,10 +48,13 @@ struct ContentView: View {
                 .layoutPriority(1)
             Divider()
             HSplitView {
+                // Split panes host their own views and reapply the window's title bar inset.
                 ChatView(showComputer: $showComputer)
+                    .ignoresSafeArea(.container, edges: .top)
                     .frame(minWidth: 380, maxWidth: .infinity)
                 if showComputer {
                     ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized)
+                        .ignoresSafeArea(.container, edges: .top)
                         .frame(minWidth: 420, idealWidth: Self.panelWidth, maxWidth: .infinity)
                 }
             }
