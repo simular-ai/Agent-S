@@ -291,7 +291,7 @@ struct AgentSection: View {
 
     private var newAgentLabel: String {
         switch location {
-        case .linuxVM: "New virtual computer agent…"
+        case .linuxVM: "New sandbox agent…"
         case .thisMac: "New agent for this Mac…"
         case .cloud: "New cloud agent…"
         }

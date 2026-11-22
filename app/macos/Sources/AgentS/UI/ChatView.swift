@@ -395,7 +395,7 @@ struct ChatView: View {
                 let hosted = model.privacy == .localVM
                 Text(model.privacy.location.displayName).font(.title3.weight(.medium))
                 Text(hosted
-                     ? "The virtual computer runs on this Mac. OpenRouter processes model requests."
+                     ? "The sandbox runs on this Mac. OpenRouter processes model requests."
                      : "The agent works in a Linux VM on this Mac. Open the computer to watch or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)

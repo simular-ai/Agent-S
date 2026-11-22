@@ -37,13 +37,13 @@ the Dock to reopen it. Use **Quit Agent S** to stop active work and shut down th
 
 Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud**, choose a
 computer first. Choose the harness and **Provider** when prompted. To change an existing
-agent's configuration, right-click it and choose **Agent Settings…**. Each **Virtual Computer**
+agent's configuration, right-click it and choose **Agent Settings…**. Each **Local Sandbox**
 agent keeps the provider selected when it was created. To use a different provider,
 create a new agent.
 
 | Runs on | Harness | Model provider |
 | --- | --- | --- |
-| **Virtual Computer** · Linux VM on your Mac | Claude Code, Codex, DeepSeek | Ollama, OpenRouter |
+| **Local Sandbox** · Linux VM on your Mac | Claude Code, Codex, DeepSeek | Ollama, OpenRouter |
 | **This Mac** · your Mac apps and files | Claude Code | Ollama, OpenRouter, Claude Code account |
 | **This Mac** · your Mac apps and files | Codex | Codex account |
 | **Cloud** · Sai computer | Sai | Sai API, with models available on your Sai account |
@@ -54,11 +54,11 @@ create a new agent.
 The display button beside the chat opens the computer panel, where you can watch the
 Linux VM or cloud computer and see the agent's session context.
 
-### Virtual Computer
+### Local Sandbox
 
 1. Open **Settings → Computer** and click **Set up the computer**. This downloads a
    Debian 13 ARM64 image and creates a sparse 32 GB disk that grows with use.
-2. When creating the agent, set **Runs** to **Virtual Computer** and select a **Provider**.
+2. When creating the agent, set **Runs** to **Local Sandbox** and select a **Provider**.
    For **Ollama**, start [Ollama](https://ollama.com/) 0.14 or later on your Mac and
    select or download a local model in **Agent Settings… → Model**. The default is
    `gemma4`. For **OpenRouter**, add your API key and choose a hosted model.
@@ -120,9 +120,9 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 
 ## Permissions and data
 
-- With **Ollama**, choose a local model for on-device inference in **Virtual Computer** or in
+- With **Ollama**, choose a local model for on-device inference in **Local Sandbox** or in
   **This Mac** with **Claude Code**.
-- **Virtual Computer** agents share the guest, browser, and files. The guest can reach the internet,
+- **Local Sandbox** agents share the guest, browser, and files. The guest can reach the internet,
   shares the clipboard, and can read and write the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
   Harness commands run in the VM with per-tool approval disabled.
