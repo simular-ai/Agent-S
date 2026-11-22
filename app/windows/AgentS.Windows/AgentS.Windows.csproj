@@ -27,6 +27,8 @@
     <!-- Guest desktop scripts installed into the WSL Private computer during in-app setup. -->
     <Content Include="../scripts/agent-s-guest.sh;../scripts/agent-s-desktop.sh;../scripts/agent-s-demo.html"
              Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Coding-agent harness tools (web, ui, Ollama relay), installed before the first harness turn. -->
+    <Content Include="../scripts/guest-tools/*" Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AgentS.ico;Assets\AgentS.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- Publishing must run the SDK resource target, not just managed compilation. -->

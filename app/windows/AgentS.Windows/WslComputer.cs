@@ -60,12 +60,15 @@ internal static class WslComputer
             try { desktop.Kill(entireProcessTree: true); } catch (InvalidOperationException) { }
         }
         desktop = null;
+        HarnessRunner.StopRelay();
         await Exec(["--terminate", Distro], TimeSpan.FromSeconds(60), cancellation);
     }
 
     public static async Task Reset(CancellationToken cancellation)
     {
         await Stop(cancellation);
+        // The clean image predates the harness install; the next harness turn installs again.
+        HarnessRunner.Invalidate();
         await Exec(["--unregister", Distro], TimeSpan.FromMinutes(2), cancellation);
         Directory.CreateDirectory(DiskFolder);
         await Exec(["--import", Distro, DiskFolder, CleanImage, "--version", "2"], TimeSpan.FromMinutes(10), cancellation, required: true,

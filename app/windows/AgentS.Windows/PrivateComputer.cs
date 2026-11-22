@@ -26,6 +26,8 @@ internal sealed class PrivateComputer : IPrivateDesktop
     private readonly Configuration configuration = null!;
 
     public static bool IsConfigured => File.Exists(ConfigPath) || WslComputer.IsConfigured;
+    /// <summary>The WSL computer (not a Hyper-V VM from setup-private-vm.ps1), which can run coding-agent harnesses.</summary>
+    public static bool UsesWsl => !File.Exists(ConfigPath) && WslComputer.IsConfigured;
 
     public PrivateComputer()
     {

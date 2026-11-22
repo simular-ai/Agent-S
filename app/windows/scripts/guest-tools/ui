@@ -1,0 +1,51 @@
+#!/bin/bash
+# The agent's way to use the screen outside the browser: read the focused window as an accessibility
+# tree with refs, click and type by ref, press keys, or take a screenshot.
+#   ui open <url>                  open a site (same browser as web)
+#   ui tree [--all]                list the focused window's elements, each with [ref=N]
+#   ui click <ref>                 click an element
+#   ui type <ref> <text> [--enter] type into a text field (replacing its text)
+#   ui key <keys...>               press keys, e.g. ui key ctrl+l   ui key Return
+#   ui screenshot                  save a half-size screenshot and print its path
+. /usr/local/lib/sai/agent-s-env.sh
+
+# Apps only publish their accessibility trees while this is on.
+dbus-send --session --dest=org.a11y.Bus /org/a11y/bus org.freedesktop.DBus.Properties.Set \
+  string:org.a11y.Status string:IsEnabled variant:boolean:true >/dev/null 2>&1
+
+case "$1" in
+  open)
+    shift
+    exec web open "$@"
+    ;;
+  key)
+    shift
+    xdotool key "$@" && echo "Pressed $*."
+    ;;
+  screenshot)
+    mkdir -p "$HOME/work"
+    scrot -o -t 50 "$HOME/work/screen.png" && echo "$HOME/work/screen-thumb.png"
+    ;;
+  *)
+    # `simulang run` would take --flags as its own; hand them to the script as plain words.
+    args=()
+    for a in "$@"; do case "$a" in --enter) args+=(+enter) ;; --all) args+=(+all) ;; *) args+=("$a") ;; esac; done
+    n="${DISPLAY#:}"
+    if [ -S "/tmp/.X11-unix/X$n" ]; then
+      simulang run /usr/local/lib/sai/ui.ts "${args[@]}" 2> >(grep -v -e OPENROUTER -e '^\[info\]' -e MODULE_TYPELESS -e 'Reparsing as ES' -e 'eliminate this warning' -e trace-warnings >&2)
+    else
+      # simulang only looks for /tmp/.X11-unix/X<n>, but WSLg keeps that folder read-only and the desktop's
+      # X server listens on the abstract socket. Give simulang a private writable folder (a user and mount
+      # namespace, no root needed) with a socket proxied to the display, then drop back to this uid so the
+      # accessibility bus accepts it.
+      unshare -r -m sh -c '
+        mount -t tmpfs -o mode=1777 tmpfs /tmp/.X11-unix || exit 1
+        python3 /usr/local/lib/sai/agent-s-x11-socket.py "$1" >/dev/null &
+        for _ in $(seq 1 50); do [ -S "/tmp/.X11-unix/X$1" ] && break; sleep 0.1; done
+        uid=$2 gid=$3; shift 3
+        exec unshare --user --map-user="$uid" --map-group="$gid" simulang run /usr/local/lib/sai/ui.ts "$@"
+      ' _ "$n" "$(id -u)" "$(id -g)" "${args[@]}" \
+        2> >(grep -v -e OPENROUTER -e '^\[info\]' -e MODULE_TYPELESS -e 'Reparsing as ES' -e 'eliminate this warning' -e trace-warnings >&2)
+    fi
+    ;;
+esac

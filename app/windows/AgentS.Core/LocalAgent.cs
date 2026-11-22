@@ -100,6 +100,8 @@ public sealed class LocalAgent : IDisposable
             .Select(model => StringField(model, "model") ?? StringField(model, "name"))
             .OfType<string>()
             .Where(IsLocalName)
+            // App-made larger-context variants for harnesses (see HarnessCommand.ContextModel), not choices.
+            .Where(name => !name.StartsWith(HarnessCommand.ContextModelPrefix, StringComparison.Ordinal))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToArray();

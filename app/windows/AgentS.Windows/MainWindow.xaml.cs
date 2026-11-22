@@ -29,6 +29,7 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<Conversation, AgentRow> rows = [];
     private readonly Microsoft.UI.Xaml.Data.CollectionViewSource agentGroups = new() { IsSourceGrouped = true };
     private bool panelOpen = true, rebuilding, privateScreenShown, preferPrivate;
+    private HarnessUsage? usage;
     private Uri? liveViewUri;
 
     public MainWindow()
@@ -151,6 +152,17 @@ public sealed partial class MainWindow : Window
             item.Click += async (_, _) => { owner.ModelId = id; Controls(); await Persist(); };
             menu.Items.Add(item);
         }
+        if (owner.Target == ConversationTarget.Private && HarnessRunner.Supported)
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(new MenuFlyoutItem { Text = "Harness", IsEnabled = false });
+            foreach (var harness in Harnesses.All)
+            {
+                var item = new ToggleMenuFlyoutItem { Text = harness.DisplayName(), IsChecked = (owner.Harness ?? PrivateHarness.AgentS) == harness };
+                item.Click += async (_, _) => { owner.Harness = harness; Controls(); await Persist(); };
+                menu.Items.Add(item);
+            }
+        }
         menu.ShowAt(ModelPill);
     }
 
@@ -175,7 +187,8 @@ public sealed partial class MainWindow : Window
         ModelPill.IsEnabled = selected is not null && !busy;
         ModelPillIcon.Glyph = IsPrivate ? "" : "";
         ModelPillText.Text = selected is null ? "No agent selected"
-            : IsPrivate ? $"Private · {selected.ModelId ?? "gemma4"}"
+            : IsPrivate ? selected.Harness is { } h && h.RunsInComputer()
+                ? $"Private · {h.DisplayName()} · {selected.ModelId ?? "gemma4"}" : $"Private · {selected.ModelId ?? "gemma4"}"
             : $"Sai · {(selected.ModelId is null or "auto" ? "auto" : models.FirstOrDefault(m => m.Id == selected.ModelId)?.Name ?? selected.ModelId)}";
         Composer.PlaceholderText = selected is null ? "Create an agent to start…"
             : IsPrivate ? $"Ask {selected.Name} to do something on its private computer…"
@@ -296,9 +309,14 @@ public sealed partial class MainWindow : Window
         }
         if (owner.Target == ConversationTarget.Private)
         {
-            Pair("Harness", "Agent S · local");
+            var harness = owner.Harness ?? PrivateHarness.AgentS;
+            Pair("Harness", harness.RunsInComputer() ? $"{harness.DisplayName()} · in the Private computer" : "Agent S · local");
             Pair("Model", $"{owner.ModelId ?? "gemma4"} · Ollama on this PC");
-            Pair("Computer", "Private Linux (WSL)");
+            Pair("Computer", PrivateComputer.UsesWsl || !PrivateComputer.IsConfigured ? "Private Linux (WSL)" : "Private Linux (Hyper-V)");
+            if (harness.RunsInComputer())
+                Pair("Session", owner.HarnessSessions.GetValueOrDefault(harness) ?? "New (starts with the next message)", mono: true);
+            if (owner == selected && usage is { } used)
+                Pair("Last turn", $"{used.Input:N0} tokens in · {used.Output:N0} out");
         }
         else
         {
@@ -381,6 +399,9 @@ public sealed partial class MainWindow : Window
         {
             await computer.Reset();
             PrivateScreen.Source = null; privateScreenShown = false;
+            // Harness sessions lived in the guest that was just erased.
+            foreach (var conversation in conversations.Where(c => c.Target == ConversationTarget.Private)) conversation.HarnessSessions.Clear();
+            await Persist();
         });
     }
 
@@ -500,8 +521,17 @@ public sealed partial class MainWindow : Window
             Description = "Runs on this PC through Ollama.",
         };
         Id(localModel, "PrivateModel");
+        // Like macOS: Claude Code, Codex or DeepSeek run inside the Private computer; Agent S is the built-in loop.
+        var harnessChoices = HarnessRunner.Supported || !privateReady ? Harnesses.All : [PrivateHarness.AgentS];
+        var localHarness = new ComboBox
+        {
+            Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch, Visibility = Visibility.Collapsed,
+            ItemsSource = harnessChoices.Select(h => h.DisplayName()).ToArray(), SelectedIndex = 0,
+            Description = "Runs inside the Private computer. Installed on first use.",
+        };
+        Id(localHarness, "PrivateHarness");
         var local = new StackPanel { Spacing = 12 };
-        local.Children.Add(setupCard); local.Children.Add(localModel);
+        local.Children.Add(setupCard); local.Children.Add(localModel); local.Children.Add(localHarness);
 
         // ---- Cloud ----
         var key = new PasswordBox { Header = "Sai API key", PlaceholderText = "Paste your key", Description = "Saved securely in Windows Credential Locker." };
@@ -581,6 +611,7 @@ public sealed partial class MainWindow : Window
             bool allReady = privateReady && ollamaReady && modelReady;
             setupCard.Visibility = allReady ? Visibility.Collapsed : Visibility.Visible;
             localModel.Visibility = allReady ? Visibility.Visible : Visibility.Collapsed;
+            localHarness.Visibility = localModel.Visibility;
             SetMode();
         }
         async Task CheckPc()
@@ -736,6 +767,8 @@ public sealed partial class MainWindow : Window
             if (localModel.SelectedItem is not string localChoice) return;
             conversation.Target = ConversationTarget.Private;
             conversation.ModelId = localChoice;
+            var harness = harnessChoices[Math.Max(0, localHarness.SelectedIndex)];
+            conversation.Harness = harness.RunsInComputer() && !HarnessRunner.Supported ? PrivateHarness.AgentS : harness;
         }
         else
         {
@@ -751,7 +784,7 @@ public sealed partial class MainWindow : Window
         if (rebuilding) return;
         var next = (Agents.SelectedItem as AgentRow)?.Conversation;
         if (next is null && selected is not null && conversations.Contains(selected)) { Agents.SelectedItem = Row(selected); return; }
-        selected = next;
+        selected = next; usage = null;
         Composer.Text = ""; Messages.Children.Clear(); entryText.Clear(); approvalControls.Clear();
         if (selected is not null) foreach (var entry in selected.Entries) Draw(entry);
         Controls();
@@ -943,7 +976,12 @@ public sealed partial class MainWindow : Window
         try
         {
             await Persist();
-            if (local)
+            if (local && (owner.Harness ?? PrivateHarness.AgentS) is var harness && harness.RunsInComputer())
+            {
+                if (!panelOpen) TogglePanel(this, new RoutedEventArgs());
+                await RunHarness(owner, harness, message, cancellation.Token);
+            }
+            else if (local)
             {
                 var computer = new PrivateComputer();
                 using var agent = new LocalAgent();
@@ -977,6 +1015,102 @@ public sealed partial class MainWindow : Window
             run = null; running = false; cancellation.Dispose(); Controls();
             await Persist();
             busy = false; Controls();
+        }
+    }
+
+    /// <summary>One Claude Code, Codex or DeepSeek turn inside the Private computer, as on macOS.</summary>
+    private async Task RunHarness(Conversation owner, PrivateHarness harness, string message, CancellationToken token)
+    {
+        if (!HarnessRunner.Supported)
+            throw new PrivateComputerException($"{harness.DisplayName()} needs the WSL Private computer. Choose Agent S (built-in) in the model menu.");
+        var model = owner.ModelId ?? "gemma4";
+        var computer = new PrivateComputer();
+        var status = new ChatEntry { Role = "Activity", Text = "Starting the Private computer…" };
+        Add(owner, status);
+        await computer.Start(token);
+        try { await ShowPrivateScreen(await computer.Capture(token)); } catch (PrivateComputerException) { }
+        status.Text = $"Getting {harness.DisplayName()} ready…"; Change(status);
+        await HarnessRunner.EnsureInstalled(new Progress<string>(line =>
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("Harnesses are installed", StringComparison.Ordinal)) return;
+            status.Text = $"First use: {line.Trim()} (this takes a few minutes)"; Change(status);
+        }), token);
+        await HarnessRunner.EnsureRelay(token);
+        var runModel = await HarnessRunner.ContextModel(model, token);
+        status.Text = $"{harness.DisplayName()} · {model}"; Change(status);
+
+        using var screens = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var watching = WatchScreen(computer, screens.Token);
+        var calls = new Dictionary<string, ChatEntry>();
+        var resume = owner.HarnessSessions.GetValueOrDefault(harness);
+        bool started = false, reportedError = false;
+        try
+        {
+            await foreach (var item in HarnessRunner.Run(harness, message, resume, runModel, token))
+            {
+                switch (item)
+                {
+                    case HarnessStarted begun:
+                        started = true; owner.HarnessSessions[harness] = begun.SessionId; UpdateContext(); break;
+                    case HarnessText said:
+                        Add(owner, new ChatEntry { Role = "Agent", Text = said.Text }); break;
+                    case HarnessToolCall call:
+                        var activity = new ChatEntry { Role = "Activity", Text = call.Summary };
+                        calls[call.Id] = activity; Add(owner, activity); break;
+                    case HarnessToolResult { IsError: true } result when calls.TryGetValue(result.Id, out var failed):
+                        var first = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+                        failed.Text += $"\nFailed{(first.Length > 0 ? ": " + first : "")}"; Change(failed); break;
+                    case HarnessUsage used:
+                        usage = used; UpdateContext(); break;
+                    case HarnessFinished { IsError: true } end when !reportedError:
+                        // Codex reports a failure twice (error, then turn.failed); show it once.
+                        reportedError = true;
+                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? $"{harness.DisplayName()} reported an error." }); break;
+                }
+            }
+        }
+        catch (PrivateComputerException) when (!started && resume is not null)
+        {
+            // A session from before Reset computer (or another install) can't be resumed; start fresh next time.
+            owner.HarnessSessions.Remove(harness);
+            throw new PrivateComputerException($"{harness.DisplayName()} couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+        }
+        finally
+        {
+            screens.Cancel();
+            try { await watching; } catch (OperationCanceledException) { }
+        }
+        try { await ShowPrivateScreen(await computer.Capture(CancellationToken.None)); } catch (Exception) { }
+    }
+
+    /// <summary>A harness error as words: model servers often return {"error":{"message":…}} as the text.</summary>
+    private static string? Readable(string? result)
+    {
+        if (string.IsNullOrWhiteSpace(result)) return null;
+        try
+        {
+            using var document = JsonDocument.Parse(result);
+            var root = document.RootElement;
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("error", out var error))
+                return Str(error, "message") ?? (error.ValueKind == JsonValueKind.String ? error.GetString() : null) ?? result.Trim();
+        }
+        catch (JsonException) { }
+        return result.Trim();
+    }
+
+    /// <summary>Refreshes the Private computer's screen while a harness works, so the person can watch.</summary>
+    private async Task WatchScreen(PrivateComputer computer, CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(2500, token);
+                var png = await computer.Capture(token);
+                if (IsPrivate) await ShowPrivateScreen(png);
+            }
+            catch (OperationCanceledException) { return; }
+            catch (Exception) { /* A missed frame is fine; the next one follows. */ }
         }
     }
 

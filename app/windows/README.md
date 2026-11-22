@@ -30,6 +30,19 @@ Create a **Private** agent and enter the installed Ollama model tag. To exercise
 - [Ollama on Windows](https://docs.ollama.com/windows)
 - [Disable Ollama cloud features](https://docs.ollama.com/faq#how-do-i-disable-ollamas-cloud-features)
 
+## Coding-agent harnesses
+
+As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Harness** inside the Private computer, or the app's built-in **Agent S** loop. Choose the harness in **New agent › This PC**, or switch an existing agent from the model menu above the chat. New Private agents default to Claude Code; agents created before harness support keep the built-in loop.
+
+- The harnesses use the macOS app's commands: `claude -p --output-format stream-json`, `codex exec --json --oss`, and `dsh --profile headless --json` with the same pinned version and privacy overlay. Their JSON events become chat messages and activity rows, and each harness's session ID is kept per agent so the next message continues the session.
+- They drive the screen with the same `web` (Playwright over Chromium's loopback debugging port) and `ui` (simulang accessibility tree) shell commands as the macOS guest. The screen panel refreshes while a harness works.
+- Before the first harness turn, Agent S installs Node.js 22, the three CLIs, simulang and `playwright-core` into the guest as root. This needs internet access and takes a few minutes; later turns skip it. **Reset computer** restores the clean image, so the next harness turn installs them again and earlier harness sessions start over.
+- The model is the host's Ollama. A WSL guest can't reach the host's loopback, so the app starts a relay: `agent-s-ollama-relay` listens on the guest's `127.0.0.1:11434` and multiplexes connections over its `wsl.exe` stdio to the app, which connects each one to Ollama on `127.0.0.1:11434`. It needs no firewall rule, administrator rights or `.wslconfig` change, and nothing else on the network can use it.
+- Ollama's OpenAI-compatible endpoint, which Codex and DeepSeek use, applies the server's default context. That is 4K tokens on PCs without a large GPU, smaller than a harness's first request. Before a harness turn, Agent S creates `agent-s/<model>:32k` in Ollama with `num_ctx` 32768. The variant shares the model's weights, so nothing is downloaded, and it is hidden from the model pickers. Your Ollama settings are not changed.
+- WSLg keeps `/tmp/.X11-unix` read-only, so the desktop's X server listens only on an abstract socket, and simulang only looks for the socket file. `ui` runs simulang in a user and mount namespace with a private `/tmp/.X11-unix` and a socket proxied to the display (`agent-s-x11-socket.py`). It needs no root and doesn't change the desktop.
+- Harnesses run with per-tool approval disabled, as in the macOS Private mode. The guest is the sandbox: it has no Windows drives and no Windows interop. **Stop** ends the turn's whole process group in the guest.
+- Only the WSL computer supports harnesses. A Hyper-V VM from `setup-private-vm.ps1` allows only the built-in loop's bounded desktop actions.
+
 ## Sai cloud
 
 - Create named local agent conversations with a Sai computer and allowed model; resume their Sai session after restarting.
@@ -67,7 +80,8 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Sai cloud chat, named conversations, approvals | Implemented, pending Windows/live verification | Streaming/recovery and approval UX validation |
 | Computer display and context | Browser screen link, native status | Embedded screen panel, context/usage parity |
 | This Mac → This PC | Not included | Windows simulang adapter, accessibility/screenshot/input boundary and per-action approval bridge; reuse CLI protocols rather than invent a new agent loop |
-| Claude Code / Codex / DeepSeek and Box | Not included | Windows process lifecycle and account-profile adapters; port/test the existing stream contracts and provider matrix |
+| Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
+| Claude Code / Codex / DeepSeek on Box, OpenRouter and account providers | Not included | Windows process lifecycle and account-profile adapters; port/test the provider matrix |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |
 | 1Password, guest file sharing, model downloads | Not included | Platform-specific integrations and explicit data/consent handling |
 

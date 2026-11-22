@@ -33,6 +33,10 @@ public sealed class Conversation
     public string ComputerId { get; set; } = "";
     public string? ModelId { get; set; }
     public string? SessionId { get; set; }
+    /// <summary>Private agents only: the program that runs turns. Null (older agents) is the built-in loop.</summary>
+    public PrivateHarness? Harness { get; set; }
+    /// <summary>The harness's own session to resume, per harness, so switching back continues where it was.</summary>
+    public Dictionary<PrivateHarness, string> HarnessSessions { get; set; } = [];
     public List<ChatEntry> Entries { get; set; } = [];
     public override string ToString() => Name;
 }
