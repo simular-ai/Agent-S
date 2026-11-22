@@ -13,7 +13,10 @@ if [[ ${SSH_ORIGINAL_COMMAND+x} ]]; then
     set -- "${request[@]:1}"
 fi
 
-export DISPLAY=:0
+# WSL guests use a non-default display (WSLg owns :0); /etc/agent-s/env is root-owned and optional.
+if [[ -r /etc/agent-s/env ]]; then . /etc/agent-s/env; fi
+export DISPLAY=":${AGENT_S_DISPLAY:-0}"
+unset WAYLAND_DISPLAY
 export XAUTHORITY="$HOME/.local/state/agent-s/Xauthority"
 state="$HOME/.local/state/agent-s"
 demo="file:///usr/local/share/agent-s/demo.html"

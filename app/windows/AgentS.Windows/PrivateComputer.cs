@@ -7,9 +7,12 @@ using AgentS.Core;
 
 namespace AgentS.Windows;
 
-/// A single app-owned Hyper-V guest. Ollama runs independently on the Windows host.
+/// A single app-owned Linux guest: a WSL 2 distro (default, works on Windows Home and ARM64) or,
+/// when scripts/setup-private-vm.ps1 configured one, a Hyper-V VM. Ollama runs on the Windows host.
 internal sealed class PrivateComputer : IPrivateDesktop
 {
+    private readonly bool wsl;
+
     private sealed record Configuration(Guid VmId, string Address, string PrivateKeyPath, string KnownHostsPath);
 
     private static readonly JsonSerializerOptions ConfigJson = new() { PropertyNameCaseInsensitive = true };
@@ -20,14 +23,15 @@ internal sealed class PrivateComputer : IPrivateDesktop
         "Simular", "Agent S", "private-vm.json");
     private static string System32 => Environment.GetFolderPath(Environment.SpecialFolder.System);
 
-    private readonly Configuration configuration;
+    private readonly Configuration configuration = null!;
 
-    public static bool IsConfigured => File.Exists(ConfigPath);
+    public static bool IsConfigured => File.Exists(ConfigPath) || WslComputer.IsConfigured;
 
     public PrivateComputer()
     {
         if (!IsConfigured)
-            throw new PrivateComputerException("Set up the Private computer with scripts/setup-private-vm.ps1. See the Windows README.");
+            throw new PrivateComputerException("Set up the Private computer first: choose New agent › This PC › Set up.");
+        if (!File.Exists(ConfigPath)) { wsl = true; return; }
         try
         {
             if (new FileInfo(ConfigPath).Length > 32_768)
@@ -47,6 +51,14 @@ internal sealed class PrivateComputer : IPrivateDesktop
 
     public async Task Start(CancellationToken cancellation)
     {
+        if (wsl)
+        {
+            try { _ = await Capture(cancellation); return; }
+            catch (PrivateComputerException) { }
+            WslComputer.LaunchDesktop();
+            await WslComputer.WaitForScreenshot(TimeSpan.FromSeconds(60), cancellation);
+            return;
+        }
         await HyperV("if ($vm.State -ne 'Running') { Start-VM -VM $vm | Out-Null }", cancellation);
         var start = Stopwatch.StartNew();
         while (start.Elapsed < TimeSpan.FromSeconds(75))
@@ -65,10 +77,10 @@ internal sealed class PrivateComputer : IPrivateDesktop
         throw new PrivateComputerException("The Private computer started but its guest desktop did not respond. Check the VM and its internal switch.");
     }
 
-    public Task Stop(CancellationToken cancellation = default) =>
+    public Task Stop(CancellationToken cancellation = default) => wsl ? WslComputer.Stop(cancellation) :
         HyperV("if ($vm.State -ne 'Off') { Stop-VM -VM $vm }", cancellation);
 
-    public Task Reset(CancellationToken cancellation = default) =>
+    public Task Reset(CancellationToken cancellation = default) => wsl ? WslComputer.Reset(cancellation) :
         HyperV($"$checkpoint = Get-VMSnapshot -VM $vm -Name '{Checkpoint}'; " +
             "if ($vm.State -ne 'Off') { Stop-VM -VM $vm }; Restore-VMSnapshot -VMSnapshot $checkpoint -Confirm:$false",
             cancellation);
@@ -120,8 +132,9 @@ internal sealed class PrivateComputer : IPrivateDesktop
             "Hyper-V could not manage the Private computer. Check that it exists and your Windows account has Hyper-V access.", cancellation);
     }
 
-    private Task<string> Guest(string command, int outputLimit, CancellationToken cancellation) =>
-        Run(Path.Combine(System32, "OpenSSH", "ssh.exe"),
+    private Task<string> Guest(string command, int outputLimit, CancellationToken cancellation) => wsl
+        ? WslComputer.Guest(command, outputLimit, cancellation)
+        : Run(Path.Combine(System32, "OpenSSH", "ssh.exe"),
             ["-F", "NUL", "-T", "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
              "-o", "StrictHostKeyChecking=yes", "-o", "GlobalKnownHostsFile=NUL",
              "-o", $"UserKnownHostsFile=\"{configuration.KnownHostsPath.Replace('\\', '/')}\"",
@@ -129,7 +142,7 @@ internal sealed class PrivateComputer : IPrivateDesktop
              $"/usr/local/bin/agent-s-guest {command}"], outputLimit, TimeSpan.FromSeconds(20),
             "Could not communicate with the Private guest. Check its internal switch and SSH setup.", cancellation);
 
-    private static async Task<string> Run(string executable, string[] arguments, int outputLimit, TimeSpan timeout,
+    internal static async Task<string> Run(string executable, string[] arguments, int outputLimit, TimeSpan timeout,
         string failure, CancellationToken cancellation)
     {
         cancellation.ThrowIfCancellationRequested();

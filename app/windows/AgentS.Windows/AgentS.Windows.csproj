@@ -15,11 +15,19 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Generated from app/Resources/Icon/AppIcon.png (the macOS icon), cropped to the tile. -->
+    <ApplicationIcon>Assets\AgentS.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.9457" PrivateAssets="all" />
     <ProjectReference Include="../AgentS.Core/AgentS.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Guest desktop scripts installed into the WSL Private computer during in-app setup. -->
+    <Content Include="../scripts/agent-s-guest.sh;../scripts/agent-s-desktop.sh;../scripts/agent-s-demo.html"
+             Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\AgentS.ico;Assets\AgentS.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- Publishing must run the SDK resource target, not just managed compilation. -->
   <Target Name="BuildXamlResourceIndex" BeforeTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="GenerateProjectPriFile" />

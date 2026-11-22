@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Text.Json;
 using AgentS.Core;
 using Microsoft.UI.Xaml;
@@ -25,17 +26,25 @@ public sealed partial class MainWindow : Window
     private bool busy, running, stopRequested, stopped, allowClose, storageReady, closing;
     private string turn = "";
     private string? currentSession;
+    private readonly Dictionary<Conversation, AgentRow> rows = [];
+    private readonly Microsoft.UI.Xaml.Data.CollectionViewSource agentGroups = new() { IsSourceGrouped = true };
+    private bool panelOpen = true, rebuilding, privateScreenShown, preferPrivate;
+    private Uri? liveViewUri;
 
     public MainWindow()
     {
         InitializeComponent();
-        Agents.ItemsSource = conversations;
+        conversations.CollectionChanged += (_, _) => RebuildAgents();
+        var logo = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentS.png");
+        if (File.Exists(logo)) EmptyChatLogo.Source = new BitmapImage(new Uri(logo));
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
-        var width = Math.Min(1120, area.Width);
-        var height = Math.Min(820, area.Height);
+        var width = Math.Min(1360, area.Width);
+        var height = Math.Min(860, area.Height);
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32(width, height));
         AppWindow.Move(new global::Windows.Graphics.PointInt32(area.X + (area.Width - width) / 2,
             area.Y + (area.Height - height) / 2));
+        var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentS.ico");
+        if (File.Exists(icon)) AppWindow.SetIcon(icon);
         AppWindow.Closing += Closing;
         Closed += (_, _) => { run?.Cancel(); client?.Dispose(); };
     }
@@ -46,16 +55,9 @@ public sealed partial class MainWindow : Window
         {
             foreach (var conversation in await store.Read()) conversations.Add(conversation);
             storageReady = true;
-            Agents.SelectedItem = conversations.FirstOrDefault(item => item.Target == ConversationTarget.Private)
-                ?? conversations.FirstOrDefault();
             var key = Secrets.Read();
-            if (key is not null)
-            {
-                client = new SaiClient(key);
-                if (selected?.Target == ConversationTarget.Sai) await Refresh();
-            }
-            if (selected is null && !PrivateComputer.IsConfigured)
-                Show("Set up the Private computer to start using Agent S locally. See the Windows README.", false);
+            if (key is not null) client = new SaiClient(key);
+            Select(conversations.FirstOrDefault(item => item.Target == ConversationTarget.Private) ?? conversations.FirstOrDefault());
         }
         catch (Exception error) { Error(error); }
         Controls();
@@ -63,40 +65,272 @@ public sealed partial class MainWindow : Window
 
     private bool IsPrivate => selected?.Target == ConversationTarget.Private;
 
+    // ---- Sidebar ---------------------------------------------------------------------------------
+
+    private AgentRow Row(Conversation conversation)
+    {
+        if (!rows.TryGetValue(conversation, out var row)) rows[conversation] = row = new AgentRow(conversation);
+        return row;
+    }
+    private void RebuildAgents()
+    {
+        foreach (var gone in rows.Keys.Except(conversations).ToArray()) rows.Remove(gone);
+        var groups = new List<AgentGroup>();
+        var local = conversations.Where(c => c.Target == ConversationTarget.Private).Select(Row).ToArray();
+        var cloud = conversations.Where(c => c.Target == ConversationTarget.Sai).Select(Row).ToArray();
+        if (local.Length > 0) groups.Add(new AgentGroup("Private", "", local));
+        if (cloud.Length > 0) groups.Add(new AgentGroup("Cloud", "", cloud));
+        rebuilding = true;
+        try
+        {
+            agentGroups.Source = groups;
+            Agents.ItemsSource = agentGroups.View;
+            Agents.SelectedItem = selected is null ? null : Row(selected);
+        }
+        finally { rebuilding = false; }
+        EmptyAgents.Visibility = conversations.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void Select(Conversation? conversation)
+    {
+        if (conversation is null) { Agents.SelectedItem = null; SelectAgent(Agents, null!); return; }
+        Agents.SelectedItem = Row(conversation);
+    }
+    private async void DeleteAgentFromMenu(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not AgentRow row || busy) return;
+        if (await Dialog($"Delete {row.Name}?", "This deletes the local conversation. It does not delete the computer or remote task history.", "Delete").ShowAsync() != ContentDialogResult.Primary) return;
+        bool wasSelected = selected == row.Conversation;
+        conversations.Remove(row.Conversation);
+        if (wasSelected) { selected = null; Select(conversations.FirstOrDefault()); }
+        await Persist();
+    }
+
+    // ---- Chat chrome -----------------------------------------------------------------------------
+
+    private void ComposerKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        // Enter sends; Shift+Enter adds a new line, like the macOS composer.
+        if (e.Key != VirtualKey.Enter) return;
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift)
+            .HasFlag(global::Windows.UI.Core.CoreVirtualKeyStates.Down);
+        if (shift) return;
+        e.Handled = true;
+        if (SendButton.IsEnabled) Send(SendButton, new RoutedEventArgs());
+    }
+    private void ComposerChanged(object sender, TextChangedEventArgs e) => Controls();
+
+    private void TogglePanel(object sender, RoutedEventArgs e)
+    {
+        panelOpen = !panelOpen;
+        ComputerColumn.Width = panelOpen ? new GridLength(380) : new GridLength(0);
+        ComputerPanel.Visibility = panelOpen ? Visibility.Visible : Visibility.Collapsed;
+        if (panelOpen) _ = UpdateScreen();
+    }
+
+    private async void OpenModelMenu(object sender, RoutedEventArgs e)
+    {
+        if (selected is not { } owner || busy) return;
+        var menu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
+        IEnumerable<(string Id, string Label)> choices;
+        if (owner.Target == ConversationTarget.Private)
+        {
+            string[] installed = [];
+            try { using var agent = new LocalAgent(); installed = await agent.Models(); } catch { }
+            choices = installed.Select(m => (m, m));
+            if (!installed.Any())
+                menu.Items.Add(new MenuFlyoutItem { Text = "Ollama isn't running or has no models", IsEnabled = false });
+        }
+        else
+        {
+            if (models.Length == 0 && client is not null) await Refresh();
+            choices = new[] { ("auto", "Automatic") }.Concat(models.Where(m => m.Id != "auto").Select(m => (m.Id, m.Name)));
+        }
+        foreach (var (id, label) in choices)
+        {
+            var item = new ToggleMenuFlyoutItem { Text = label, IsChecked = (owner.ModelId ?? "auto") == id };
+            item.Click += async (_, _) => { owner.ModelId = id; Controls(); await Persist(); };
+            menu.Items.Add(item);
+        }
+        menu.ShowAt(ModelPill);
+    }
+
     private void Controls()
     {
         Agents.IsEnabled = AccountsButton.IsEnabled = !busy;
-        DeleteButton.IsEnabled = !busy && selected is not null;
         NewAgentButton.IsEnabled = !busy && storageReady;
         Composer.IsEnabled = !busy && selected is not null;
-        SendButton.IsEnabled = !busy && storageReady && (selected?.Target switch
+        SendButton.IsEnabled = !busy && storageReady && !string.IsNullOrWhiteSpace(Composer.Text) && (selected?.Target switch
         {
             ConversationTarget.Private => true,
             ConversationTarget.Sai => client is not null,
             _ => false,
         });
         StopButton.IsEnabled = running && !stopRequested;
-        ScreenButton.Content = IsPrivate
-            ? PrivatePreview.Visibility == Visibility.Visible ? "Hide computer" : "Show computer"
-            : "Open computer";
-        ScreenButton.IsEnabled = IsPrivate ? !busy || running : !busy && CurrentComputer is not null;
-        WakeButton.Content = IsPrivate ? "Stop computer" : "Wake computer";
+        SendButton.Visibility = running ? Visibility.Collapsed : Visibility.Visible;
+        StopButton.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        WorkingChip.Visibility = running ? Visibility.Visible : Visibility.Collapsed;
+        if (selected is not null) Row(selected).Working = running;
+
+        // Model pill: "☁ Sai · auto" or "🔒 Private · gemma4", as on macOS.
+        ModelPill.IsEnabled = selected is not null && !busy;
+        ModelPillIcon.Glyph = IsPrivate ? "" : "";
+        ModelPillText.Text = selected is null ? "No agent selected"
+            : IsPrivate ? $"Private · {selected.ModelId ?? "gemma4"}"
+            : $"Sai · {(selected.ModelId is null or "auto" ? "auto" : models.FirstOrDefault(m => m.Id == selected.ModelId)?.Name ?? selected.ModelId)}";
+        Composer.PlaceholderText = selected is null ? "Create an agent to start…"
+            : IsPrivate ? $"Ask {selected.Name} to do something on its private computer…"
+            : $"Ask {selected.Name} to do something on {CurrentComputer?.Name ?? "its computer"}…";
+        EmptyChat.Visibility = selected is null || selected.Entries.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        EmptyChatTitle.Text = selected is null ? "Create an agent to get started" : $"Start a task with {selected.Name}";
+        EmptyChatText.Text = selected is null
+            ? "Agents work on a private computer on this PC or on a Sai computer in the cloud. Choose + to create one."
+            : IsPrivate ? "It works on the private Linux computer on this PC. Watch it on the right."
+            : "It works on your Sai computer. Watch it on the right.";
+
+        // Computer header and actions.
+        ScreenButton.IsEnabled = IsPrivate ? !busy && PrivateComputer.IsConfigured : !busy && CurrentComputer is not null;
+        ScreenButtonIcon.Glyph = IsPrivate ? "" : "";
+        ToolTipService.SetToolTip(ScreenButton, IsPrivate ? "Refresh screen" : "Open in browser");
+        WakeButton.Text = IsPrivate ? "Stop computer" : "Wake computer";
         WakeButton.IsEnabled = !busy && (IsPrivate ? PrivateComputer.IsConfigured : CurrentComputer?.CanWake == true);
-        RefreshButton.Content = IsPrivate ? "Reset computer" : "Refresh computers";
+        RefreshButton.Text = IsPrivate ? "Reset computer" : "Refresh computers";
         RefreshButton.IsEnabled = !busy && (IsPrivate ? PrivateComputer.IsConfigured : client is not null);
-        Heading.Text = selected?.Name ?? "Choose an agent or create one";
-        Status.Text = IsPrivate
-            ? running ? "Private agent is working…" : $"Private · local Ollama · {selected?.ModelId}"
-            : running ? "Sai is working…" : CurrentComputer is { } c ? $"{c.Name} · {c.Availability} · Sai cloud" : "Private computer · Sai cloud available in Accounts";
+        MoreButton.IsEnabled = selected is not null;
+        ComputerName.Text = selected is null ? "No computer" : IsPrivate ? "Private computer" : CurrentComputer?.Name ?? "Sai computer";
+        bool online = IsPrivate ? privateScreenShown : CurrentComputer?.Online == true;
+        ComputerState.Text = selected is null ? "" : running ? "Working…" : IsPrivate
+            ? PrivateComputer.IsConfigured ? privateScreenShown ? "Running on this PC" : "Off · starts with the next task" : "Not set up"
+            : CurrentComputer?.Availability ?? (client is null ? "Connect Sai in Accounts" : "Unavailable");
+        StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(online || running
+            ? global::Windows.UI.Color.FromArgb(255, 52, 199, 89) : global::Windows.UI.Color.FromArgb(255, 154, 154, 154));
+        UpdatePlaceholder();
+        UpdateContext();
+    }
+
+    // ---- Right sidebar: computer screen and context -----------------------------------------------
+
+    private void UpdatePlaceholder()
+    {
+        bool showImage = IsPrivate && PrivateScreen.Source is not null;
+        bool showLive = !IsPrivate && liveViewUri is not null && CurrentComputer?.Online == true;
+        PrivateScreen.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
+        LiveView.Visibility = showLive ? Visibility.Visible : Visibility.Collapsed;
+        ScreenPlaceholder.Visibility = showImage || showLive ? Visibility.Collapsed : Visibility.Visible;
+        PlaceholderAction.Visibility = Visibility.Collapsed;
+        if (selected is null)
+        { PlaceholderTitle.Text = "No computer yet"; PlaceholderText.Text = "Create an agent to see its computer here."; return; }
+        if (IsPrivate)
+        {
+            if (!PrivateComputer.IsConfigured)
+            { PlaceholderTitle.Text = "Set up this PC"; PlaceholderText.Text = "A one-time setup creates the private Linux computer."; PlaceholderAction.Content = "Set up"; }
+            else
+            { PlaceholderTitle.Text = "Private computer is off"; PlaceholderText.Text = "It starts automatically with the next task."; PlaceholderAction.Content = "Start computer"; }
+            PlaceholderAction.Visibility = Visibility.Visible;
+            return;
+        }
+        if (client is null)
+        { PlaceholderTitle.Text = "Connect your Sai account"; PlaceholderText.Text = "Add your Sai API key to see this computer."; PlaceholderAction.Content = "Accounts"; PlaceholderAction.Visibility = Visibility.Visible; }
+        else if (CurrentComputer is not { } computer)
+        { PlaceholderTitle.Text = "Computer not found"; PlaceholderText.Text = "Refresh computers, or create a new agent."; PlaceholderAction.Content = "Refresh"; PlaceholderAction.Visibility = Visibility.Visible; }
+        else if (!computer.Online)
+        {
+            PlaceholderTitle.Text = $"{computer.Name} is {computer.Availability.ToLowerInvariant()}";
+            PlaceholderText.Text = computer.CanWake ? "Wake it to watch the agent work." : "It isn't available right now.";
+            if (computer.CanWake) { PlaceholderAction.Content = "Wake computer"; PlaceholderAction.Visibility = Visibility.Visible; }
+        }
+        else { PlaceholderTitle.Text = "Loading screen…"; PlaceholderText.Text = ""; }
+    }
+
+    private async void PlaceholderActionClick(object sender, RoutedEventArgs e)
+    {
+        switch (PlaceholderAction.Content as string)
+        {
+            case "Set up": preferPrivate = true; NewAgent(sender, e); break;
+            case "Start computer": await StartPrivateScreen(); break;
+            case "Accounts": Accounts(sender, e); break;
+            case "Refresh": await Refresh(); await UpdateScreen(); break;
+            case "Wake computer": WakeComputer(sender, e); break;
+        }
+    }
+
+    private async Task StartPrivateScreen()
+    {
+        await UsePrivateComputer(async computer =>
+        {
+            await computer.Start(CancellationToken.None);
+            await ShowPrivateScreen(await computer.Capture(CancellationToken.None));
+        });
+    }
+
+    /// <summary>Shows the selected computer: a live Sai page in the panel, or the latest private screenshot.</summary>
+    private async Task UpdateScreen()
+    {
+        if (!panelOpen || selected is null || IsPrivate || client is null || CurrentComputer is not { Online: true } computer)
+        { Controls(); return; }
+        try
+        {
+            if (!liveLinks.TryGetValue(computer.Id, out var cached) || cached.Until < DateTime.UtcNow)
+            { cached = (await client.LiveLink(computer.Id), DateTime.UtcNow.AddMinutes(23)); liveLinks[computer.Id] = cached; }
+            if (CurrentComputer?.Id != computer.Id) return;
+            if (liveViewUri != cached.Uri) { liveViewUri = cached.Uri; LiveView.Source = cached.Uri; }
+        }
+        catch { liveViewUri = null; }
+        Controls();
+    }
+
+    private void UpdateContext()
+    {
+        ContextPanel.Visibility = selected is null ? Visibility.Collapsed : Visibility.Visible;
+        SessionGrid.Children.Clear(); SessionGrid.RowDefinitions.Clear();
+        ConversationSummary.Children.Clear();
+        if (selected is not { } owner) return;
+        void Pair(string label, string value, bool mono = false)
+        {
+            SessionGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var key = new TextBlock { Text = label, Opacity = 0.6 };
+            var text = new TextBlock { Text = value, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
+            if (mono) text.FontFamily = new Microsoft.UI.Xaml.Media.FontFamily("Cascadia Mono, Consolas");
+            Grid.SetRow(key, SessionGrid.RowDefinitions.Count - 1);
+            Grid.SetRow(text, SessionGrid.RowDefinitions.Count - 1); Grid.SetColumn(text, 1);
+            SessionGrid.Children.Add(key); SessionGrid.Children.Add(text);
+        }
+        if (owner.Target == ConversationTarget.Private)
+        {
+            Pair("Harness", "Agent S · local");
+            Pair("Model", $"{owner.ModelId ?? "gemma4"} · Ollama on this PC");
+            Pair("Computer", "Private Linux (WSL)");
+        }
+        else
+        {
+            Pair("Harness", "Sai");
+            Pair("Model", $"{(owner.ModelId is null or "auto" ? "auto" : owner.ModelId)} · Sai API");
+            Pair("Computer", CurrentComputer?.Name ?? "Unknown");
+            Pair("Session", owner.SessionId ?? "New (starts with the next message)", mono: true);
+        }
+        var items = owner.Entries.Where(entry => entry.Role != "Activity" && !string.IsNullOrWhiteSpace(entry.Text)).ToArray();
+        ConversationLabel.Text = $"CONVERSATION · {items.Length} {(items.Length == 1 ? "ITEM" : "ITEMS")}";
+        if (items.Length == 0)
+            ConversationSummary.Children.Add(new TextBlock { Text = "Nothing yet.", Opacity = 0.6 });
+        foreach (var entry in items.TakeLast(6))
+        {
+            var block = new StackPanel { Spacing = 4 };
+            var role = new TextBlock { Text = entry.Role == "Needs you" ? "Approval" : entry.Role, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 12 };
+            if (entry.Role is "Needs you") role.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 240, 140, 30));
+            if (entry.Role is "Error") role.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 221, 54, 72));
+            block.Children.Add(role);
+            block.Children.Add(new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, MaxLines = 4, TextTrimming = TextTrimming.CharacterEllipsis });
+            ConversationSummary.Children.Add(block);
+        }
     }
     private Computer? CurrentComputer => selected?.Target == ConversationTarget.Sai
         ? computers.FirstOrDefault(c => c.Id == selected.ComputerId)
         : null;
     private void Show(string text, bool error = true)
     { Notice.Message = text; Notice.Severity = error ? InfoBarSeverity.Error : InfoBarSeverity.Informational; Notice.IsOpen = true; }
-    private void Error(Exception error) => Show(error is SaiException or PrivateComputerException or LocalAgentException ? error.Message :
+    private void Error(Exception error) => Show(Describe(error));
+    private static string Describe(Exception error) => error is SaiException or PrivateComputerException or LocalAgentException ? error.Message :
         error is OperationCanceledException ? "The request timed out or was interrupted. Its remote result is not confirmed." :
-        "The operation failed. Check your connection, credential access and local storage, then retry.");
+        "The operation failed. Check your connection, credential access and local storage, then retry.";
     private async Task Persist()
     {
         if (!storageReady) return;
@@ -106,9 +340,10 @@ public sealed partial class MainWindow : Window
     private ContentDialog Dialog(string title, object content, string primary) => new()
     { Title = title, Content = content, PrimaryButtonText = primary, CloseButtonText = "Cancel", XamlRoot = Root.XamlRoot };
 
-    private async Task Refresh()
+    /// <summary>Reloads Sai computers and models; returns a user-facing error, or null on success.</summary>
+    private async Task<string?> Refresh()
     {
-        if (client is null) return;
+        if (client is null) return null;
         busy = true; Controls();
         try
         {
@@ -116,13 +351,28 @@ public sealed partial class MainWindow : Window
             var nextModels = await client.Models();
             computers = nextComputers; models = nextModels.Where(m => m.Allowed).ToArray();
             Notice.IsOpen = false;
+            return null;
         }
-        catch (Exception error) { Error(error); }
+        catch (Exception error) { Error(error); return Describe(error); }
         finally { busy = false; Controls(); }
     }
+
+    /// <summary>Saves (or removes, when null) the Sai key and drops everything tied to the previous account.</summary>
+    private async Task<string?> UseSaiKey(string? key)
+    {
+        if (key is null) { Secrets.Delete(); client?.Dispose(); client = null; }
+        else { Secrets.Save(key); client?.Dispose(); client = new SaiClient(key); }
+        // A different credential must never reuse the prior account's sessions or live links.
+        foreach (var conversation in conversations.Where(item => item.Target == ConversationTarget.Sai))
+            conversation.SessionId = null;
+        liveLinks.Clear(); computers = []; models = [];
+        await Persist();
+        return client is null ? null : await Refresh();
+    }
+
     private async void RefreshComputers(object sender, RoutedEventArgs e)
     {
-        if (!IsPrivate) { await Refresh(); return; }
+        if (!IsPrivate) { await Refresh(); await UpdateScreen(); return; }
         if (busy) return;
         var dialog = Dialog("Reset the Private computer?",
             "This erases guest changes since setup. Conversation history on Windows is kept.", "Reset computer");
@@ -130,8 +380,7 @@ public sealed partial class MainWindow : Window
         await UsePrivateComputer(async computer =>
         {
             await computer.Reset();
-            PrivateScreen.Source = null;
-            PrivatePreview.Visibility = Visibility.Collapsed;
+            PrivateScreen.Source = null; privateScreenShown = false;
         });
     }
 
@@ -151,17 +400,9 @@ public sealed partial class MainWindow : Window
             if (result == ContentDialogResult.Primary)
             {
                 if (string.IsNullOrWhiteSpace(password.Password)) { Show("Enter a Sai API key."); return; }
-                Secrets.Save(password.Password.Trim());
-                client?.Dispose(); client = new SaiClient(password.Password.Trim());
+                await UseSaiKey(password.Password.Trim());
             }
-            else if (result == ContentDialogResult.Secondary) { Secrets.Delete(); client?.Dispose(); client = null; }
-            else return;
-            // A different credential must never reuse the prior account's sessions or live links.
-            foreach (var conversation in conversations.Where(item => item.Target == ConversationTarget.Sai))
-                conversation.SessionId = null;
-            liveLinks.Clear(); computers = []; models = [];
-            await Persist();
-            if (client is not null) await Refresh();
+            else if (result == ContentDialogResult.Secondary) await UseSaiKey(null);
         }
         catch (Exception error) { Error(error); }
         finally { password.Password = ""; Controls(); }
@@ -170,64 +411,331 @@ public sealed partial class MainWindow : Window
     private async void NewAgent(object sender, RoutedEventArgs e)
     {
         if (busy || !storageReady) return;
-        var name = new TextBox { Header = "Name", Text = "Private agent", MaxLength = 100 };
-        var target = new ComboBox
+        bool privateReady = PrivateComputer.IsConfigured, loadingCloud = false, setupRunning = false;
+        var wslState = WslComputer.Readiness.Ready;
+        var secondary = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var brush)
+            ? brush as Microsoft.UI.Xaml.Media.Brush : null;
+        static string Suggested(bool cloud) => cloud ? "Cloud agent" : "Private agent";
+        static void Id(UIElement element, string id) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(element, id);
+        TextBlock Note(string text = "")
         {
-            Header = "Computer",
-            ItemsSource = new[] { "Private · local Linux VM", "Cloud · Sai computer" },
-            SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch
-        };
-        var localModel = new TextBox { Header = "Local Ollama model tag", Text = "gemma4", MaxLength = 128 };
-        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(localModel, "PrivateModel");
-        var computer = new ComboBox { Header = "Sai computer", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var model = new ComboBox { Header = "Sai model", HorizontalAlignment = HorizontalAlignment.Stretch };
-        var cloudStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        var cloud = new StackPanel { Spacing = 12, Visibility = Visibility.Collapsed };
-        cloud.Children.Add(computer); cloud.Children.Add(model); cloud.Children.Add(cloudStatus);
-        var form = new StackPanel { Spacing = 12 };
-        form.Children.Add(name); form.Children.Add(target); form.Children.Add(localModel); form.Children.Add(cloud);
-        var dialog = Dialog("New agent", form, "Create");
-        bool loadingCloud = false;
+            var note = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+            if (secondary is not null) note.Foreground = secondary;
+            return note;
+        }
 
+        // Prefer whatever works on this PC right now: a set-up Private computer, else a connected Sai account.
+        bool startCloud = !preferPrivate && !privateReady && client is not null;
+        preferPrivate = false;
+        var name = new TextBox { Header = "Name", Text = Suggested(startCloud), MaxLength = 100 };
+
+        RadioButton Option(string id, string title, string detail)
+        {
+            var text = new StackPanel { Spacing = 2 };
+            text.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            text.Children.Add(Note(detail));
+            var option = new RadioButton { Content = text };
+            Id(option, id); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(option, title);
+            return option;
+        }
+        var privateOption = Option("TargetPrivate", "This PC · Private",
+            "Works in a private Linux computer on this PC, with an AI model that runs locally.");
+        var cloudOption = Option("TargetCloud", "Cloud · Sai computer",
+            "Works on a computer in your Sai account. Nothing to install.");
+        var target = new RadioButtons { Header = "Where should it work?" };
+        target.Items.Add(privateOption); target.Items.Add(cloudOption);
+        target.SelectedIndex = startCloud ? 1 : 0;
+
+        // ---- This PC: one checklist, one button ----
+        bool ollamaReady = false, modelReady = false, restartPending = false, checkedPc = false;
+        var green = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 52, 199, 89));
+        var red = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 221, 54, 72));
+        var steps = new StackPanel { Spacing = 14 };
+        (FontIcon Icon, ProgressRing Ring, TextBlock Detail) Step(string title)
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(20) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            var icon = new FontIcon { Glyph = "", FontSize = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) };
+            var ring = new ProgressRing { Width = 16, Height = 16, IsActive = false, Visibility = Visibility.Collapsed, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 2, 0, 0) };
+            var text = new StackPanel();
+            text.Children.Add(new TextBlock { Text = title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            var detail = Note("Checking…");
+            text.Children.Add(detail);
+            row.Children.Add(icon); row.Children.Add(ring);
+            Grid.SetColumn(text, 1); row.Children.Add(text);
+            steps.Children.Add(row);
+            return (icon, ring, detail);
+        }
+        void Mark((FontIcon Icon, ProgressRing Ring, TextBlock Detail) step, string state, string detail)
+        {
+            step.Detail.Text = detail;
+            step.Ring.IsActive = state == "working";
+            step.Ring.Visibility = state == "working" ? Visibility.Visible : Visibility.Collapsed;
+            step.Icon.Visibility = state == "working" ? Visibility.Collapsed : Visibility.Visible;
+            step.Icon.Glyph = state switch { "done" => "", "failed" => "", _ => "" };
+            step.Icon.ClearValue(IconElement.ForegroundProperty);
+            if (state == "done") step.Icon.Foreground = green;
+            if (state == "failed") step.Icon.Foreground = red;
+        }
+        var ollamaStep = Step("Ollama");
+        var modelStep = Step("AI model");
+        var linuxStep = Step("Private computer");
+        var setupButton = new Button { Content = "Set up this PC", HorizontalAlignment = HorizontalAlignment.Stretch };
+        if (Application.Current.Resources.TryGetValue("AccentButtonStyle", out var setupAccent) && setupAccent is Style setupStyle) setupButton.Style = setupStyle;
+        Id(setupButton, "PrivateSetup");
+        var setupProgress = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed };
+        var checklist = new StackPanel { Spacing = 14 };
+        checklist.Children.Add(new TextBlock { Text = "Get this PC ready", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, FontSize = 15 });
+        checklist.Children.Add(Note("A one-time setup. Agent S installs everything for you; it can take a while on the first run."));
+        checklist.Children.Add(steps); checklist.Children.Add(setupProgress); checklist.Children.Add(setupButton);
+        var setupCard = new Border
+        {
+            Child = checklist, CornerRadius = new CornerRadius(12), BorderThickness = new Thickness(1), Padding = new Thickness(18, 16, 18, 16),
+            BorderBrush = Theme("CardBorder"), Background = Theme("ChipBackground"),
+        };
+        var localModel = new ComboBox
+        {
+            Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, Visibility = Visibility.Collapsed,
+            Description = "Runs on this PC through Ollama.",
+        };
+        Id(localModel, "PrivateModel");
+        var local = new StackPanel { Spacing = 12 };
+        local.Children.Add(setupCard); local.Children.Add(localModel);
+
+        // ---- Cloud ----
+        var key = new PasswordBox { Header = "Sai API key", PlaceholderText = "Paste your key", Description = "Saved securely in Windows Credential Locker." };
+        Id(key, "NewAgentSaiKey");
+        var connect = new Button { Content = "Connect" };
+        if (Application.Current.Resources.TryGetValue("AccentButtonStyle", out var accent) && accent is Style accentStyle) connect.Style = accentStyle;
+        var getKey = new HyperlinkButton { Content = "Get a key", NavigateUri = new Uri("https://platform.simular.ai/api-keys") };
+        var keyActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        keyActions.Children.Add(connect); keyActions.Children.Add(getKey);
+        var keyPanel = new StackPanel { Spacing = 8 };
+        keyPanel.Children.Add(Note("Connect your Sai account to use its computers."));
+        keyPanel.Children.Add(key); keyPanel.Children.Add(keyActions);
+        var computer = new ComboBox { Header = "Computer", PlaceholderText = "Choose a computer", HorizontalAlignment = HorizontalAlignment.Stretch };
+        var model = new ComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, Description = "Automatic picks a model for each task." };
+        var retry = new Button { Content = "Try again" };
+        var cloudNotice = new InfoBar { IsClosable = false, Severity = InfoBarSeverity.Warning, ActionButton = retry };
+        var loading = new ProgressBar { IsIndeterminate = true, Visibility = Visibility.Collapsed };
+        var choices = new StackPanel { Spacing = 12 };
+        choices.Children.Add(computer); choices.Children.Add(model);
+        var cloud = new StackPanel { Spacing = 12 };
+        cloud.Children.Add(keyPanel); cloud.Children.Add(loading); cloud.Children.Add(cloudNotice); cloud.Children.Add(choices);
+
+        var hint = Note();
+        var form = new StackPanel { Spacing = 16, MinWidth = 420 };
+        form.Children.Add(name); form.Children.Add(target); form.Children.Add(local); form.Children.Add(cloud); form.Children.Add(hint);
+        var dialog = Dialog("New agent", new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, "Create");
+        dialog.DefaultButton = ContentDialogButton.Primary;
+
+        bool UseCloud() => target.SelectedIndex == 1;
         void SetMode()
         {
-            bool useCloud = target.SelectedIndex == 1;
-            localModel.Visibility = useCloud ? Visibility.Collapsed : Visibility.Visible;
+            bool useCloud = UseCloud();
+            local.Visibility = useCloud ? Visibility.Collapsed : Visibility.Visible;
             cloud.Visibility = useCloud ? Visibility.Visible : Visibility.Collapsed;
-            dialog.IsPrimaryButtonEnabled = !useCloud || (!loadingCloud && computer.SelectedItem is Computer);
+            keyPanel.Visibility = client is null ? Visibility.Visible : Visibility.Collapsed;
+            choices.Visibility = client is not null && computers.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+            loading.Visibility = loadingCloud ? Visibility.Visible : Visibility.Collapsed;
+            string? blocker = name.Text.Trim().Length == 0 ? "Give the agent a name." : useCloud
+                ? client is null ? "Connect your Sai account to continue."
+                : loadingCloud ? "Loading your computers…"
+                : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null
+                : setupRunning ? "Setting up this PC…"
+                : !checkedPc ? "Checking this PC…"
+                : !(privateReady && ollamaReady && modelReady) ? "Choose Set up this PC, or pick Cloud."
+                : localModel.SelectedItem is not string ? "Choose a model to continue." : null;
+            hint.Text = blocker ?? "";
+            // The setup checklist already explains itself; don't repeat it underneath.
+            bool checklistShown = !useCloud && setupCard.Visibility == Visibility.Visible && checkedPc;
+            hint.Visibility = blocker is null || checklistShown ? Visibility.Collapsed : Visibility.Visible;
+            dialog.IsPrimaryButtonEnabled = blocker is null;
         }
-        void SetCloudChoices()
+        void SetCloudChoices(string? error)
         {
             computer.ItemsSource = computers;
-            computer.SelectedIndex = computers.Length > 0 ? 0 : -1;
+            computer.SelectedIndex = computers.Length > 0 ? Array.FindIndex(computers, c => c.Online) is var i and >= 0 ? i : 0 : -1;
             model.ItemsSource = new[] { new SaiModel("auto", "Automatic", true) }
                 .Concat(models.Where(item => item.Id != "auto")).ToArray();
             model.SelectedIndex = 0;
-            cloudStatus.Text = client is null ? "Add a Sai API key in Accounts to use cloud computers."
-                : computers.Length == 0 ? "Could not load Sai computers. Check Accounts and try again." : "";
+            cloudNotice.Message = error ?? (client is not null && computers.Length == 0 ? "No computers were found in your Sai account." : "");
+            cloudNotice.IsOpen = client is not null && cloudNotice.Message.Length > 0;
         }
-        computer.SelectionChanged += (_, _) => SetMode();
+        async Task LoadCloud(Func<Task<string?>> load)
+        {
+            loadingCloud = true; cloudNotice.IsOpen = false; SetMode();
+            string? error;
+            try { error = await load(); }
+            catch (Exception failure) { error = Describe(failure); }
+            loadingCloud = false; SetCloudChoices(error); SetMode();
+        }
+        void ShowModels(string[] installed)
+        {
+            localModel.ItemsSource = installed;
+            localModel.SelectedItem = installed.FirstOrDefault(m => OllamaSetup.HasModel([m], OllamaSetup.DefaultModel)) ?? installed.FirstOrDefault();
+        }
+        void ShowReadiness()
+        {
+            bool allReady = privateReady && ollamaReady && modelReady;
+            setupCard.Visibility = allReady ? Visibility.Collapsed : Visibility.Visible;
+            localModel.Visibility = allReady ? Visibility.Visible : Visibility.Collapsed;
+            SetMode();
+        }
+        async Task CheckPc()
+        {
+            var installed = await OllamaSetup.Models();
+            ollamaReady = installed is not null;
+            modelReady = installed is not null && OllamaSetup.HasModel(installed, OllamaSetup.DefaultModel);
+            if (installed is { Length: > 0 }) ShowModels(installed);
+            Mark(ollamaStep, ollamaReady ? "done" : "todo", ollamaReady ? "Installed and running."
+                : OllamaSetup.IsInstalled ? "Installed. Agent S will start it." : "Runs the AI model on this PC. Agent S installs it for you.");
+            Mark(modelStep, modelReady ? "done" : "todo", modelReady ? $"{OllamaSetup.DefaultModel} is ready."
+                : $"Downloads {OllamaSetup.DefaultModel}, a model that can see the screen (a few GB).");
+            if (!privateReady) wslState = await WslComputer.CheckWsl();
+            Mark(linuxStep, privateReady ? "done" : "todo", privateReady ? "Ready." : wslState switch
+            {
+                WslComputer.Readiness.NeedsRestart => "Windows needs a restart to finish turning on its virtual machine feature.",
+                WslComputer.Readiness.NeedsWsl => "Turns on Windows' virtual machine feature, then creates a private desktop. Needs one restart.",
+                _ => "Creates a private Linux desktop for the agent (about 400 MB).",
+            });
+            // When only the restart is left, the one button becomes "Restart now".
+            restartPending = !privateReady && wslState == WslComputer.Readiness.NeedsRestart && ollamaReady && modelReady;
+            setupButton.Content = restartPending ? "Restart now" : "Set up this PC";
+            checkedPc = true;
+            ShowReadiness();
+        }
+        async Task RunSetup()
+        {
+            if (restartPending)
+            {
+                // Explicit user choice; Windows shows its own restart notice.
+                Process.Start(new ProcessStartInfo("shutdown.exe", "/r /t 10 /c \"Restarting to finish setting up Agent S\"") { UseShellExecute = false, CreateNoWindow = true });
+                return;
+            }
+            setupRunning = busy = true; setupButton.IsEnabled = false; Controls(); SetMode();
+            var current = ollamaStep;
+            // Each step gets its own progress reporter, so a late update can't overwrite a finished step's ✓.
+            IProgress<(string Step, double? Percent)> ProgressFor((FontIcon Icon, ProgressRing Ring, TextBlock Detail) step) =>
+                new Progress<(string Step, double? Percent)>(update =>
+                {
+                    if (step.Icon.Glyph == "" && step.Icon.Visibility == Visibility.Visible) return;
+                    Mark(step, "working", update.Step);
+                    setupProgress.IsIndeterminate = update.Percent is null;
+                    if (update.Percent is { } value) setupProgress.Value = value;
+                });
+            setupProgress.Visibility = Visibility.Visible;
+            try
+            {
+                // 1. Ollama: install silently with winget, else open the download page.
+                if (!ollamaReady)
+                {
+                    if (!OllamaSetup.IsInstalled)
+                    {
+                        Mark(current, "working", "Installing Ollama…");
+                        if (!await OllamaSetup.Install(CancellationToken.None))
+                        {
+                            await Launcher.LaunchUriAsync(OllamaSetup.DownloadPage);
+                            Mark(current, "failed", "Install Ollama from the page that just opened, then choose Set up this PC again.");
+                            setupButton.Content = "Continue setup";
+                            return;
+                        }
+                    }
+                    Mark(current, "working", "Starting Ollama…");
+                    if (!await OllamaSetup.Start(CancellationToken.None))
+                    {
+                        Mark(current, "failed", "Ollama is installed but didn't start. Open Ollama from the Start menu, then choose Set up this PC again.");
+                        setupButton.Content = "Continue setup";
+                        return;
+                    }
+                    ollamaReady = true;
+                    Mark(current, "done", "Installed and running.");
+                }
+
+                // 2. The model, downloaded through Ollama with progress.
+                current = modelStep;
+                if (!modelReady)
+                {
+                    Mark(current, "working", $"Downloading {OllamaSetup.DefaultModel}…");
+                    await OllamaSetup.Pull(OllamaSetup.DefaultModel, ProgressFor(modelStep), CancellationToken.None);
+                    modelReady = true;
+                    Mark(current, "done", $"{OllamaSetup.DefaultModel} is ready.");
+                }
+                ShowModels(await OllamaSetup.Models() ?? [OllamaSetup.DefaultModel]);
+
+                // 3. The private Linux computer (turning on WSL first if needed).
+                current = linuxStep;
+                if (!privateReady)
+                {
+                    wslState = await WslComputer.CheckWsl();
+                    if (wslState == WslComputer.Readiness.NeedsWsl)
+                    {
+                        Mark(current, "working", "Turning on Windows' virtual machine feature. Approve the Windows prompt…");
+                        await WslComputer.InstallWsl();
+                        wslState = await WslComputer.CheckWsl();
+                    }
+                    if (wslState != WslComputer.Readiness.Ready)
+                    {
+                        Mark(current, "todo", "Restart your PC to finish turning on Windows' virtual machine feature. Afterwards, open Agent S and choose Set up this PC again.");
+                        restartPending = true;
+                        setupButton.Content = "Restart now";
+                        return;
+                    }
+                    setupProgress.Value = 0;
+                    Mark(current, "working", "Creating the private computer…");
+                    await WslComputer.Setup(ProgressFor(linuxStep), CancellationToken.None);
+                    privateReady = true;
+                    Mark(current, "done", "Ready.");
+                }
+            }
+            catch (Exception failure)
+            {
+                Mark(current, "failed", Describe(failure));
+                setupButton.Content = "Try again";
+            }
+            finally
+            {
+                setupRunning = busy = false; setupButton.IsEnabled = true;
+                setupProgress.Visibility = Visibility.Collapsed; Controls(); ShowReadiness();
+            }
+        }
+
         target.SelectionChanged += async (_, _) =>
         {
+            if (name.Text.Trim() is "" or "Private agent" or "Cloud agent") name.Text = Suggested(UseCloud());
             SetMode();
-            if (target.SelectedIndex != 1 || client is null || computers.Length != 0 || loadingCloud) return;
-            loadingCloud = true;
-            SetMode();
-            cloudStatus.Text = "Loading Sai computers…";
-            try { await Refresh(); }
-            finally { loadingCloud = false; SetCloudChoices(); SetMode(); }
+            if (UseCloud() && client is not null && computers.Length == 0 && !loadingCloud) await LoadCloud(Refresh);
         };
-        SetCloudChoices();
+        computer.SelectionChanged += (_, _) => SetMode();
+        localModel.SelectionChanged += (_, _) => SetMode();
+        name.TextChanged += (_, _) => SetMode();
+        key.KeyDown += async (_, args) => { if (args.Key == VirtualKey.Enter) { args.Handled = true; await Connect(); } };
+        connect.Click += async (_, _) => await Connect();
+        retry.Click += async (_, _) => await LoadCloud(Refresh);
+        setupButton.Click += async (_, _) => await RunSetup();
+        dialog.Closing += (_, args) => { if (setupRunning) args.Cancel = true; };
+        async Task Connect()
+        {
+            var value = key.Password.Trim();
+            if (value.Length == 0 || loadingCloud) return;
+            connect.IsEnabled = false;
+            try { await LoadCloud(() => UseSaiKey(value)); }
+            finally { key.Password = ""; connect.IsEnabled = true; }
+        }
+
+        SetCloudChoices(null);
         SetMode();
+        _ = CheckPc();
+        if (startCloud && computers.Length == 0) _ = LoadCloud(Refresh);
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
-        if (string.IsNullOrWhiteSpace(name.Text)) { Show("Give the agent a name."); return; }
         var conversation = new Conversation { Name = name.Text.Trim() };
-        if (target.SelectedIndex == 0)
+        if (!UseCloud())
         {
-            if (string.IsNullOrWhiteSpace(localModel.Text)) { Show("Enter a local Ollama model tag."); return; }
+            if (localModel.SelectedItem is not string localChoice) return;
             conversation.Target = ConversationTarget.Private;
-            conversation.ModelId = localModel.Text.Trim();
+            conversation.ModelId = localChoice;
         }
         else
         {
@@ -236,23 +744,21 @@ public sealed partial class MainWindow : Window
             conversation.ComputerId = choice.Id;
             conversation.ModelId = (model.SelectedItem as SaiModel)?.Id;
         }
-        conversations.Add(conversation); Agents.SelectedItem = conversation; await Persist();
+        conversations.Add(conversation); Select(conversation); await Persist();
     }
     private async void SelectAgent(object sender, SelectionChangedEventArgs e)
     {
-        selected = Agents.SelectedItem as Conversation;
+        if (rebuilding) return;
+        var next = (Agents.SelectedItem as AgentRow)?.Conversation;
+        if (next is null && selected is not null && conversations.Contains(selected)) { Agents.SelectedItem = Row(selected); return; }
+        selected = next;
         Composer.Text = ""; Messages.Children.Clear(); entryText.Clear(); approvalControls.Clear();
-        PrivatePreview.Visibility = Visibility.Collapsed; PrivateScreen.Source = null;
         if (selected is not null) foreach (var entry in selected.Entries) Draw(entry);
         Controls();
+        DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
         if (!busy && selected?.Target == ConversationTarget.Sai && client is not null && computers.Length == 0)
             await Refresh();
-    }
-    private async void DeleteAgent(object sender, RoutedEventArgs e)
-    {
-        if (busy || selected is null) return;
-        if (await Dialog("Delete agent?", "This deletes the local conversation. It does not delete the Sai computer or remote task history.", "Delete").ShowAsync() != ContentDialogResult.Primary) return;
-        conversations.Remove(selected); Agents.SelectedItem = conversations.FirstOrDefault(); await Persist();
+        await UpdateScreen();
     }
 
     private static void SetButtonsEnabled(StackPanel panel, bool enabled)
@@ -260,13 +766,63 @@ public sealed partial class MainWindow : Window
         foreach (var control in panel.Children.OfType<Control>()) control.IsEnabled = enabled;
     }
 
+    private Microsoft.UI.Xaml.Media.Brush Theme(string key) =>
+        (Microsoft.UI.Xaml.Media.Brush)((ResourceDictionary)Application.Current.Resources.ThemeDictionaries[
+            Root.ActualTheme == ElementTheme.Dark ? "Dark" : "Light"])[key];
+
     private void Draw(ChatEntry entry)
     {
-        var panel = new StackPanel { Spacing = 6 };
-        panel.Children.Add(new TextBlock { Text = entry.Role, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true };
-        panel.Children.Add(text); entryText[entry.Id] = text;
-        if (entry.ApprovalId is not null && !entry.Answered)
+        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 15, LineHeight = 22 };
+        entryText[entry.Id] = text;
+        FrameworkElement element;
+        StackPanel? panel = null;
+        switch (entry.Role)
+        {
+            case "You":
+                // Black bubble on the right, as on macOS.
+                text.Foreground = Theme("BubbleForeground");
+                element = new Border
+                {
+                    Child = text, Background = Theme("BubbleBackground"), CornerRadius = new CornerRadius(22),
+                    Padding = new Thickness(18, 10, 18, 10), HorizontalAlignment = HorizontalAlignment.Right, MaxWidth = 560,
+                };
+                break;
+            case "Activity":
+            {
+                var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                row.Children.Add(new FontIcon { Glyph = "", FontSize = 14, Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 52, 199, 89)), VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 4, 0, 0) });
+                text.FontSize = 14; text.Foreground = Theme("MutedText"); text.MaxLines = 3; text.TextTrimming = TextTrimming.CharacterEllipsis;
+                row.Children.Add(text);
+                element = new Border
+                {
+                    Child = row, BorderBrush = Theme("CardBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(20),
+                    Padding = new Thickness(16, 8, 18, 8), HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 560,
+                };
+                break;
+            }
+            case "Error":
+                text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 221, 54, 72));
+                element = text;
+                break;
+            case "Needs you":
+            {
+                panel = new StackPanel { Spacing = 12 };
+                var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
+                head.Children.Add(new FontIcon { Glyph = "", FontSize = 16, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(0, 3, 0, 0) });
+                head.Children.Add(text);
+                panel.Children.Add(head);
+                element = new Border
+                {
+                    Child = panel, BorderBrush = Theme("CardBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(18),
+                    Background = Theme("CardBackground"), Padding = new Thickness(18, 14, 18, 14), HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 600,
+                };
+                break;
+            }
+            default:
+                element = text; // Agent replies are plain text, left aligned.
+                break;
+        }
+        if (panel is not null && entry.ApprovalId is not null && !entry.Answered)
         {
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             if (entry.LinkOnly)
@@ -306,17 +862,19 @@ public sealed partial class MainWindow : Window
             approvalControls[entry.Id] = buttons;
         }
         var following = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
-        Messages.Children.Add(panel);
+        Messages.Children.Add(element);
         if (following) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
     }
     private void Add(Conversation owner, ChatEntry entry)
     {
         owner.Entries.Add(entry);
-        if (selected == owner) Draw(entry);
+        Row(owner).Refresh();
+        if (selected == owner) { Draw(entry); EmptyChat.Visibility = Visibility.Collapsed; UpdateContext(); }
     }
     private void Change(ChatEntry entry)
     {
         var following = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
+        if (selected is not null) Row(selected).Refresh();
         if (entryText.TryGetValue(entry.Id, out var text)) text.Text = entry.Text;
         if (following) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
     }
@@ -370,7 +928,7 @@ public sealed partial class MainWindow : Window
         if (!local && CurrentComputer is null) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return; }
         if (local && !PrivateComputer.IsConfigured)
         {
-            Show("Set up the Private computer with scripts/setup-private-vm.ps1. See the Windows README.");
+            Show("This PC's Private computer isn't set up yet. Choose New agent › This PC › Set up.");
             return;
         }
         var history = owner.Entries.Where(entry => entry.Role is "You" or "Agent").TakeLast(12)
@@ -389,7 +947,7 @@ public sealed partial class MainWindow : Window
             {
                 var computer = new PrivateComputer();
                 using var agent = new LocalAgent();
-                PrivatePreview.Visibility = Visibility.Visible;
+                if (!panelOpen) TogglePanel(this, new RoutedEventArgs());
                 Controls();
                 await computer.Start(cancellation.Token);
                 await foreach (var progress in agent.Run(message, owner.ModelId ?? "gemma4", history, computer, cancellation.Token))
@@ -453,15 +1011,7 @@ public sealed partial class MainWindow : Window
     {
         if (IsPrivate)
         {
-            bool show = PrivatePreview.Visibility == Visibility.Collapsed;
-            PrivatePreview.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-            Controls();
-            if (show && !busy)
-                await UsePrivateComputer(async computer =>
-                {
-                    await computer.Start(CancellationToken.None);
-                    await ShowPrivateScreen(await computer.Capture(CancellationToken.None));
-                });
+            if (!busy) await StartPrivateScreen();
             return;
         }
         if (busy || CurrentComputer is not { } computer || client is null) return;
@@ -482,14 +1032,13 @@ public sealed partial class MainWindow : Window
             await UsePrivateComputer(async computer =>
             {
                 await computer.Stop();
-                PrivateScreen.Source = null;
-                PrivatePreview.Visibility = Visibility.Collapsed;
+                PrivateScreen.Source = null; privateScreenShown = false;
             });
             return;
         }
         if (busy || CurrentComputer is not { CanWake: true } computer || client is null) return;
         busy = true; Controls();
-        try { await client.Wake(computer.Id); Show("Sai confirmed the wake request. Refresh to check startup progress.", false); }
+        try { await client.Wake(computer.Id); Show("Sai is waking the computer. Choose ⋯ › Refresh computers in a moment.", false); }
         catch (Exception error) { Error(error); }
         finally { busy = false; Controls(); }
     }
@@ -515,6 +1064,8 @@ public sealed partial class MainWindow : Window
         var image = new BitmapImage();
         await image.SetSourceAsync(stream);
         PrivateScreen.Source = image;
+        privateScreenShown = true;
+        Controls();
     }
 
     private async void Closing(AppWindow sender, AppWindowClosingEventArgs args)

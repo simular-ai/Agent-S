@@ -9,7 +9,20 @@ public partial class App : Application
     {
         // Opt-in startup-only diagnostics for the credential-free Windows CI smoke run.
         // Leave the exception unhandled: the smoke check must fail on a startup crash.
-        UnhandledException += (_, args) => WriteStartupFailure(args.Exception);
+        UnhandledException += (_, args) =>
+        {
+            WriteStartupFailure(args.Exception);
+            try
+            {
+                var log = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simular", "Agent S", "crash.log");
+                File.AppendAllText(log, $"{DateTimeOffset.Now:u}\n{args.Exception}\n\n");
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        };
+        // Keep the embedded Sai screen's browser data in the user profile, not next to the executable.
+        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simular", "Agent S", "WebView2"));
         try { InitializeComponent(); }
         catch (Exception error) { WriteStartupFailure(error); throw; }
     }

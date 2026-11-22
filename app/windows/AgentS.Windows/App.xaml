@@ -1,3 +1,46 @@
 <Application x:Class="AgentS.Windows.App" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <Application.Resources><ResourceDictionary><ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" /></ResourceDictionary.MergedDictionaries></ResourceDictionary></Application.Resources>
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries><XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" /></ResourceDictionary.MergedDictionaries>
+      <!-- Agent S palette, matched to the macOS app. -->
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+          <SolidColorBrush x:Key="SidebarBackground" Color="#F6F6F6" />
+          <SolidColorBrush x:Key="ChatBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CardBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="CardBorder" Color="#E4E4E4" />
+          <SolidColorBrush x:Key="DividerBrush" Color="#E6E6E6" />
+          <SolidColorBrush x:Key="BubbleBackground" Color="#000000" />
+          <SolidColorBrush x:Key="BubbleForeground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ChipBackground" Color="#F1F1F1" />
+          <SolidColorBrush x:Key="MutedText" Color="#7A7A7A" />
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Dark">
+          <SolidColorBrush x:Key="SidebarBackground" Color="#1F1F1F" />
+          <SolidColorBrush x:Key="ChatBackground" Color="#161616" />
+          <SolidColorBrush x:Key="CardBackground" Color="#262626" />
+          <SolidColorBrush x:Key="CardBorder" Color="#333333" />
+          <SolidColorBrush x:Key="DividerBrush" Color="#2E2E2E" />
+          <SolidColorBrush x:Key="BubbleBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="BubbleForeground" Color="#000000" />
+          <SolidColorBrush x:Key="ChipBackground" Color="#262626" />
+          <SolidColorBrush x:Key="MutedText" Color="#9A9A9A" />
+        </ResourceDictionary>
+      </ResourceDictionary.ThemeDictionaries>
+      <Style x:Key="CircleButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Width" Value="40" />
+        <Setter Property="Height" Value="40" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="20" />
+        <Setter Property="Background" Value="{ThemeResource CardBackground}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource CardBorder}" />
+      </Style>
+      <Style x:Key="SectionLabel" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="40" />
+        <Setter Property="Foreground" Value="{ThemeResource MutedText}" />
+      </Style>
+    </ResourceDictionary>
+  </Application.Resources>
 </Application>
