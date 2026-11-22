@@ -23,7 +23,7 @@ public sealed record SaiModel(string Id, string Name, bool Allowed = true)
 }
 
 [JsonConverter(typeof(JsonStringEnumConverter<ConversationTarget>))]
-public enum ConversationTarget { Sai, Private }
+public enum ConversationTarget { Sai, Private, ThisPc }
 
 public sealed class Conversation
 {
@@ -37,6 +37,8 @@ public sealed class Conversation
     public PrivateHarness? Harness { get; set; }
     /// <summary>The harness's own session to resume, per harness, so switching back continues where it was.</summary>
     public Dictionary<PrivateHarness, string> HarnessSessions { get; set; } = [];
+    /// <summary>This PC agents: how the model is reached. Private agents always use Ollama.</summary>
+    public ModelProvider Provider { get; set; } = ModelProvider.Ollama;
     public List<ChatEntry> Entries { get; set; } = [];
     public override string ToString() => Name;
 }
@@ -51,4 +53,6 @@ public sealed class ChatEntry
     [JsonIgnore] public Uri? ApprovalUrl { get; set; }
     [JsonIgnore] public bool LinkOnly { get; set; }
     [JsonIgnore] public bool Answered { get; set; }
+    /// <summary>A This PC tool use waiting for the person: called with true to allow, false to deny.</summary>
+    [JsonIgnore] public Action<bool>? LocalAnswer { get; set; }
 }

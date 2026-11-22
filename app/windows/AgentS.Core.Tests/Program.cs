@@ -71,6 +71,7 @@ var saved = JsonSerializer.Serialize(new Conversation { Entries = [new ChatEntry
 Check(!saved.Contains("private-token") && !saved.Contains("ApprovalId"), "Approval URLs and actionable IDs are excluded from local history");
 await PrivateAgentTests.Run(Check);
 await HarnessTests.Run(Check);
+await ThisPcTests.Run(Check);
 Console.WriteLine($"{passed} assertions passed.");
 
 sealed class RecordingHandler : HttpMessageHandler

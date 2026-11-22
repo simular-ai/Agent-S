@@ -30,6 +30,10 @@ public sealed partial class MainWindow : Window
     private readonly Microsoft.UI.Xaml.Data.CollectionViewSource agentGroups = new() { IsSourceGrouped = true };
     private bool panelOpen = true, rebuilding, privateScreenShown, preferPrivate;
     private HarnessUsage? usage;
+    /// <summary>Whether the screen panel's image came from This PC (a pc screenshot) rather than the Private computer.</summary>
+    private bool screenFromPc;
+    /// <summary>This PC: approve the rest of the current turn's actions without asking (reset every turn).</summary>
+    private bool approveRestOfTurn;
     private Uri? liveViewUri;
 
     public MainWindow()
@@ -65,6 +69,7 @@ public sealed partial class MainWindow : Window
     }
 
     private bool IsPrivate => selected?.Target == ConversationTarget.Private;
+    private bool IsThisPc => selected?.Target == ConversationTarget.ThisPc;
 
     // ---- Sidebar ---------------------------------------------------------------------------------
 
@@ -79,7 +84,9 @@ public sealed partial class MainWindow : Window
         var groups = new List<AgentGroup>();
         var local = conversations.Where(c => c.Target == ConversationTarget.Private).Select(Row).ToArray();
         var cloud = conversations.Where(c => c.Target == ConversationTarget.Sai).Select(Row).ToArray();
+        var pc = conversations.Where(c => c.Target == ConversationTarget.ThisPc).Select(Row).ToArray();
         if (local.Length > 0) groups.Add(new AgentGroup("Private", "", local));
+        if (pc.Length > 0) groups.Add(new AgentGroup("This PC", "", pc));
         if (cloud.Length > 0) groups.Add(new AgentGroup("Cloud", "", cloud));
         rebuilding = true;
         try
@@ -133,6 +140,28 @@ public sealed partial class MainWindow : Window
         if (selected is not { } owner || busy) return;
         var menu = new MenuFlyout { Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.Bottom };
         IEnumerable<(string Id, string Label)> choices;
+        if (owner.Target == ConversationTarget.ThisPc)
+        {
+            // Claude Code on this PC: a model from Ollama, or from OpenRouter with the saved key.
+            string[] installed = [];
+            try { using var agent = new LocalAgent(); installed = await agent.Models(); } catch { }
+            void AddChoice(ModelProvider provider, string id)
+            {
+                var item = new ToggleMenuFlyoutItem { Text = id, IsChecked = owner.Provider == provider && owner.ModelId == id };
+                item.Click += async (_, _) => { owner.Provider = provider; owner.ModelId = id; Controls(); await Persist(); };
+                menu.Items.Add(item);
+            }
+            menu.Items.Add(new MenuFlyoutItem { Text = "Ollama on this PC", IsEnabled = false });
+            if (installed.Length == 0) menu.Items.Add(new MenuFlyoutItem { Text = "Ollama isn't running or has no models", IsEnabled = false });
+            foreach (var id in installed) AddChoice(ModelProvider.Ollama, id);
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(new MenuFlyoutItem { Text = Secrets.ReadOpenRouter() is null ? "OpenRouter (add a key in Accounts)" : "OpenRouter", IsEnabled = false });
+            var openRouterChoices = ThisPcAgent.SuggestedOpenRouterModels.ToList();
+            if (owner.Provider == ModelProvider.OpenRouter && owner.ModelId is { } current && !openRouterChoices.Contains(current)) openRouterChoices.Insert(0, current);
+            if (Secrets.ReadOpenRouter() is not null) foreach (var id in openRouterChoices) AddChoice(ModelProvider.OpenRouter, id);
+            menu.ShowAt(ModelPill);
+            return;
+        }
         if (owner.Target == ConversationTarget.Private)
         {
             string[] installed = [];
@@ -173,7 +202,7 @@ public sealed partial class MainWindow : Window
         Composer.IsEnabled = !busy && selected is not null;
         SendButton.IsEnabled = !busy && storageReady && !string.IsNullOrWhiteSpace(Composer.Text) && (selected?.Target switch
         {
-            ConversationTarget.Private => true,
+            ConversationTarget.Private or ConversationTarget.ThisPc => true,
             ConversationTarget.Sai => client is not null,
             _ => false,
         });
@@ -199,6 +228,13 @@ public sealed partial class MainWindow : Window
             ? "Agents work on a private computer on this PC or on a Sai computer in the cloud. Choose + to create one."
             : IsPrivate ? "It works on the private Linux computer on this PC. Watch it on the right."
             : "It works on your Sai computer. Watch it on the right.";
+        if (IsThisPc && selected is not null)
+        {
+            ModelPillIcon.Glyph = "";
+            ModelPillText.Text = $"This PC · Claude Code · {(selected.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{selected.ModelId}";
+            Composer.PlaceholderText = $"Ask {selected.Name} to do something on this PC…";
+            EmptyChatText.Text = "It works on this PC itself and asks you before every action.";
+        }
 
         // Computer header and actions.
         ScreenButton.IsEnabled = IsPrivate ? !busy && PrivateComputer.IsConfigured : !busy && CurrentComputer is not null;
@@ -216,6 +252,13 @@ public sealed partial class MainWindow : Window
             : CurrentComputer?.Availability ?? (client is null ? "Connect Sai in Accounts" : "Unavailable");
         StatusDot.Fill = new Microsoft.UI.Xaml.Media.SolidColorBrush(online || running
             ? global::Windows.UI.Color.FromArgb(255, 52, 199, 89) : global::Windows.UI.Color.FromArgb(255, 154, 154, 154));
+        if (IsThisPc)
+        {
+            // The agent works on this desktop; there's no separate computer to start, stop or reset.
+            ScreenButton.IsEnabled = WakeButton.IsEnabled = RefreshButton.IsEnabled = false;
+            ComputerName.Text = "This PC";
+            ComputerState.Text = running ? "Working… it asks before each action" : "Your apps and files";
+        }
         UpdatePlaceholder();
         UpdateContext();
     }
@@ -224,14 +267,16 @@ public sealed partial class MainWindow : Window
 
     private void UpdatePlaceholder()
     {
-        bool showImage = IsPrivate && PrivateScreen.Source is not null;
-        bool showLive = !IsPrivate && liveViewUri is not null && CurrentComputer?.Online == true;
+        bool showImage = (IsPrivate && !screenFromPc || IsThisPc && screenFromPc) && PrivateScreen.Source is not null;
+        bool showLive = !IsPrivate && !IsThisPc && liveViewUri is not null && CurrentComputer?.Online == true;
         PrivateScreen.Visibility = showImage ? Visibility.Visible : Visibility.Collapsed;
         LiveView.Visibility = showLive ? Visibility.Visible : Visibility.Collapsed;
         ScreenPlaceholder.Visibility = showImage || showLive ? Visibility.Collapsed : Visibility.Visible;
         PlaceholderAction.Visibility = Visibility.Collapsed;
         if (selected is null)
         { PlaceholderTitle.Text = "No computer yet"; PlaceholderText.Text = "Create an agent to see its computer here."; return; }
+        if (IsThisPc)
+        { PlaceholderTitle.Text = "This PC"; PlaceholderText.Text = "The agent works on this desktop. Screenshots it takes appear here."; return; }
         if (IsPrivate)
         {
             if (!PrivateComputer.IsConfigured)
@@ -315,6 +360,15 @@ public sealed partial class MainWindow : Window
             Pair("Computer", PrivateComputer.UsesWsl || !PrivateComputer.IsConfigured ? "Private Linux (WSL)" : "Private Linux (Hyper-V)");
             if (harness.RunsInComputer())
                 Pair("Session", owner.HarnessSessions.GetValueOrDefault(harness) ?? "New (starts with the next message)", mono: true);
+            if (owner == selected && usage is { } used)
+                Pair("Last turn", $"{used.Input:N0} tokens in · {used.Output:N0} out");
+        }
+        else if (owner.Target == ConversationTarget.ThisPc)
+        {
+            Pair("Harness", "Claude Code · on this PC");
+            Pair("Model", owner.Provider == ModelProvider.OpenRouter ? $"{owner.ModelId} · OpenRouter" : $"{owner.ModelId} · Ollama on this PC");
+            Pair("Computer", "This PC · asks before each action");
+            Pair("Session", owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode) ?? "New (starts with the next message)", mono: true);
             if (owner == selected && usage is { } used)
                 Pair("Last turn", $"{used.Input:N0} tokens in · {used.Output:N0} out");
         }
@@ -413,8 +467,31 @@ public sealed partial class MainWindow : Window
         var content = new StackPanel { Spacing = 12 };
         content.Children.Add(new TextBlock { Text = "The key is saved in Windows Credential Locker. Conversations stay on this Windows account.", TextWrapping = TextWrapping.Wrap });
         content.Children.Add(password);
-        var dialog = Dialog("Accounts · Sai", content, "Save key");
-        dialog.SecondaryButtonText = "Remove key";
+        // OpenRouter, for This PC agents: saved or removed right here, separately from the Sai key below.
+        var openRouterKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = Secrets.ReadOpenRouter() is null ? "Paste a key from openrouter.ai" : "A key is saved. Paste a new one to replace it." };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(openRouterKey, "OpenRouterApiKey");
+        var openRouterStatus = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Opacity = 0.7,
+            Text = "Used by This PC agents you set to OpenRouter. Agent S adds it to requests itself, so agents never see it." };
+        var saveOpenRouter = new Button { Content = "Save OpenRouter key" };
+        var removeOpenRouter = new Button { Content = "Remove", IsEnabled = Secrets.ReadOpenRouter() is not null };
+        saveOpenRouter.Click += (_, _) =>
+        {
+            if (string.IsNullOrWhiteSpace(openRouterKey.Password)) return;
+            try { Secrets.SaveOpenRouter(openRouterKey.Password.Trim()); openRouterStatus.Text = "OpenRouter key saved."; removeOpenRouter.IsEnabled = true; }
+            catch (Exception failure) { openRouterStatus.Text = Describe(failure); }
+            openRouterKey.Password = "";
+        };
+        removeOpenRouter.Click += (_, _) =>
+        {
+            try { Secrets.DeleteOpenRouter(); openRouterStatus.Text = "OpenRouter key removed."; removeOpenRouter.IsEnabled = false; }
+            catch (Exception failure) { openRouterStatus.Text = Describe(failure); }
+        };
+        var openRouterButtons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        openRouterButtons.Children.Add(saveOpenRouter); openRouterButtons.Children.Add(removeOpenRouter);
+        content.Children.Add(new MenuFlyoutSeparator());
+        content.Children.Add(openRouterKey); content.Children.Add(openRouterButtons); content.Children.Add(openRouterStatus);
+        var dialog = Dialog("Accounts", content, "Save Sai key");
+        dialog.SecondaryButtonText = "Remove Sai key";
         var result = await dialog.ShowAsync();
         try
         {
@@ -426,7 +503,7 @@ public sealed partial class MainWindow : Window
             else if (result == ContentDialogResult.Secondary) await UseSaiKey(null);
         }
         catch (Exception error) { Error(error); }
-        finally { password.Password = ""; Controls(); }
+        finally { password.Password = ""; openRouterKey.Password = ""; Controls(); }
     }
 
     private async void NewAgent(object sender, RoutedEventArgs e)
@@ -436,7 +513,9 @@ public sealed partial class MainWindow : Window
         var wslState = WslComputer.Readiness.Ready;
         var secondary = Application.Current.Resources.TryGetValue("TextFillColorSecondaryBrush", out var brush)
             ? brush as Microsoft.UI.Xaml.Media.Brush : null;
-        static string Suggested(bool cloud) => cloud ? "Cloud agent" : "Private agent";
+        // Modes in the order of the "Where should it work?" options.
+        const int PrivateMode = 0, PcMode = 1, CloudMode = 2;
+        static string Suggested(int mode) => mode switch { CloudMode => "Cloud agent", PcMode => "PC agent", _ => "Private agent" };
         static void Id(UIElement element, string id) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(element, id);
         TextBlock Note(string text = "")
         {
@@ -448,7 +527,7 @@ public sealed partial class MainWindow : Window
         // Prefer whatever works on this PC right now: a set-up Private computer, else a connected Sai account.
         bool startCloud = !preferPrivate && !privateReady && client is not null;
         preferPrivate = false;
-        var name = new TextBox { Header = "Name", Text = Suggested(startCloud), MaxLength = 100 };
+        var name = new TextBox { Header = "Name", Text = Suggested(startCloud ? CloudMode : PrivateMode), MaxLength = 100 };
 
         RadioButton Option(string id, string title, string detail)
         {
@@ -459,13 +538,15 @@ public sealed partial class MainWindow : Window
             Id(option, id); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(option, title);
             return option;
         }
-        var privateOption = Option("TargetPrivate", "This PC · Private",
+        var privateOption = Option("TargetPrivate", "Private · Linux computer on this PC",
             "Works in a private Linux computer on this PC, with an AI model that runs locally.");
+        var pcOption = Option("TargetThisPc", "This PC · your apps and files",
+            "Works on this PC itself. It asks you before every action, and you can stop it any time.");
         var cloudOption = Option("TargetCloud", "Cloud · Sai computer",
             "Works on a computer in your Sai account. Nothing to install.");
         var target = new RadioButtons { Header = "Where should it work?" };
-        target.Items.Add(privateOption); target.Items.Add(cloudOption);
-        target.SelectedIndex = startCloud ? 1 : 0;
+        target.Items.Add(privateOption); target.Items.Add(pcOption); target.Items.Add(cloudOption);
+        target.SelectedIndex = startCloud ? CloudMode : PrivateMode;
 
         // ---- This PC: one checklist, one button ----
         bool ollamaReady = false, modelReady = false, restartPending = false, checkedPc = false;
@@ -554,32 +635,84 @@ public sealed partial class MainWindow : Window
         var cloud = new StackPanel { Spacing = 12 };
         cloud.Children.Add(keyPanel); cloud.Children.Add(loading); cloud.Children.Add(cloudNotice); cloud.Children.Add(choices);
 
+        // ---- This PC: Claude Code on the PC itself, Ollama or OpenRouter ----
+        var claudePath = ThisPcRunner.FindClaude();
+        bool hasGitBash = ThisPcRunner.FindGitBash() is not null;
+        string[] openRouterModels = ThisPcAgent.SuggestedOpenRouterModels;
+        var pcNotice = new InfoBar { IsClosable = false, Severity = InfoBarSeverity.Warning };
+        var pcInstall = new HyperlinkButton { Content = "How to install Claude Code", NavigateUri = ThisPcRunner.ClaudeSetup };
+        var pcProvider = new ComboBox
+        {
+            Header = "Model provider", HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = new[] { ModelProvider.Ollama.DisplayName(), ModelProvider.OpenRouter.DisplayName() }, SelectedIndex = 0,
+        };
+        Id(pcProvider, "PcProvider");
+        var pcModel = new ComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true };
+        Id(pcModel, "PcModel");
+        var openRouterKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = "Paste your key", Description = "Saved in Windows Credential Locker. Agents never see it." };
+        var saveOpenRouter = new Button { Content = "Save key" };
+        var getOpenRouter = new HyperlinkButton { Content = "Get a key", NavigateUri = ThisPcRunner.OpenRouterKeys };
+        var openRouterActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        openRouterActions.Children.Add(saveOpenRouter); openRouterActions.Children.Add(getOpenRouter);
+        var openRouterPanel = new StackPanel { Spacing = 8 };
+        openRouterPanel.Children.Add(openRouterKey); openRouterPanel.Children.Add(openRouterActions);
+        var desktop = new StackPanel { Spacing = 12 };
+        desktop.Children.Add(Note("Harness: Claude Code, installed on this PC. Agent S uses its own Claude Code profile, and asks you before every command, click or file change. Looking (a screenshot or a window's contents) runs without asking."));
+        desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModel);
+        pcNotice.IsOpen = claudePath is null || !hasGitBash;
+        pcNotice.Message = claudePath is null ? "Claude Code isn't installed on this PC." : "Claude Code on Windows needs Git for Windows (Git Bash).";
+        if (claudePath is null) pcNotice.ActionButton = pcInstall;
+        bool UseOpenRouter() => pcProvider.SelectedIndex == 1;
+        string PcModelText() => (pcModel.SelectedItem as string ?? pcModel.Text ?? "").Trim();
+        void ShowPcModels()
+        {
+            var keep = PcModelText();
+            var items = UseOpenRouter() ? openRouterModels : localModel.ItemsSource as string[] ?? [];
+            pcModel.ItemsSource = items;
+            pcModel.SelectedItem = items.Contains(keep) ? keep : items.FirstOrDefault();
+            if (pcModel.SelectedItem is null) pcModel.Text = "";
+            pcModel.Description = UseOpenRouter() ? "Any model id from openrouter.ai/models. Prompts and what the agent reads go to OpenRouter and the model's provider." : "Runs on this PC through Ollama.";
+        }
+
         var hint = Note();
         var form = new StackPanel { Spacing = 16, MinWidth = 420 };
-        form.Children.Add(name); form.Children.Add(target); form.Children.Add(local); form.Children.Add(cloud); form.Children.Add(hint);
+        form.Children.Add(name); form.Children.Add(target); form.Children.Add(local); form.Children.Add(desktop); form.Children.Add(cloud); form.Children.Add(hint);
         var dialog = Dialog("New agent", new ScrollViewer { Content = form, VerticalScrollBarVisibility = ScrollBarVisibility.Auto }, "Create");
         dialog.DefaultButton = ContentDialogButton.Primary;
 
-        bool UseCloud() => target.SelectedIndex == 1;
+        int Mode() => Math.Max(0, target.SelectedIndex);
+        bool UseCloud() => Mode() == CloudMode;
         void SetMode()
         {
-            bool useCloud = UseCloud();
-            local.Visibility = useCloud ? Visibility.Collapsed : Visibility.Visible;
+            int mode = Mode();
+            bool useCloud = mode == CloudMode;
+            local.Visibility = mode == PrivateMode ? Visibility.Visible : Visibility.Collapsed;
+            desktop.Visibility = mode == PcMode ? Visibility.Visible : Visibility.Collapsed;
             cloud.Visibility = useCloud ? Visibility.Visible : Visibility.Collapsed;
             keyPanel.Visibility = client is null ? Visibility.Visible : Visibility.Collapsed;
             choices.Visibility = client is not null && computers.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
             loading.Visibility = loadingCloud ? Visibility.Visible : Visibility.Collapsed;
-            string? blocker = name.Text.Trim().Length == 0 ? "Give the agent a name." : useCloud
-                ? client is null ? "Connect your Sai account to continue."
-                : loadingCloud ? "Loading your computers…"
-                : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null
-                : setupRunning ? "Setting up this PC…"
-                : !checkedPc ? "Checking this PC…"
-                : !(privateReady && ollamaReady && modelReady) ? "Choose Set up this PC, or pick Cloud."
-                : localModel.SelectedItem is not string ? "Choose a model to continue." : null;
+            bool hasOpenRouterKey = Secrets.ReadOpenRouter() is not null;
+            openRouterPanel.Visibility = UseOpenRouter() && !hasOpenRouterKey ? Visibility.Visible : Visibility.Collapsed;
+            string? blocker = name.Text.Trim().Length == 0 ? "Give the agent a name." : mode switch
+            {
+                CloudMode => client is null ? "Connect your Sai account to continue."
+                    : loadingCloud ? "Loading your computers…"
+                    : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null,
+                PcMode => claudePath is null ? "Install Claude Code on this PC to continue."
+                    : !hasGitBash ? "Install Git for Windows to continue."
+                    : UseOpenRouter() && !hasOpenRouterKey ? "Add your OpenRouter key to continue."
+                    : !UseOpenRouter() && !checkedPc ? "Checking Ollama…"
+                    : !UseOpenRouter() && !ollamaReady ? "Start Ollama on this PC, or choose OpenRouter."
+                    : PcModelText().Length == 0 ? "Choose a model to continue." : null,
+                _ => setupRunning ? "Setting up this PC…"
+                    : !checkedPc ? "Checking this PC…"
+                    : !(privateReady && ollamaReady && modelReady) ? "Choose Set up this PC, or pick Cloud."
+                    : localModel.SelectedItem is not string ? "Choose a model to continue." : null,
+            };
             hint.Text = blocker ?? "";
             // The setup checklist already explains itself; don't repeat it underneath.
-            bool checklistShown = !useCloud && setupCard.Visibility == Visibility.Visible && checkedPc;
+            bool checklistShown = mode == PrivateMode && setupCard.Visibility == Visibility.Visible && checkedPc;
             hint.Visibility = blocker is null || checklistShown ? Visibility.Collapsed : Visibility.Visible;
             dialog.IsPrimaryButtonEnabled = blocker is null;
         }
@@ -734,13 +867,34 @@ public sealed partial class MainWindow : Window
 
         target.SelectionChanged += async (_, _) =>
         {
-            if (name.Text.Trim() is "" or "Private agent" or "Cloud agent") name.Text = Suggested(UseCloud());
+            if (name.Text.Trim() is "" or "Private agent" or "PC agent" or "Cloud agent") name.Text = Suggested(Mode());
+            if (Mode() == PcMode) ShowPcModels();
             SetMode();
             if (UseCloud() && client is not null && computers.Length == 0 && !loadingCloud) await LoadCloud(Refresh);
         };
         computer.SelectionChanged += (_, _) => SetMode();
         localModel.SelectionChanged += (_, _) => SetMode();
         name.TextChanged += (_, _) => SetMode();
+        pcProvider.SelectionChanged += async (_, _) =>
+        {
+            ShowPcModels(); SetMode();
+            // The full list loads in the background; the suggestions show at once.
+            if (UseOpenRouter() && openRouterModels == ThisPcAgent.SuggestedOpenRouterModels)
+            {
+                var all = await OpenRouterProxy.Models();
+                if (all.Length > 0) { openRouterModels = ThisPcAgent.SuggestedOpenRouterModels.Concat(all.Except(ThisPcAgent.SuggestedOpenRouterModels)).ToArray(); if (UseOpenRouter()) ShowPcModels(); }
+            }
+        };
+        pcModel.SelectionChanged += (_, _) => SetMode();
+        pcModel.TextSubmitted += (_, _) => SetMode();
+        pcModel.LostFocus += (_, _) => SetMode();
+        saveOpenRouter.Click += (_, _) =>
+        {
+            var value = openRouterKey.Password.Trim();
+            if (value.Length == 0) return;
+            try { Secrets.SaveOpenRouter(value); } catch (Exception failure) { Error(failure); }
+            openRouterKey.Password = ""; SetMode();
+        };
         key.KeyDown += async (_, args) => { if (args.Key == VirtualKey.Enter) { args.Handled = true; await Connect(); } };
         connect.Click += async (_, _) => await Connect();
         retry.Click += async (_, _) => await LoadCloud(Refresh);
@@ -757,12 +911,25 @@ public sealed partial class MainWindow : Window
 
         SetCloudChoices(null);
         SetMode();
-        _ = CheckPc();
+        _ = CheckThenShowPcModels();
+        async Task CheckThenShowPcModels()
+        {
+            await CheckPc();
+            ShowPcModels(); SetMode();
+        }
         if (startCloud && computers.Length == 0) _ = LoadCloud(Refresh);
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
         var conversation = new Conversation { Name = name.Text.Trim() };
-        if (!UseCloud())
+        if (Mode() == PcMode)
+        {
+            if (PcModelText() is not { Length: > 0 } pcChoice) return;
+            conversation.Target = ConversationTarget.ThisPc;
+            conversation.Harness = PrivateHarness.ClaudeCode;
+            conversation.Provider = UseOpenRouter() ? ModelProvider.OpenRouter : ModelProvider.Ollama;
+            conversation.ModelId = pcChoice;
+        }
+        else if (!UseCloud())
         {
             if (localModel.SelectedItem is not string localChoice) return;
             conversation.Target = ConversationTarget.Private;
@@ -855,7 +1022,33 @@ public sealed partial class MainWindow : Window
                 element = text; // Agent replies are plain text, left aligned.
                 break;
         }
-        if (panel is not null && entry.ApprovalId is not null && !entry.Answered)
+        if (panel is not null && entry.LocalAnswer is { } localAnswer && !entry.Answered)
+        {
+            // This PC: the exact step is shown above; nothing runs until the person chooses.
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            void Answer(bool allowed, string note, bool rest = false)
+            {
+                if (entry.Answered) return;
+                entry.Answered = true;
+                if (rest) approveRestOfTurn = true;
+                localAnswer(allowed);
+                SetButtonsEnabled(buttons, false);
+                text.Text = entry.Text += "\n" + note;
+            }
+            var allow = new Button { Content = "Allow" };
+            if (Application.Current.Resources.TryGetValue("AccentButtonStyle", out var accentStyle) && accentStyle is Style style) allow.Style = style;
+            allow.Click += (_, _) => Answer(true, "Allowed.");
+            var allowRest = new Button { Content = "Allow for this task" };
+            allowRest.Click += (_, _) => Answer(true, "Allowed, with the rest of this task.", rest: true);
+            var deny = new Button { Content = "Deny" };
+            deny.Click += (_, _) => Answer(false, "Denied.");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(allow, "ApproveStep");
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(deny, "DenyStep");
+            buttons.Children.Add(allow); buttons.Children.Add(allowRest); buttons.Children.Add(deny);
+            panel.Children.Add(buttons);
+            approvalControls[entry.Id] = buttons;
+        }
+        else if (panel is not null && entry.ApprovalId is not null && !entry.Answered)
         {
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
             if (entry.LinkOnly)
@@ -957,8 +1150,9 @@ public sealed partial class MainWindow : Window
         if (busy || selected is null || string.IsNullOrWhiteSpace(Composer.Text)) return;
         var owner = selected;
         bool local = owner.Target == ConversationTarget.Private;
-        if (!local && (owner.Target != ConversationTarget.Sai || client is null)) return;
-        if (!local && CurrentComputer is null) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return; }
+        bool pc = owner.Target == ConversationTarget.ThisPc;
+        if (!local && !pc && (owner.Target != ConversationTarget.Sai || client is null)) return;
+        if (!local && !pc && CurrentComputer is null) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return; }
         if (local && !PrivateComputer.IsConfigured)
         {
             Show("This PC's Private computer isn't set up yet. Choose New agent › This PC › Set up.");
@@ -976,7 +1170,11 @@ public sealed partial class MainWindow : Window
         try
         {
             await Persist();
-            if (local && (owner.Harness ?? PrivateHarness.AgentS) is var harness && harness.RunsInComputer())
+            if (pc)
+            {
+                await RunThisPc(owner, message, cancellation.Token);
+            }
+            else if (local && (owner.Harness ?? PrivateHarness.AgentS) is var harness && harness.RunsInComputer())
             {
                 if (!panelOpen) TogglePanel(this, new RoutedEventArgs());
                 await RunHarness(owner, harness, message, cancellation.Token);
@@ -1003,10 +1201,16 @@ public sealed partial class MainWindow : Window
             }
         }
         catch (OperationCanceledException) when (stopped)
-        { Show(local ? "Private turn stopped." : "Sai confirmed the stop request.", false); }
+        { Show(local ? "Private turn stopped." : pc ? "Stopped. Nothing else runs on this PC." : "Sai confirmed the stop request.", false); }
         catch (Exception error) { Error(error); }
         finally
         {
+            // A This PC step still waiting when the turn ends is denied, never left to run later.
+            foreach (var entry in owner.Entries.Where(entry => entry.LocalAnswer is not null && !entry.Answered))
+            {
+                entry.Answered = true; entry.LocalAnswer!(false); entry.Text += "\nNot run: the turn ended."; Change(entry);
+            }
+            pcTurnOwner = null; approveRestOfTurn = false;
             foreach (var entry in owner.Entries.Where(entry => entry.ApprovalId is not null && !entry.Answered))
             {
                 entry.Answered = true; entry.Text += "\nTurn ended. Check pending approvals in Sai."; Change(entry);
@@ -1016,6 +1220,81 @@ public sealed partial class MainWindow : Window
             await Persist();
             busy = false; Controls();
         }
+    }
+
+    /// <summary>One Claude Code turn on this PC itself, every action approved by the person, like "This Mac".</summary>
+    private async Task RunThisPc(Conversation owner, string message, CancellationToken token)
+    {
+        ThisPcRunner.UseApprovals(Decide);
+        pcTurnOwner = owner; approveRestOfTurn = false;
+        var model = owner.ModelId ?? "gemma4";
+        Add(owner, new ChatEntry { Role = "Activity", Text = $"Claude Code · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}" });
+        var calls = new Dictionary<string, (ChatEntry Entry, bool Screenshot)>();
+        var resume = owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode);
+        bool started = false, reportedError = false;
+        try
+        {
+            await foreach (var item in ThisPcRunner.Run(owner, message, resume, model, token))
+            {
+                switch (item)
+                {
+                    case HarnessStarted begun:
+                        started = true; owner.HarnessSessions[PrivateHarness.ClaudeCode] = begun.SessionId; UpdateContext(); break;
+                    case HarnessText said:
+                        Add(owner, new ChatEntry { Role = "Agent", Text = said.Text }); break;
+                    case HarnessToolCall call:
+                        // "pc apps" reads better than the tool's full path.
+                        var activity = new ChatEntry { Role = "Activity", Text = ShortPc(call.Summary) };
+                        calls[call.Id] = (activity, call.Summary.EndsWith(" screenshot", StringComparison.Ordinal));
+                        Add(owner, activity); break;
+                    case HarnessToolResult result when calls.TryGetValue(result.Id, out var done):
+                        if (result.IsError)
+                        {
+                            var first = result.Output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+                            done.Entry.Text += $"\n{(first.Contains("denied", StringComparison.OrdinalIgnoreCase) ? "Denied" : "Failed")}{(first.Length > 0 ? ": " + first : "")}";
+                            Change(done.Entry);
+                        }
+                        else if (done.Screenshot && File.Exists(ThisPcRunner.ScreenshotPath))
+                        {
+                            try { await ShowPrivateScreen(await File.ReadAllBytesAsync(ThisPcRunner.ScreenshotPath, token), fromPc: true); } catch (IOException) { }
+                        }
+                        break;
+                    case HarnessUsage used:
+                        usage = used; UpdateContext(); break;
+                    case HarnessFinished { IsError: true } end when !reportedError:
+                        reportedError = true;
+                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? "Claude Code reported an error." }); break;
+                }
+            }
+        }
+        catch (PrivateComputerException) when (!started && resume is not null)
+        {
+            owner.HarnessSessions.Remove(PrivateHarness.ClaudeCode);
+            throw new PrivateComputerException("Claude Code couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+        }
+    }
+
+    private static string ShortPc(string text) => text.Replace(ThisPcAgent.ToolCommand(ThisPcRunner.PcToolPath) + " ", "pc ", StringComparison.Ordinal);
+
+    /// <summary>The This PC agent whose turn is running; approval requests for any other agent are denied.</summary>
+    private Conversation? pcTurnOwner;
+
+    /// <summary>Called by the approval hook (off the UI thread) for each This PC tool use.</summary>
+    private Task<bool> Decide(ApprovalRequest request, CancellationToken cancellation)
+    {
+        var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        cancellation.Register(() => answer.TrySetResult(false));
+        if (!DispatcherQueue.TryEnqueue(() =>
+        {
+            var owner = pcTurnOwner;
+            if (owner is null || owner.Id != request.Agent || !running) { answer.TrySetResult(false); return; }
+            // Looking runs without asking; so does the rest of a turn the person approved as a whole.
+            if (ThisPcAgent.IsLookOnly(request.Tool, request.Input, ThisPcRunner.PcToolPath) || approveRestOfTurn) { answer.TrySetResult(true); return; }
+            var entry = new ChatEntry { Role = "Needs you", Text = ShortPc(ThisPcAgent.Describe(request.Tool, request.Input)) };
+            entry.LocalAnswer = allowed => answer.TrySetResult(allowed);
+            Add(owner, entry);
+        })) answer.TrySetResult(false);
+        return answer.Task;
     }
 
     /// <summary>One Claude Code, Codex or DeepSeek turn inside the Private computer, as on macOS.</summary>
@@ -1118,7 +1397,7 @@ public sealed partial class MainWindow : Window
     {
         var cancellation = run;
         if (cancellation is null || !running || selected != owner) return;
-        if (owner.Target == ConversationTarget.Private)
+        if (owner.Target is ConversationTarget.Private or ConversationTarget.ThisPc)
         {
             stopped = true;
             cancellation.Cancel();
@@ -1138,11 +1417,12 @@ public sealed partial class MainWindow : Window
     {
         if (!running || selected is null) return;
         stopRequested = true; Controls();
-        if (!IsPrivate && currentSession is null) Show("Waiting for the session ID before sending the stop request…", false);
+        if (!IsPrivate && !IsThisPc && currentSession is null) Show("Waiting for the session ID before sending the stop request…", false);
         else await Stop(selected);
     }
     private async void OpenComputer(object sender, RoutedEventArgs e)
     {
+        if (IsThisPc) return;
         if (IsPrivate)
         {
             if (!busy) await StartPrivateScreen();
@@ -1185,8 +1465,9 @@ public sealed partial class MainWindow : Window
         finally { busy = false; Controls(); }
     }
 
-    private async Task ShowPrivateScreen(byte[] png)
+    private async Task ShowPrivateScreen(byte[] png, bool fromPc = false)
     {
+        screenFromPc = fromPc;
         using var stream = new InMemoryRandomAccessStream();
         using (var writer = new DataWriter(stream))
         {
@@ -1198,7 +1479,7 @@ public sealed partial class MainWindow : Window
         var image = new BitmapImage();
         await image.SetSourceAsync(stream);
         PrivateScreen.Source = image;
-        privateScreenShown = true;
+        if (!fromPc) privateScreenShown = true;
         Controls();
     }
 
@@ -1208,7 +1489,7 @@ public sealed partial class MainWindow : Window
         args.Cancel = true;
         if (closing) return;
         closing = true;
-        bool local = IsPrivate;
+        bool local = IsPrivate || IsThisPc;
         var hasSession = currentSession is not null;
         var pending = run;
         var dialog = local

@@ -43,6 +43,16 @@ As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Ha
 - Harnesses run with per-tool approval disabled, as in the macOS Private mode. The guest is the sandbox: it has no Windows drives and no Windows interop. **Stop** ends the turn's whole process group in the guest.
 - Only the WSL computer supports harnesses. A Hyper-V VM from `setup-private-vm.ps1` allows only the built-in loop's bounded desktop actions.
 
+## This PC
+
+Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps, shell and files. Choose **This PC · your apps and files** in **New agent**. These agents use the Claude Code CLI installed on the PC, with Ollama or OpenRouter as the model provider.
+
+- **Requirements:** [Claude Code](https://code.claude.com/docs/en/setup) and Git for Windows, whose Git Bash Claude Code uses for its Bash tool. New agent checks for both. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
+- **Approvals:** every tool use waits for you. Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied.
+- **Using apps:** the agent uses `pc`, a PowerShell tool built on Windows UI Automation and the Windows counterpart of the Mac's `mac` tool. It needs nothing installed. Its commands are `pc apps`, `pc open`, `pc focus`, `pc tree` (the front window with refs), `pc click`, `pc type`, `pc key` and `pc screenshot`. The screen panel shows the agent's latest screenshot.
+- **OpenRouter:** add a key in **Accounts** or in New agent. It is stored in Windows Credential Locker. A loopback proxy adds it to requests to `https://openrouter.ai/api/v1` and requires a per-launch token, so the agent never holds the key. Prompts and what the agent reads go to OpenRouter and the model's provider. Pick a suggested model or type any id from openrouter.ai/models; the model menu switches between Ollama and OpenRouter models.
+- **Private stays local:** Private agents always use Ollama, matching the macOS rule that only the web pages the agent visits leave the computer in Private mode.
+
 ## Sai cloud
 
 - Create named local agent conversations with a Sai computer and allowed model; resume their Sai session after restarting.
@@ -79,9 +89,9 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | --- | --- | --- |
 | Sai cloud chat, named conversations, approvals | Implemented, pending Windows/live verification | Streaming/recovery and approval UX validation |
 | Computer display and context | Browser screen link, native status | Embedded screen panel, context/usage parity |
-| This Mac → This PC | Not included | Windows simulang adapter, accessibility/screenshot/input boundary and per-action approval bridge; reuse CLI protocols rather than invent a new agent loop |
+| This Mac → This PC | Claude Code with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Codex with a Codex account, Claude Code account sign-in, floating Agent Activity panel |
 | Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
-| Claude Code / Codex / DeepSeek on Box, OpenRouter and account providers | Not included | Windows process lifecycle and account-profile adapters; port/test the provider matrix |
+| Claude Code / Codex / DeepSeek on Box, and account providers | Not included | Windows process lifecycle and account-profile adapters; port/test the provider matrix |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |
 | 1Password, guest file sharing, model downloads | Not included | Platform-specific integrations and explicit data/consent handling |
 

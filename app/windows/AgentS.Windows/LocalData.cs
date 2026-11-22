@@ -7,22 +7,31 @@ namespace AgentS.Windows;
 internal static class Secrets
 {
     private const string Resource = "ai.simular.agent-s.windows.sai";
-    public static string? Read()
+    private const string OpenRouterResource = "ai.simular.agent-s.windows.openrouter";
+    public static string? Read() => Read(Resource);
+    public static void Save(string key) => new PasswordVault().Add(new PasswordCredential(Resource, "api-key", key));
+    public static void Delete() => Delete(Resource);
+
+    /// <summary>The OpenRouter key; only the app's loopback proxy uses it, agents never see it.</summary>
+    public static string? ReadOpenRouter() => Read(OpenRouterResource);
+    public static void SaveOpenRouter(string key) => new PasswordVault().Add(new PasswordCredential(OpenRouterResource, "api-key", key));
+    public static void DeleteOpenRouter() => Delete(OpenRouterResource);
+
+    private static string? Read(string resource)
     {
         try
         {
-            var credential = new PasswordVault().Retrieve(Resource, "api-key");
+            var credential = new PasswordVault().Retrieve(resource, "api-key");
             credential.RetrievePassword();
             return credential.Password;
         }
         catch (System.Runtime.InteropServices.COMException error) when ((uint)error.HResult == 0x80070490)
         { return null; }
     }
-    public static void Save(string key) => new PasswordVault().Add(new PasswordCredential(Resource, "api-key", key));
-    public static void Delete()
+    private static void Delete(string resource)
     {
-        var key = Read();
-        if (key is not null) new PasswordVault().Remove(new PasswordCredential(Resource, "api-key", key));
+        var key = Read(resource);
+        if (key is not null) new PasswordVault().Remove(new PasswordCredential(resource, "api-key", key));
     }
 }
 

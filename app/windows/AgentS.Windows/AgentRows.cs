@@ -28,7 +28,12 @@ public sealed class AgentRow(Conversation conversation) : INotifyPropertyChanged
         get
         {
             var last = Conversation.Entries.LastOrDefault(entry => entry.Role is not "Activity" && !string.IsNullOrWhiteSpace(entry.Text));
-            if (last is null) return Conversation.Target == ConversationTarget.Private ? "Private · this PC" : "Sai cloud computer";
+            if (last is null) return Conversation.Target switch
+            {
+                ConversationTarget.Private => "Private · this PC",
+                ConversationTarget.ThisPc => "This PC · asks before each action",
+                _ => "Sai cloud computer",
+            };
             return last.Text.ReplaceLineEndings(" ").Trim();
         }
     }

@@ -29,6 +29,8 @@
              Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Coding-agent harness tools (web, ui, Ollama relay), installed before the first harness turn. -->
     <Content Include="../scripts/guest-tools/*" Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <!-- This PC tools: the `pc` UI Automation tool and the approval hook, written to LocalAppData each turn. -->
+    <Content Include="../scripts/pc-tools/*" Link="PcTools/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\AgentS.ico;Assets\AgentS.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <!-- Publishing must run the SDK resource target, not just managed compilation. -->
