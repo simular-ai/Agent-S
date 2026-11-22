@@ -14,6 +14,7 @@
           <SolidColorBrush x:Key="BubbleForeground" Color="#FFFFFF" />
           <SolidColorBrush x:Key="ChipBackground" Color="#F1F1F1" />
           <SolidColorBrush x:Key="MutedText" Color="#626262" />
+          <SolidColorBrush x:Key="CodeText" Color="#B4235A" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="SidebarBackground" Color="#1F1F1F" />
@@ -25,6 +26,7 @@
           <SolidColorBrush x:Key="BubbleForeground" Color="#000000" />
           <SolidColorBrush x:Key="ChipBackground" Color="#262626" />
           <SolidColorBrush x:Key="MutedText" Color="#B0B0B0" />
+          <SolidColorBrush x:Key="CodeText" Color="#F28BB0" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
       <Style x:Key="CircleButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">

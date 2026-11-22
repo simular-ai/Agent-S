@@ -16,15 +16,21 @@ public sealed class OllamaRelay
     public const int MaxPayload = 1 << 20;
 
     private readonly Stream fromGuest, toGuest;
-    private readonly Func<CancellationToken, Task<Stream>> connect;
+    private readonly Func<int, CancellationToken, Task<Stream>> connect;
     private readonly ConcurrentDictionary<uint, Stream> connections = new();
     private readonly SemaphoreSlim writeGate = new(1, 1);
 
-    /// <param name="connect">Opens a new connection to Ollama on the host.</param>
-    public OllamaRelay(Stream fromGuest, Stream toGuest, Func<CancellationToken, Task<Stream>> connect)
+    /// <param name="connect">
+    /// Opens a host connection for the guest port the connection arrived on: 11434 for Ollama, 11435 for the
+    /// app's OpenRouter proxy. An open frame carries that port (uint16, big-endian); an empty one means 11434.
+    /// </param>
+    public OllamaRelay(Stream fromGuest, Stream toGuest, Func<int, CancellationToken, Task<Stream>> connect)
     {
         this.fromGuest = fromGuest; this.toGuest = toGuest; this.connect = connect;
     }
+
+    public OllamaRelay(Stream fromGuest, Stream toGuest, Func<CancellationToken, Task<Stream>> connect)
+        : this(fromGuest, toGuest, (_, token) => connect(token)) { }
 
     /// <summary>Relays until the guest closes its side or <paramref name="cancellation"/> fires.</summary>
     public async Task Run(CancellationToken cancellation)
@@ -45,7 +51,8 @@ public sealed class OllamaRelay
                     case Open:
                         try
                         {
-                            var stream = await connect(cancellation);
+                            int port = length >= 2 ? BinaryPrimitives.ReadUInt16BigEndian(payload) : 11434;
+                            var stream = await connect(port, cancellation);
                             connections[id] = stream;
                             _ = Pump(id, stream, cancellation);
                         }

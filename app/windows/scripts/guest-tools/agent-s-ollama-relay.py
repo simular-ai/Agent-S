@@ -3,11 +3,12 @@
 # listens on the guest's own 127.0.0.1:11434 (and ::1) and multiplexes each connection over stdio,
 # which reaches Agent S through wsl.exe; the app connects it to Ollama on the host.
 # Frame: type (1 byte), connection id (uint32 BE), length (uint32 BE), payload.
-# Types: 1 open (guest to host), 2 data (both ways), 3 close (both ways).
+# Types: 1 open (guest to host, payload: the guest port as uint16 BE), 2 data (both ways), 3 close (both ways).
+# Port 11434 reaches Ollama; 11435 reaches Agent S's OpenRouter proxy, which adds the key on the host.
 import os, selectors, socket, struct, sys
 
 OPEN, DATA, CLOSE = 1, 2, 3
-PORT = 11434
+PORTS = (11434, 11435)
 sel = selectors.DefaultSelector()
 out = sys.stdout.buffer
 conns = {}
@@ -33,19 +34,20 @@ def drop(ident, tell=True):
 
 
 listeners = []
-for family, address in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
-    try:
-        server = socket.socket(family, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((address, PORT))
-        server.listen(64)
-        server.setblocking(False)
-        sel.register(server, selectors.EVENT_READ, "listen")
-        listeners.append(server)
-    except OSError:
-        pass
+for port in PORTS:
+    for family, address in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            server = socket.socket(family, socket.SOCK_STREAM)
+            server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            server.bind((address, port))
+            server.listen(64)
+            server.setblocking(False)
+            sel.register(server, selectors.EVENT_READ, ("listen", port))
+            listeners.append(server)
+        except OSError:
+            pass
 if not listeners:
-    sys.stderr.write("agent-s-ollama-relay: port %d is busy\n" % PORT)
+    sys.stderr.write("agent-s-ollama-relay: ports %s are busy\n" % (PORTS,))
     sys.exit(1)
 
 os.set_blocking(0, False)
@@ -54,7 +56,7 @@ pending = b""
 
 while True:
     for key, _ in sel.select():
-        if key.data == "listen":
+        if isinstance(key.data, tuple):
             try:
                 sock, _ = key.fileobj.accept()
             except OSError:
@@ -64,7 +66,7 @@ while True:
             sock.setblocking(True)
             conns[ident] = sock
             sel.register(sock, selectors.EVENT_READ, ident)
-            send(OPEN, ident)
+            send(OPEN, ident, struct.pack(">H", key.data[1]))
         elif key.data == "stdin":
             try:
                 chunk = os.read(0, 65536)

@@ -16,6 +16,7 @@ public sealed partial class MainWindow : Window
     private readonly ObservableCollection<Conversation> conversations = [];
     private readonly HistoryStore store = new();
     private readonly Dictionary<string, TextBlock> entryText = [];
+    private readonly Dictionary<string, StackPanel> entryMarkdown = [];
     private readonly Dictionary<string, StackPanel> approvalControls = [];
     private readonly Dictionary<string, (Uri Uri, DateTime Until)> liveLinks = [];
     private Computer[] computers = [];
@@ -175,20 +176,43 @@ public sealed partial class MainWindow : Window
             if (models.Length == 0 && client is not null) await Refresh();
             choices = new[] { ("auto", "Automatic") }.Concat(models.Where(m => m.Id != "auto").Select(m => (m.Id, m.Name)));
         }
+        bool isPrivate = owner.Target == ConversationTarget.Private;
+        if (isPrivate) menu.Items.Insert(0, new MenuFlyoutItem { Text = "Ollama on this PC", IsEnabled = false });
         foreach (var (id, label) in choices)
         {
-            var item = new ToggleMenuFlyoutItem { Text = label, IsChecked = (owner.ModelId ?? "auto") == id };
-            item.Click += async (_, _) => { owner.ModelId = id; Controls(); await Persist(); };
+            var item = new ToggleMenuFlyoutItem { Text = label, IsChecked = (owner.ModelId ?? "auto") == id && (!isPrivate || owner.Provider == ModelProvider.Ollama) };
+            item.Click += async (_, _) => { owner.ModelId = id; if (isPrivate) owner.Provider = ModelProvider.Ollama; Controls(); await Persist(); };
             menu.Items.Add(item);
         }
-        if (owner.Target == ConversationTarget.Private && HarnessRunner.Supported)
+        // Private harnesses (not the built-in loop) can also use OpenRouter, through the app's key-holding proxy.
+        if (isPrivate && HarnessRunner.Supported && (owner.Harness ?? PrivateHarness.AgentS).RunsInComputer())
+        {
+            menu.Items.Add(new MenuFlyoutSeparator());
+            menu.Items.Add(new MenuFlyoutItem { Text = Secrets.ReadOpenRouter() is null ? "OpenRouter (add a key in Accounts)" : "OpenRouter", IsEnabled = false });
+            var openRouterChoices = ThisPcAgent.SuggestedOpenRouterModels.ToList();
+            if (owner.Provider == ModelProvider.OpenRouter && owner.ModelId is { } current && !openRouterChoices.Contains(current)) openRouterChoices.Insert(0, current);
+            if (Secrets.ReadOpenRouter() is not null)
+                foreach (var id in openRouterChoices)
+                {
+                    var item = new ToggleMenuFlyoutItem { Text = id, IsChecked = owner.Provider == ModelProvider.OpenRouter && owner.ModelId == id };
+                    item.Click += async (_, _) => { owner.Provider = ModelProvider.OpenRouter; owner.ModelId = id; Controls(); await Persist(); };
+                    menu.Items.Add(item);
+                }
+        }
+        if (isPrivate && HarnessRunner.Supported)
         {
             menu.Items.Add(new MenuFlyoutSeparator());
             menu.Items.Add(new MenuFlyoutItem { Text = "Harness", IsEnabled = false });
             foreach (var harness in Harnesses.All)
             {
                 var item = new ToggleMenuFlyoutItem { Text = harness.DisplayName(), IsChecked = (owner.Harness ?? PrivateHarness.AgentS) == harness };
-                item.Click += async (_, _) => { owner.Harness = harness; Controls(); await Persist(); };
+                item.Click += async (_, _) =>
+                {
+                    owner.Harness = harness;
+                    // The built-in loop talks to Ollama directly; it can't use OpenRouter.
+                    if (!harness.RunsInComputer() && owner.Provider == ModelProvider.OpenRouter) { owner.Provider = ModelProvider.Ollama; owner.ModelId = "gemma4"; }
+                    Controls(); await Persist();
+                };
                 menu.Items.Add(item);
             }
         }
@@ -228,6 +252,8 @@ public sealed partial class MainWindow : Window
             ? "Agents work on a private computer on this PC or on a Sai computer in the cloud. Choose + to create one."
             : IsPrivate ? "It works on the private Linux computer on this PC. Watch it on the right."
             : "It works on your Sai computer. Watch it on the right.";
+        if (IsPrivate && selected is { Provider: ModelProvider.OpenRouter } openRouterAgent)
+            ModelPillText.Text = $"Private · {(openRouterAgent.Harness ?? PrivateHarness.AgentS).DisplayName()} · OpenRouter · {openRouterAgent.ModelId}";
         if (IsThisPc && selected is not null)
         {
             ModelPillIcon.Glyph = "";
@@ -356,7 +382,7 @@ public sealed partial class MainWindow : Window
         {
             var harness = owner.Harness ?? PrivateHarness.AgentS;
             Pair("Harness", harness.RunsInComputer() ? $"{harness.DisplayName()} · in the Private computer" : "Agent S · local");
-            Pair("Model", $"{owner.ModelId ?? "gemma4"} · Ollama on this PC");
+            Pair("Model", owner.Provider == ModelProvider.OpenRouter ? $"{owner.ModelId} · OpenRouter" : $"{owner.ModelId ?? "gemma4"} · Ollama on this PC");
             Pair("Computer", PrivateComputer.UsesWsl || !PrivateComputer.IsConfigured ? "Private Linux (WSL)" : "Private Linux (Hyper-V)");
             if (harness.RunsInComputer())
                 Pair("Session", owner.HarnessSessions.GetValueOrDefault(harness) ?? "New (starts with the next message)", mono: true);
@@ -390,7 +416,7 @@ public sealed partial class MainWindow : Window
             if (entry.Role is "Needs you") role.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 240, 140, 30));
             if (entry.Role is "Error") role.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 221, 54, 72));
             block.Children.Add(role);
-            block.Children.Add(new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, MaxLines = 4, TextTrimming = TextTrimming.CharacterEllipsis });
+            block.Children.Add(new TextBlock { Text = entry.Role is "Agent" or "Sai" ? Markdown.Plain(entry.Text) : entry.Text, TextWrapping = TextWrapping.Wrap, MaxLines = 4, TextTrimming = TextTrimming.CharacterEllipsis });
             ConversationSummary.Children.Add(block);
         }
     }
@@ -539,7 +565,7 @@ public sealed partial class MainWindow : Window
             return option;
         }
         var privateOption = Option("TargetPrivate", "Private · Linux computer on this PC",
-            "Works in a private Linux computer on this PC, with an AI model that runs locally.");
+            "Works in a private Linux computer on this PC, with a model on this PC or from OpenRouter.");
         var pcOption = Option("TargetThisPc", "This PC · your apps and files",
             "Works on this PC itself. It asks you before every action, and you can stop it any time.");
         var cloudOption = Option("TargetCloud", "Cloud · Sai computer",
@@ -611,8 +637,29 @@ public sealed partial class MainWindow : Window
             Description = "Runs inside the Private computer. Installed on first use.",
         };
         Id(localHarness, "PrivateHarness");
+        // Private harnesses can also use OpenRouter (through the app's key-holding proxy); the built-in loop is Ollama only.
+        var privateProvider = new ComboBox
+        {
+            Header = "Model provider", HorizontalAlignment = HorizontalAlignment.Stretch, Visibility = Visibility.Collapsed,
+            ItemsSource = new[] { ModelProvider.Ollama.DisplayName(), ModelProvider.OpenRouter.DisplayName() }, SelectedIndex = 0,
+        };
+        Id(privateProvider, "PrivateProvider");
+        var privateOpenRouterModel = new ComboBox
+        {
+            Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, Visibility = Visibility.Collapsed, IsEditable = true,
+            ItemsSource = ThisPcAgent.SuggestedOpenRouterModels, SelectedIndex = 0,
+            Description = "Any id from openrouter.ai/models. Prompts go to OpenRouter.",
+        };
+        var privateKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = "Paste your key", Description = "Saved in Windows Credential Locker. The Private computer never sees it." };
+        var privateSaveKey = new Button { Content = "Save key" };
+        var privateKeyPanel = new StackPanel { Spacing = 8, Visibility = Visibility.Collapsed };
+        privateKeyPanel.Children.Add(privateKey); privateKeyPanel.Children.Add(privateSaveKey);
+        bool PrivateGuestHarness() => harnessChoices[Math.Max(0, localHarness.SelectedIndex)].RunsInComputer();
+        bool PrivateOpenRouter() => PrivateGuestHarness() && privateProvider.SelectedIndex == 1;
+        string PrivateOpenRouterModel() => (privateOpenRouterModel.SelectedItem as string ?? privateOpenRouterModel.Text ?? "").Trim();
         var local = new StackPanel { Spacing = 12 };
-        local.Children.Add(setupCard); local.Children.Add(localModel); local.Children.Add(localHarness);
+        local.Children.Add(setupCard); local.Children.Add(localHarness); local.Children.Add(privateProvider);
+        local.Children.Add(localModel); local.Children.Add(privateOpenRouterModel); local.Children.Add(privateKeyPanel);
 
         // ---- Cloud ----
         var key = new PasswordBox { Header = "Sai API key", PlaceholderText = "Paste your key", Description = "Saved securely in Windows Credential Locker." };
@@ -671,7 +718,7 @@ public sealed partial class MainWindow : Window
             pcModel.ItemsSource = items;
             pcModel.SelectedItem = items.Contains(keep) ? keep : items.FirstOrDefault();
             if (pcModel.SelectedItem is null) pcModel.Text = "";
-            pcModel.Description = UseOpenRouter() ? "Any model id from openrouter.ai/models. Prompts and what the agent reads go to OpenRouter and the model's provider." : "Runs on this PC through Ollama.";
+            pcModel.Description = UseOpenRouter() ? "Any id from openrouter.ai/models. Prompts go to OpenRouter." : "Runs on this PC through Ollama.";
         }
 
         var hint = Note();
@@ -708,7 +755,9 @@ public sealed partial class MainWindow : Window
                 _ => setupRunning ? "Setting up this PC…"
                     : !checkedPc ? "Checking this PC…"
                     : !(privateReady && ollamaReady && modelReady) ? "Choose Set up this PC, or pick Cloud."
-                    : localModel.SelectedItem is not string ? "Choose a model to continue." : null,
+                    : PrivateOpenRouter() && !hasOpenRouterKey ? "Add your OpenRouter key to continue."
+                    : PrivateOpenRouter() && PrivateOpenRouterModel().Length == 0 ? "Choose a model to continue."
+                    : !PrivateOpenRouter() && localModel.SelectedItem is not string ? "Choose a model to continue." : null,
             };
             hint.Text = blocker ?? "";
             // The setup checklist already explains itself; don't repeat it underneath.
@@ -743,8 +792,11 @@ public sealed partial class MainWindow : Window
         {
             bool allReady = privateReady && ollamaReady && modelReady;
             setupCard.Visibility = allReady ? Visibility.Collapsed : Visibility.Visible;
-            localModel.Visibility = allReady ? Visibility.Visible : Visibility.Collapsed;
-            localHarness.Visibility = localModel.Visibility;
+            localHarness.Visibility = allReady ? Visibility.Visible : Visibility.Collapsed;
+            privateProvider.Visibility = allReady && PrivateGuestHarness() ? Visibility.Visible : Visibility.Collapsed;
+            localModel.Visibility = allReady && !PrivateOpenRouter() ? Visibility.Visible : Visibility.Collapsed;
+            privateOpenRouterModel.Visibility = allReady && PrivateOpenRouter() ? Visibility.Visible : Visibility.Collapsed;
+            privateKeyPanel.Visibility = allReady && PrivateOpenRouter() && Secrets.ReadOpenRouter() is null ? Visibility.Visible : Visibility.Collapsed;
             SetMode();
         }
         async Task CheckPc()
@@ -885,6 +937,18 @@ public sealed partial class MainWindow : Window
                 if (all.Length > 0) { openRouterModels = ThisPcAgent.SuggestedOpenRouterModels.Concat(all.Except(ThisPcAgent.SuggestedOpenRouterModels)).ToArray(); if (UseOpenRouter()) ShowPcModels(); }
             }
         };
+        localHarness.SelectionChanged += (_, _) => ShowReadiness();
+        privateProvider.SelectionChanged += (_, _) => ShowReadiness();
+        privateOpenRouterModel.SelectionChanged += (_, _) => SetMode();
+        privateOpenRouterModel.TextSubmitted += (_, _) => SetMode();
+        privateOpenRouterModel.LostFocus += (_, _) => SetMode();
+        privateSaveKey.Click += (_, _) =>
+        {
+            var value = privateKey.Password.Trim();
+            if (value.Length == 0) return;
+            try { Secrets.SaveOpenRouter(value); } catch (Exception failure) { Error(failure); }
+            privateKey.Password = ""; ShowReadiness();
+        };
         pcModel.SelectionChanged += (_, _) => SetMode();
         pcModel.TextSubmitted += (_, _) => SetMode();
         pcModel.LostFocus += (_, _) => SetMode();
@@ -936,6 +1000,11 @@ public sealed partial class MainWindow : Window
             conversation.ModelId = localChoice;
             var harness = harnessChoices[Math.Max(0, localHarness.SelectedIndex)];
             conversation.Harness = harness.RunsInComputer() && !HarnessRunner.Supported ? PrivateHarness.AgentS : harness;
+            if (PrivateOpenRouter() && conversation.Harness.Value.RunsInComputer())
+            {
+                conversation.Provider = ModelProvider.OpenRouter;
+                conversation.ModelId = PrivateOpenRouterModel();
+            }
         }
         else
         {
@@ -952,7 +1021,7 @@ public sealed partial class MainWindow : Window
         var next = (Agents.SelectedItem as AgentRow)?.Conversation;
         if (next is null && selected is not null && conversations.Contains(selected)) { Agents.SelectedItem = Row(selected); return; }
         selected = next; usage = null;
-        Composer.Text = ""; Messages.Children.Clear(); entryText.Clear(); approvalControls.Clear();
+        Composer.Text = ""; Messages.Children.Clear(); entryText.Clear(); entryMarkdown.Clear(); approvalControls.Clear();
         if (selected is not null) foreach (var entry in selected.Entries) Draw(entry);
         Controls();
         DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
@@ -1019,8 +1088,14 @@ public sealed partial class MainWindow : Window
                 break;
             }
             default:
-                element = text; // Agent replies are plain text, left aligned.
+            {
+                // Agent replies: Markdown, left aligned. Streamed text re-renders as it grows (see Change).
+                var markdown = MarkdownView.Create(entry.Text, Theme);
+                entryText.Remove(entry.Id);
+                entryMarkdown[entry.Id] = markdown;
+                element = markdown;
                 break;
+            }
         }
         if (panel is not null && entry.LocalAnswer is { } localAnswer && !entry.Answered)
         {
@@ -1102,6 +1177,7 @@ public sealed partial class MainWindow : Window
         var following = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
         if (selected is not null) Row(selected).Refresh();
         if (entryText.TryGetValue(entry.Id, out var text)) text.Text = entry.Text;
+        else if (entryMarkdown.TryGetValue(entry.Id, out var markdown)) MarkdownView.Fill(markdown, entry.Text, Theme);
         if (following) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
     }
     private static string? Str(JsonElement value, string field) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(field, out var found) && found.ValueKind == JsonValueKind.String ? found.GetString() : null;
@@ -1315,8 +1391,9 @@ public sealed partial class MainWindow : Window
             status.Text = $"First use: {line.Trim()} (this takes a few minutes)"; Change(status);
         }), token);
         await HarnessRunner.EnsureRelay(token);
-        var runModel = await HarnessRunner.ContextModel(model, token);
-        status.Text = $"{harness.DisplayName()} · {model}"; Change(status);
+        var provider = owner.Provider;
+        var runModel = provider == ModelProvider.OpenRouter ? model : await HarnessRunner.ContextModel(model, token);
+        status.Text = $"{harness.DisplayName()} · {(provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}"; Change(status);
 
         using var screens = CancellationTokenSource.CreateLinkedTokenSource(token);
         var watching = WatchScreen(computer, screens.Token);
@@ -1325,7 +1402,7 @@ public sealed partial class MainWindow : Window
         bool started = false, reportedError = false;
         try
         {
-            await foreach (var item in HarnessRunner.Run(harness, message, resume, runModel, token))
+            await foreach (var item in HarnessRunner.Run(harness, message, resume, runModel, provider, token))
             {
                 switch (item)
                 {

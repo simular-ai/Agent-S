@@ -72,6 +72,7 @@ Check(!saved.Contains("private-token") && !saved.Contains("ApprovalId"), "Approv
 await PrivateAgentTests.Run(Check);
 await HarnessTests.Run(Check);
 await ThisPcTests.Run(Check);
+MarkdownTests.Run(Check);
 Console.WriteLine($"{passed} assertions passed.");
 
 sealed class RecordingHandler : HttpMessageHandler

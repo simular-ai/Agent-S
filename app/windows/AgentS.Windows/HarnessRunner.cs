@@ -101,10 +101,14 @@ internal static class HarnessRunner
         var process = Process.Start(start) ?? throw new PrivateComputerException("Could not start the model relay in WSL.");
         relayProcess = process;
         _ = process.StandardError.BaseStream.CopyToAsync(System.IO.Stream.Null);
-        var relay = new OllamaRelay(process.StandardOutput.BaseStream, process.StandardInput.BaseStream, async token =>
+        var relay = new OllamaRelay(process.StandardOutput.BaseStream, process.StandardInput.BaseStream, async (guestPort, token) =>
         {
+            // Guest 11434 is Ollama; guest 11435 is the app's OpenRouter proxy (which adds the key).
+            int hostPort = guestPort == HarnessCommand.OpenRouterGuestPort
+                ? ThisPcRunner.OpenRouterProxy().Port
+                : 11434;
             var tcp = new TcpClient { NoDelay = true };
-            try { await tcp.ConnectAsync("127.0.0.1", 11434, token); }
+            try { await tcp.ConnectAsync("127.0.0.1", hostPort, token); }
             catch { tcp.Dispose(); throw; }
             return new OwnedStream(tcp);
         });
@@ -130,13 +134,20 @@ internal static class HarnessRunner
 
     /// <summary>Runs one turn and yields its events. Cancelling stops the harness's whole process group.</summary>
     public static async IAsyncEnumerable<HarnessEvent> Run(PrivateHarness harness, string prompt, string? resume, string model,
-        [EnumeratorCancellation] CancellationToken cancellation)
+        ModelProvider provider, [EnumeratorCancellation] CancellationToken cancellation)
     {
+        // For OpenRouter the guest gets the proxy's token; the key itself never enters the guest.
+        string? apiKey = null;
+        if (provider == ModelProvider.OpenRouter)
+        {
+            if (Secrets.ReadOpenRouter() is null) throw new PrivateComputerException("Add your OpenRouter key in Accounts, then send again.");
+            apiKey = ThisPcRunner.OpenRouterProxy().Token;
+        }
         // setsid makes this bash the leader of a new process group, so Stop can end everything it started.
         var script = ". /usr/local/lib/sai/agent-s-env.sh\n"
             + "mkdir -p ~/work ~/.local/state/agent-s\n"
             + "echo $$ > ~/.local/state/agent-s/turn.pid\n"
-            + HarnessCommand.Build(harness, prompt, resume, model) + "\n";
+            + HarnessCommand.Build(harness, prompt, resume, model, provider, apiKey) + "\n";
         var start = new ProcessStartInfo(WslExe)
         {
             UseShellExecute = false, CreateNoWindow = true,

@@ -34,7 +34,7 @@ public sealed class AgentRow(Conversation conversation) : INotifyPropertyChanged
                 ConversationTarget.ThisPc => "This PC · asks before each action",
                 _ => "Sai cloud computer",
             };
-            return last.Text.ReplaceLineEndings(" ").Trim();
+            return (last.Role is "Agent" or "Sai" ? Markdown.Plain(last.Text) : last.Text).ReplaceLineEndings(" ").Trim();
         }
     }
     public bool Working { get => working; set { if (working == value) return; working = value; Changed(nameof(Working)); } }

@@ -60,25 +60,35 @@ public static class HarnessCommand
         return $"{ContextModelPrefix}{name}:{ContextTokens / 1024}k";
     }
 
-    public static string Build(PrivateHarness harness, string prompt, string? resume, string model) => harness switch
-    {
-        PrivateHarness.ClaudeCode => Claude(prompt, resume, model),
-        PrivateHarness.Codex => Codex(prompt, resume, model),
-        PrivateHarness.DeepSeek => DeepSeek(prompt, resume, model),
-        _ => throw new ArgumentException("The built-in harness does not run in the guest.", nameof(harness)),
-    };
+    /// <summary>The app's OpenRouter proxy as the guest reaches it (relayed like Ollama). It holds the key; the guest only gets a token.</summary>
+    public const string OpenRouterUrl = "http://127.0.0.1:11435";
+    public const int OllamaGuestPort = 11434, OpenRouterGuestPort = 11435;
 
-    private static string Claude(string prompt, string? resume, string model)
+    /// <param name="apiKey">For OpenRouter, the app proxy's per-launch token (not the real key).</param>
+    public static string Build(PrivateHarness harness, string prompt, string? resume, string model,
+        ModelProvider provider = ModelProvider.Ollama, string? apiKey = null)
+    {
+        var key = apiKey ?? (provider == ModelProvider.OpenRouter ? throw new ArgumentException("OpenRouter needs the proxy token.", nameof(apiKey)) : "ollama");
+        return harness switch
+        {
+            PrivateHarness.ClaudeCode => Claude(prompt, resume, model, provider, key),
+            PrivateHarness.Codex => Codex(prompt, resume, model, provider, key),
+            PrivateHarness.DeepSeek => DeepSeek(prompt, resume, model, provider, key),
+            _ => throw new ArgumentException("The built-in harness does not run in the guest.", nameof(harness)),
+        };
+    }
+
+    private static string Claude(string prompt, string? resume, string model, ModelProvider provider, string key)
     {
         string[] env =
         [
-            $"ANTHROPIC_BASE_URL={Quote(OllamaUrl)}",
-            "ANTHROPIC_AUTH_TOKEN='ollama'",
+            $"ANTHROPIC_BASE_URL={Quote(provider == ModelProvider.OpenRouter ? OpenRouterUrl : OllamaUrl)}",
+            $"ANTHROPIC_AUTH_TOKEN={Quote(key)}",
             $"ANTHROPIC_MODEL={Quote(model)}",
             $"ANTHROPIC_DEFAULT_HAIKU_MODEL={Quote(model)}",
-            $"CLAUDE_CODE_MAX_CONTEXT_TOKENS={ContextTokens}",
+            $"CLAUDE_CODE_MAX_CONTEXT_TOKENS={provider.ContextTokens()}",
             // Claude Code keeps room for a full answer; its default would use up a local model's window.
-            $"CLAUDE_CODE_MAX_OUTPUT_TOKENS={MaxOutputTokens}",
+            $"CLAUDE_CODE_MAX_OUTPUT_TOKENS={provider.MaxOutputTokens()}",
             "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
             "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1",
         ];
@@ -98,27 +108,33 @@ public static class HarnessCommand
         return "cd ~/work && rm -f AGENTS.md && " + string.Join(' ', env.Concat(args)) + " </dev/null";
     }
 
-    private static string Codex(string prompt, string? resume, string model)
+    private static string Codex(string prompt, string? resume, string model, ModelProvider provider, string key)
     {
-        var codex = new List<string>
-        {
-            "codex", "exec", "--json", "--oss", "--local-provider", "ollama",
+        // Ollama through Codex's --oss provider; OpenRouter as a Responses-API provider pointed at the app's proxy.
+        string[] providerOptions = provider == ModelProvider.OpenRouter
+            ? ["-c", Quote("model_provider=\"saige\""),
+               "-c", Quote($"model_providers.saige={{name=\"OpenRouter via Agent S\",base_url=\"{OpenRouterUrl}/v1\",env_key=\"AGENT_S_PROXY_KEY\",wire_api=\"responses\"}}")]
+            : ["--oss", "--local-provider", "ollama"];
+        var codex = new List<string> { "codex", "exec", "--json" };
+        codex.AddRange(providerOptions);
+        codex.AddRange(
+        [
             "-m", Quote(model),
             // In --oss mode web search goes to Ollama's cloud and tempts the model away from the screen.
             "-c", Quote("web_search=\"disabled\""),
             // The guest is the sandbox; Codex's own sandbox would also block the X display.
             "--dangerously-bypass-approvals-and-sandbox",
             "--skip-git-repo-check",
-        };
+        ]);
         // Options go before `resume`: `codex exec resume` rejects them after it.
         if (resume is not null) { codex.Add("resume"); codex.Add(Quote(resume)); }
         codex.Add(Quote(prompt));
         return $"cd ~/work && printf '%s\\n' {Quote(AgentInstructions.Text(PrivateHarness.Codex))} > AGENTS.md && "
-            + "CODEX_OSS_BASE_URL=" + Quote(OllamaUrl + "/v1") + " " + string.Join(' ', codex) + " </dev/null";
+            + "CODEX_OSS_BASE_URL=" + Quote(OllamaUrl + "/v1") + " AGENT_S_PROXY_KEY=" + Quote(key) + " " + string.Join(' ', codex) + " </dev/null";
     }
 
-    /// <summary>The overlay on dsh's headless profile: the local model, and nothing sent to DeepSeek.</summary>
-    public static string DeepSeekPatch(string model)
+    /// <summary>The overlay on dsh's headless profile: the chosen model, and nothing sent to DeepSeek.</summary>
+    public static string DeepSeekPatch(string model, ModelProvider provider = ModelProvider.Ollama)
     {
         // dsh's YAML can run JavaScript (`!!js`): keep the model id to plain id characters.
         var id = new string(model.Where(c => char.IsAsciiLetterOrDigit(c) || "._:/@-".Contains(c)).ToArray());
@@ -129,7 +145,7 @@ public static class HarnessCommand
                   saige:
                     apiKeyEnv: AGENT_S_PROXY_KEY
                     api: openai-completions
-                    baseURL: {OllamaUrl}/v1
+                    baseURL: {(provider == ModelProvider.OpenRouter ? OpenRouterUrl : OllamaUrl)}/v1
                     models:
                       - id: "{id}"
             - id: agent-default-model
@@ -152,15 +168,15 @@ public static class HarnessCommand
             """.Replace("\r\n", "\n");
     }
 
-    private static string DeepSeek(string prompt, string? resume, string model)
+    private static string DeepSeek(string prompt, string? resume, string model, ModelProvider provider, string key)
     {
         var dsh = new List<string> { "dsh", "--profile", "headless", "--patch", "\"$HOME/.dsh/agent-s.patch.yml\"", "--json" };
         if (resume is not null) { dsh.Add("--session-id"); dsh.Add(Quote(resume)); }
         dsh.Add(Quote(prompt));
         return "mkdir -p ~/work ~/.dsh && cd ~/work"
             + $" && printf '%s\\n' {Quote(AgentInstructions.Text(PrivateHarness.DeepSeek))} > AGENTS.md"
-            + $" && printf '%s\\n' {Quote(DeepSeekPatch(model))} > \"$HOME/.dsh/agent-s.patch.yml\""
-            + " && DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY='ollama' " + string.Join(' ', dsh) + " </dev/null";
+            + $" && printf '%s\\n' {Quote(DeepSeekPatch(model, provider))} > \"$HOME/.dsh/agent-s.patch.yml\""
+            + $" && DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY={Quote(key)} " + string.Join(' ', dsh) + " </dev/null";
     }
 
     /// <summary>POSIX single quotes: everything literal, an embedded ' closed, escaped and reopened.</summary>

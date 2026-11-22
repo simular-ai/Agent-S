@@ -25,6 +25,14 @@ internal static class ThisPcRunner
     private static ApprovalServer? approvals;
     private static OpenRouterProxy? openRouter;
 
+    /// <summary>The app's OpenRouter proxy (started once), shared by This PC turns and the Private computer's relay.</summary>
+    public static OpenRouterProxy OpenRouterProxy()
+    {
+        openRouter ??= new OpenRouterProxy(Secrets.ReadOpenRouter);
+        openRouter.Start();
+        return openRouter;
+    }
+
     /// <summary>Claude Code installed on this PC (npm, winget or the native installer), or null.</summary>
     public static string? FindClaude()
     {
@@ -75,9 +83,8 @@ internal static class ThisPcRunner
         if (owner.Provider == ModelProvider.OpenRouter)
         {
             if (Secrets.ReadOpenRouter() is null) throw new PrivateComputerException("Add your OpenRouter key in Accounts, then send again.");
-            openRouter ??= new OpenRouterProxy(Secrets.ReadOpenRouter);
-            openRouter.Start();
-            (baseUrl, apiKey) = (openRouter.BaseUrl, openRouter.Token);
+            var proxy = OpenRouterProxy();
+            (baseUrl, apiKey) = (proxy.BaseUrl, proxy.Token);
         }
         else
         {

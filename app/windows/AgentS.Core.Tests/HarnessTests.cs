@@ -45,6 +45,18 @@ internal static class HarnessTests
         check(HarnessCommand.ContextModel("gemma4:latest") == "agent-s/gemma4-latest:32k" &&
               HarnessCommand.ContextModel("Some/Model:7B q4") == "agent-s/some-model-7b-q4:32k",
             "Harnesses use an app-owned 32K-context variant of the chosen model");
+        // OpenRouter in the Private computer: the guest reaches the app's proxy on 11435 with its token, never the key.
+        var orClaude = HarnessCommand.Build(PrivateHarness.ClaudeCode, "go", null, "anthropic/claude-sonnet-5.5", ModelProvider.OpenRouter, "agent-s-token");
+        check(orClaude.Contains("ANTHROPIC_BASE_URL='http://127.0.0.1:11435'") && orClaude.Contains("ANTHROPIC_AUTH_TOKEN='agent-s-token'") &&
+              orClaude.Contains("CLAUDE_CODE_MAX_CONTEXT_TOKENS=200000"), "Claude Code on OpenRouter uses the relayed proxy and a hosted window");
+        var orCodex = HarnessCommand.Build(PrivateHarness.Codex, "go", null, "openai/gpt-oss-120b", ModelProvider.OpenRouter, "agent-s-token");
+        check(!orCodex.Contains("--oss") && orCodex.Contains("model_provider=\"saige\"") && orCodex.Contains("base_url=\"http://127.0.0.1:11435/v1\"") &&
+              orCodex.Contains("wire_api=\"responses\"") && orCodex.Contains("AGENT_S_PROXY_KEY='agent-s-token'"), "Codex on OpenRouter uses a Responses provider at the proxy");
+        var orDsh = HarnessCommand.Build(PrivateHarness.DeepSeek, "go", null, "qwen/qwen3-coder", ModelProvider.OpenRouter, "agent-s-token");
+        check(orDsh.Contains("baseURL: http://127.0.0.1:11435/v1") && orDsh.Contains("AGENT_S_PROXY_KEY='agent-s-token'") && orDsh.Contains("id: \"qwen/qwen3-coder\""),
+            "DeepSeek on OpenRouter points its provider at the proxy");
+        try { HarnessCommand.Build(PrivateHarness.Codex, "go", null, "m", ModelProvider.OpenRouter); check(false, "OpenRouter without the proxy token is refused"); }
+        catch (ArgumentException) { check(true, "OpenRouter without the proxy token is refused"); }
         try { HarnessCommand.Build(PrivateHarness.AgentS, "go", null, "gemma4"); check(false, "Built-in harness has no guest command"); }
         catch (ArgumentException) { check(true, "Built-in harness has no guest command"); }
         foreach (var harness in new[] { PrivateHarness.ClaudeCode, PrivateHarness.Codex, PrivateHarness.DeepSeek })
@@ -103,8 +115,10 @@ internal static class HarnessTests
         var toHost = new Pipe(); var toGuest = new Pipe();
         var ollama = new Dictionary<int, (Pipe In, Pipe Out)>();
         int opened = 0;
-        var relay = new OllamaRelay(toHost.Reader.AsStream(), toGuest.Writer.AsStream(), _ =>
+        var ports = new List<int>();
+        var relay = new OllamaRelay(toHost.Reader.AsStream(), toGuest.Writer.AsStream(), (port, _) =>
         {
+            ports.Add(port);
             var pair = (In: new Pipe(), Out: new Pipe());
             ollama[++opened] = pair;
             return Task.FromResult<Stream>(new Duplex(pair.Out.Reader.AsStream(), pair.In.Writer.AsStream()));
@@ -140,6 +154,14 @@ internal static class HarnessTests
               Encoding.UTF8.GetString(body) == "{\"version\":\"1\"}", "Relay returns Ollama's answer on the same connection");
         await back.ReadExactlyAsync(header, cancel.Token);
         check(header[0] == OllamaRelay.Close && BinaryPrimitives.ReadUInt32BigEndian(header.AsSpan(1)) == 7, "Relay closes the guest connection when Ollama does");
+        // A connection to the guest's 11435 carries that port, so the host connects it to the OpenRouter proxy.
+        var open = new byte[11]; open[0] = OllamaRelay.Open;
+        BinaryPrimitives.WriteUInt32BigEndian(open.AsSpan(1), 8);
+        BinaryPrimitives.WriteUInt32BigEndian(open.AsSpan(5), 2);
+        BinaryPrimitives.WriteUInt16BigEndian(open.AsSpan(9), HarnessCommand.OpenRouterGuestPort);
+        await guest.WriteAsync(open); await guest.FlushAsync();
+        while (ports.Count < 2) await Task.Delay(10, cancel.Token);
+        check(ports[0] == HarnessCommand.OllamaGuestPort && ports[1] == HarnessCommand.OpenRouterGuestPort, "Relay tells Ollama and OpenRouter connections apart by guest port");
         await toHost.Writer.CompleteAsync();
         await running;
         check(true, "Relay ends when the guest closes its side");
