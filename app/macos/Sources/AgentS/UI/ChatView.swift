@@ -243,7 +243,7 @@ struct ChatView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: model.privacy.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Image(systemName: model.privacy.location.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Text("\(model.harness.displayName) · \(model.activeModel)").foregroundStyle(.secondary)
                 Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             }

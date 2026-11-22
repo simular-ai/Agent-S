@@ -224,7 +224,7 @@ struct CircleButton: View {
 struct Sidebar: View {
     @EnvironmentObject private var model: AppModel
     @Binding var showSettings: Bool
-    @State private var creating: PrivacyMode?
+    @State private var creating: AgentLocation?
     @State private var renaming: AgentSession?
     @State private var newName = ""
     @State private var agentSettings = false
@@ -233,7 +233,7 @@ struct Sidebar: View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
-                CircleButton(systemImage: "plus", help: "New agent") { creating = .fullyPrivate }
+                CircleButton(systemImage: "plus", help: "New agent") { creating = .linuxVM }
             }
             .padding(.horizontal, 16)
             .frame(height: Theme.titleBarHeight)
@@ -241,8 +241,8 @@ struct Sidebar: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(PrivacyMode.allCases) { side in
-                        AgentSection(side: side, creating: $creating, renaming: $renaming, newName: $newName, agentSettings: $agentSettings)
+                    ForEach(AgentLocation.allCases) { location in
+                        AgentSection(location: location, creating: $creating, renaming: $renaming, newName: $newName, agentSettings: $agentSettings)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -255,7 +255,7 @@ struct Sidebar: View {
             .padding(16)
         }
         .background(Theme.sidebar)
-        .sheet(item: $creating) { NewAgentSheet(initialSide: $0) }
+        .sheet(item: $creating) { NewAgentSheet(initialLocation: $0) }
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .alert("Rename agent", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -268,18 +268,18 @@ struct Sidebar: View {
 /// One side of the sidebar: its header and its agents, with Rename / New conversation / Delete.
 struct AgentSection: View {
     @EnvironmentObject private var model: AppModel
-    let side: PrivacyMode
-    @Binding var creating: PrivacyMode?
+    let location: AgentLocation
+    @Binding var creating: AgentLocation?
     @Binding var renaming: AgentSession?
     @Binding var newName: String
     @Binding var agentSettings: Bool
 
     var body: some View {
-        SideHeader(title: side.displayName, symbol: side.symbol)
-            .padding(.top, side == .fullyPrivate ? 0 : 14)
-        let list = model.agents(on: side)
+        SideHeader(title: location.displayName, symbol: location.symbol)
+            .padding(.top, location == .linuxVM ? 0 : 14)
+        let list = model.agents(at: location)
         if list.isEmpty {
-            Button(newAgentLabel) { creating = side }
+            Button(newAgentLabel) { creating = location }
                 .buttonStyle(.plain).font(.callout).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.vertical, 6)
         }
@@ -290,11 +290,10 @@ struct AgentSection: View {
     }
 
     private var newAgentLabel: String {
-        switch side {
-        case .fullyPrivate: "New private agent…"
-        case .localVM: "New local VM agent…"
+        switch location {
+        case .linuxVM: "New Linux VM agent…"
         case .thisMac: "New agent for this Mac…"
-        case .remote: "New cloud agent…"
+        case .cloud: "New cloud agent…"
         }
     }
 

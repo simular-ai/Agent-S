@@ -6,7 +6,7 @@ struct NewAgentSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = "Sai"
-    @State private var side: PrivacyMode
+    @State private var location: AgentLocation
     @State private var harness: Harness = .claudeCode
     @State private var provider: ModelProvider = .ollama
     @State private var ollamaModel = AppModel.defaultAgentModel
@@ -18,9 +18,9 @@ struct NewAgentSheet: View {
     @State private var computer: CloudComputer = .sai
     @State private var boxName = ""
 
-    init(initialSide: PrivacyMode = .fullyPrivate) {
-        _side = State(initialValue: initialSide)
-        _harness = State(initialValue: initialSide == .remote ? .sai : .claudeCode)
+    init(initialLocation: AgentLocation = .linuxVM) {
+        _location = State(initialValue: initialLocation)
+        _harness = State(initialValue: initialLocation == .cloud ? .sai : .claudeCode)
     }
 
     var body: some View {
@@ -28,19 +28,19 @@ struct NewAgentSheet: View {
             Form {
                 Section {
                     TextField("Name", text: $name)
-                    Picker("Runs", selection: $side) {
-                        ForEach(PrivacyMode.allCases) { mode in
-                            Label(mode.displayName, systemImage: mode.symbol).tag(mode)
+                    Picker("Runs", selection: $location) {
+                        ForEach(AgentLocation.allCases) { location in
+                            Label(location.displayName, systemImage: location.symbol).tag(location)
                         }
                     }
                     .pickerStyle(.segmented)
-                    Text(side.summary).font(.caption).foregroundStyle(.secondary)
-                    if side == .thisMac {
-                        Label("It acts on your real Mac. Read each step before you allow it.", systemImage: "exclamationmark.shield")
+                    Text(location.summary).font(.caption).foregroundStyle(.secondary)
+                    if location == .thisMac {
+                        Label("Review each action before approving it.", systemImage: "exclamationmark.shield")
                             .font(.caption).foregroundStyle(.orange)
                     }
                 }
-                if side == .remote {
+                if location == .cloud {
                     Section("Computer") {
                         Picker("Computer", selection: $computer) {
                             ForEach(CloudComputer.allCases) { Text($0.displayName).tag($0) }
@@ -56,7 +56,7 @@ struct NewAgentSheet: View {
                         }
                     }
                 }
-                if !(side == .remote && computer == .sai) {
+                if cloudComputer != .sai {
                     Section("Harness") {
                         Picker("Harness", selection: $harness) {
                             ForEach(availableHarnesses) { Text($0.displayName).tag($0) }
@@ -86,12 +86,16 @@ struct NewAgentSheet: View {
                             LabeledContent("Provider", value: onlyProvider.displayName)
                         }
                         if selectedProvider == .ollama {
+                            Text("Choose a local Ollama model for private inference on this Mac.")
+                                .font(.caption).foregroundStyle(.secondary)
                             Picker("Model", selection: $ollamaModel) {
                                 ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
                                 if !model.modelChoices.contains(ollamaModel) { Text(ollamaModel).tag(ollamaModel) }
                             }
                             Button("Refresh model list") { Task { await model.refreshOllama() } }
                         } else if selectedProvider == .openRouter {
+                            Text("OpenRouter and the selected model provider receive your messages and content the agent reads.")
+                                .font(.caption).foregroundStyle(.secondary)
                             Picker("Model", selection: $openRouterModel) {
                                 ForEach(OpenRouter.suggested, id: \.self) { Text($0).tag($0) }
                             }
@@ -126,11 +130,11 @@ struct NewAgentSheet: View {
         .onChange(of: model.saiMachines) { _, machines in
             if saiMachine.isEmpty { saiMachine = machines.first(where: \.online)?.id ?? machines.first?.id ?? "" }
         }
-        .onChange(of: side, initial: true) { _, side in
-            provider = switch side {
-            case .fullyPrivate: .ollama
-            case .localVM: .openRouter
-            case .thisMac, .remote: model.hasOpenRouterKey ? .openRouter : .ollama
+        .onChange(of: location, initial: true) { previous, location in
+            if location == .cloud {
+                provider = model.hasOpenRouterKey ? .openRouter : .ollama
+            } else if previous == .cloud {
+                provider = .ollama
             }
             fitHarnessAndProvider()
         }
@@ -147,14 +151,14 @@ struct NewAgentSheet: View {
         }
     }
 
-    private var cloudComputer: CloudComputer? { side == .remote ? computer : nil }
+    private var cloudComputer: CloudComputer? { location == .cloud ? computer : nil }
 
-    private var availableHarnesses: [Harness] { Harness.allowed(in: side, computer: cloudComputer) }
+    private var availableHarnesses: [Harness] { Harness.allowed(in: location.mode(for: .ollama), computer: cloudComputer) }
 
-    private var availableProviders: [ModelProvider] { ModelProvider.allowed(in: side, harness: harness, computer: cloudComputer) }
+    private var availableProviders: [ModelProvider] { ModelProvider.allowed(at: location, harness: harness, computer: cloudComputer) }
 
     private var selectedProvider: ModelProvider {
-        ModelProvider.fitting(provider, in: side, harness: harness, computer: cloudComputer) ?? provider
+        ModelProvider.fitting(provider, at: location, harness: harness, computer: cloudComputer) ?? provider
     }
 
     private func fitHarnessAndProvider() {
@@ -169,7 +173,7 @@ struct NewAgentSheet: View {
 
     private func create() {
         model.createAgent(AgentConfig(
-            name: name.trimmingCharacters(in: .whitespaces), privacy: side, harness: harness,
+            name: name.trimmingCharacters(in: .whitespaces), privacy: location.mode(for: selectedProvider), harness: harness,
             provider: selectedProvider,
             ollamaModel: ollamaModel, openRouterModel: openRouterModel,
             saiMachine: saiMachine, saiModel: saiModel,

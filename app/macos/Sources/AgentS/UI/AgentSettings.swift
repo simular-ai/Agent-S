@@ -14,7 +14,7 @@ struct AgentSettings: View {
                 AgentAvatar(config: model.agent.config, size: 40)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(model.agent.config.name).font(.headline)
-                    Text(model.privacy.displayName).font(.callout).foregroundStyle(.secondary)
+                    Text(model.privacy.location.displayName).font(.callout).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
@@ -42,6 +42,10 @@ struct AgentSettings: View {
                         LabeledContent("Provider", value: model.provider.displayName)
                     }
                     if model.usesOllama {
+                        if model.privacy.location != .cloud {
+                            Label("Choose a local Ollama model for private inference on this Mac.", systemImage: "lock")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Picker("Model", selection: $model.agentModel) {
                             ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
                         }

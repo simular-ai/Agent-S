@@ -3,6 +3,16 @@ import Testing
 
 @Suite("Local VM model routing")
 struct LocalVMProviderTests {
+    @Test func choosesTheComputerSeparatelyFromTheProvider() {
+        #expect(AgentLocation.allCases == [.linuxVM, .thisMac, .cloud])
+        #expect(AgentLocation.linuxVM.mode(for: .ollama) == .fullyPrivate)
+        #expect(AgentLocation.linuxVM.mode(for: .openRouter) == .localVM)
+        #expect(AgentLocation.thisMac.mode(for: .ollama) == .thisMac)
+        #expect(PrivacyMode.fullyPrivate.location == PrivacyMode.localVM.location)
+        #expect(ModelProvider.allowed(at: .linuxVM, harness: .claudeCode, computer: nil) == [.ollama, .openRouter])
+        #expect(ModelProvider.fitting(.ollama, at: .thisMac, harness: .claudeCode, computer: nil) == .ollama)
+    }
+
     @Test func savedPrivateModeStillUsesOnlyOllama() {
         #expect(PrivacyMode(rawValue: "private") == .fullyPrivate)
         #expect(PrivacyMode.fullyPrivate.usesLocalComputer)

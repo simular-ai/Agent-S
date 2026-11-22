@@ -68,7 +68,9 @@ final class AppModel: ObservableObject {
     /// The selected agent, whose chat and settings the window shows.
     var agent: AgentSession { agents.first { $0.id == selectedAgentID } ?? agents[0] }
 
-    func agents(on side: PrivacyMode) -> [AgentSession] { agents.filter { $0.config.privacy == side } }
+    func agents(at location: AgentLocation) -> [AgentSession] {
+        agents.filter { $0.config.privacy.location == location }
+    }
 
     // The selected agent's settings, so views keep binding to `model.harness` and friends.
     private func update(_ change: (inout AgentConfig) -> Void) {
