@@ -434,7 +434,7 @@ final class AppModel: ObservableObject {
         case .needsSetup: return "Set up the computer in Settings to chat"
         case .ready:
             if agents.contains(where: { $0 !== agent && $0.config.usesLocalComputer && $0.isRunning }) {
-                return "Another agent is using the Linux computer"
+                return "Another agent is using the virtual computer"
             }
             return nil
         default: return "Turn the computer on to chat"

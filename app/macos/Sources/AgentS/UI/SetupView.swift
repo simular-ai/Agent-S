@@ -1,7 +1,7 @@
 import SwiftUI
 import AgentSCore
 
-/// Global Settings for Mac permissions, the private computer, account keys, and Ollama.
+/// Global Settings for Mac permissions, the virtual computer, account keys, and Ollama.
 struct SetupView: View {
     @EnvironmentObject private var model: AppModel
 
@@ -20,7 +20,7 @@ struct SetupView: View {
                         Text(SystemMemory.format(allocation.bytes)).tag(allocation)
                     }
                 }
-                Text("Applies the next time you turn on the Linux computer.")
+                Text("Applies the next time you turn on the virtual computer.")
                     .font(.caption).foregroundStyle(.secondary)
                 if case let .preparing(step) = model.phase {
                     VStack(alignment: .leading) {

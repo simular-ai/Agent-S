@@ -393,10 +393,10 @@ struct ChatView: View {
                 }
             } else {
                 let hosted = model.privacy == .localVM
-                Text(hosted ? "Linux VM with OpenRouter" : "Everything runs on this Mac").font(.title3.weight(.medium))
+                Text(model.privacy.location.displayName).font(.title3.weight(.medium))
                 Text(hosted
-                     ? "The agent works in your Linux VM. OpenRouter processes its model requests."
-                     : "Sai works on its own Linux computer with your local model. Open the computer to watch, or take over.")
+                     ? "The virtual computer runs on this Mac. OpenRouter processes model requests."
+                     : "The agent works in a Linux VM on this Mac. Open the computer to watch or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
