@@ -215,7 +215,8 @@ public enum CodexStream {
             let id = item["id"] as? String ?? ""
             switch (type, kind) {
             case ("item.started", "command_execution"):
-                return [.toolCall(id: id, name: "Shell", summary: summary(of: item["command"] as? String ?? ""))]
+                let command = item["command"] as? String
+                return [.toolCall(id: id, name: "Shell", summary: summary(of: command ?? ""), detail: command)]
             case ("item.completed", "command_execution"):
                 let exit = item["exit_code"] as? Int ?? 0
                 return [.toolResult(id: id, output: ClaudeStream.clip(item["aggregated_output"] as? String ?? ""),

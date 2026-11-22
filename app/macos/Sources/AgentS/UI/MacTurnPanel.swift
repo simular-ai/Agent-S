@@ -16,6 +16,7 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
     private var manualSessionID: UUID?
     private var panel: NSPanel?
     private var openConversation: ((AgentSession) -> Void)?
+    private var restoresChatOnCompletion = true
 
     func show(_ session: AgentSession, presentation: Presentation, openConversation: @escaping (AgentSession) -> Void) {
         let id = session.id
@@ -29,7 +30,12 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
                 turnObservations[id] = session.$isRunning.dropFirst().sink { [weak self, weak session] isRunning in
                     guard !isRunning, let self, let session else { return }
                     self.turnObservations[id] = nil
-                    if self.manualSessionID != id { self.remove(session) }
+                    guard self.manualSessionID != id else { return }
+                    let wasVisible = self.panel?.isVisible == true
+                    self.remove(session)
+                    if self.restoresChatOnCompletion, wasVisible, self.state.sessions.isEmpty {
+                        self.openConversation?(session)
+                    }
                 }
             } else if !needsApproval {
                 return
@@ -63,6 +69,10 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         clearManualSession()
+    }
+
+    func suppressAutomaticChatRestoration() {
+        restoresChatOnCompletion = false
     }
 
     private func clearManualSession() {

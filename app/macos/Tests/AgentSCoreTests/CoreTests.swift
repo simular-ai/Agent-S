@@ -12,7 +12,7 @@ struct ClaudeStreamTests {
         let line = #"{"type":"assistant","message":{"content":[{"type":"text","text":"Opening the site."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"simulang run open.ts\nmore","description":"Open the site"}}]}}"#
         #expect(ClaudeStream.parse(line: line) == [
             .text("Opening the site."),
-            .toolCall(id: "t1", name: "Bash", summary: "Open the site"),
+            .toolCall(id: "t1", name: "Bash", summary: "Open the site", detail: "simulang run open.ts\nmore"),
         ])
     }
 
@@ -202,8 +202,8 @@ struct CodexTests {
 
     @Test func parsesCodexEvents() {
         #expect(CodexStream.parse(line: #"{"type":"thread.started","thread_id":"t-1"}"#) == [.started(sessionId: "t-1", model: nil)])
-        #expect(CodexStream.parse(line: #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc 'echo hi'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#)
-                == [.toolCall(id: "item_2", name: "Shell", summary: "echo hi")])
+        #expect(CodexStream.parse(line: #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc 'echo hi\necho again'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#)
+                == [.toolCall(id: "item_2", name: "Shell", summary: "echo hi", detail: "/bin/bash -lc 'echo hi\necho again'")])
         #expect(CodexStream.parse(line: #"{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"x","aggregated_output":"hi\n","exit_code":1,"status":"completed"}}"#)
                 == [.toolResult(id: "item_2", output: "hi\n", isError: true)])
         #expect(CodexStream.parse(line: #"{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Done."}}"#) == [.text("Done.")])
@@ -326,7 +326,7 @@ struct DeepSeekTests {
         #expect(DeepSeekStream.parse(line: #"{"type":"session","sessionId":"session-1","cwd":"/home/sai/work"}"#)
                 == [.started(sessionId: "session-1", model: nil)])
         #expect(DeepSeekStream.parse(line: #"{"type":"tool_call","callId":"c1","tool":"bash","input":{"command":"web open https://x.com","description":"Open X"}}"#)
-                == [.toolCall(id: "c1", name: "bash", summary: "web open https://x.com")])
+                == [.toolCall(id: "c1", name: "bash", summary: "web open https://x.com", detail: "web open https://x.com")])
         #expect(DeepSeekStream.parse(line: #"{"type":"tool_result","callId":"c1","status":"error","result":"Error: nope"}"#)
                 == [.toolResult(id: "c1", output: "Error: nope", isError: true)])
         #expect(DeepSeekStream.parse(line: #"{"type":"text","text":"Done."}"#) == [.text("Done.")])

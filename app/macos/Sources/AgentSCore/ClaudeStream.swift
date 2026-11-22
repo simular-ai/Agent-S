@@ -9,7 +9,7 @@ public enum ClaudeEvent: Equatable, Sendable {
     case textDelta(id: String, text: String)
     case textSnapshot(id: String, text: String)
     /// A tool call: which tool, and a one-line summary of what it was asked to do.
-    case toolCall(id: String, name: String, summary: String)
+    case toolCall(id: String, name: String, summary: String, detail: String? = nil)
     /// What a tool call returned (clipped), and whether it failed.
     case toolResult(id: String, output: String, isError: Bool)
     /// The turn ended. `isError` when Claude Code reported a failed turn.
@@ -87,7 +87,8 @@ public struct ClaudeStream {
                     let input = block["input"] as? [String: Any] ?? [:]
                     return .toolCall(id: block["id"] as? String ?? "",
                                      name: name,
-                                     summary: Self.summarize(tool: name, input: input))
+                                     summary: Self.summarize(tool: name, input: input),
+                                     detail: ToolActivity.detail(input: input))
                 default:
                     return nil
                 }

@@ -63,6 +63,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     let id: String
     var kind: Kind
     var text: String
+    var toolInput: String? = nil
 }
 
 /// One agent: its definition, its conversation, and its harness context. A turn is one SSH process
@@ -532,13 +533,16 @@ final class AgentSession: ObservableObject, Identifiable {
         case "tool-input-start", "tool-input-available":
             guard let callId = event["toolCallId"] as? String else { return }
             let id = "\(turn)/\(callId)"
-            let title = (event["input"] as? [String: Any])?["title"] as? String
+            let input = event["input"] as? [String: Any] ?? [:]
+            let title = input["title"] as? String
+            let detail = ToolActivity.detail(input: input)
             if let index = items.lastIndex(where: { $0.id == id }) {
                 if let title { items[index].text = title }
+                if let detail { items[index].toolInput = detail }
             } else {
                 let name = event["toolName"] as? String ?? "tool"
                 items.append(ChatItem(id: id, kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: title ?? name))
+                                      text: title ?? name, toolInput: detail))
             }
         case "data-progress":
             // Progress lines belong to the latest running step.
@@ -603,10 +607,10 @@ final class AgentSession: ObservableObject, Identifiable {
                 updateText(id: id, text: text, append: true)
             case let .textSnapshot(id, text):
                 updateText(id: id, text: text, append: false)
-            case let .toolCall(id, name, summary):
+            case let .toolCall(id, name, summary, detail):
                 items.append(ChatItem(id: id.isEmpty ? UUID().uuidString : "\(turn)/\(id)",
                                       kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: summary))
+                                      text: summary, toolInput: detail))
             case let .toolResult(id, output, isError):
                 if let index = items.lastIndex(where: { $0.id == "\(turn)/\(id)" }),
                    case let .step(name, _, _, _) = items[index].kind {

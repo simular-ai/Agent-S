@@ -191,7 +191,8 @@ public enum DeepSeekStream {
             let tool = object["tool"] as? String ?? "tool"
             let summary = (input["command"] as? String).map { ClaudeStream.summarize(tool: tool, input: ["command": $0]) }
                 ?? ClaudeStream.summarize(tool: tool, input: input)
-            return [.toolCall(id: object["callId"] as? String ?? "", name: tool, summary: summary)]
+            return [.toolCall(id: object["callId"] as? String ?? "", name: tool, summary: summary,
+                              detail: ToolActivity.detail(input: input))]
         case "tool_result":
             let result = object["result"].map { $0 as? String ?? String(describing: $0) } ?? ""
             return [.toolResult(id: object["callId"] as? String ?? "", output: ClaudeStream.clip(result),

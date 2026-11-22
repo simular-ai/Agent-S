@@ -450,7 +450,9 @@ final class CodexAccountTurn {
               !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return Self.toolResponse(text: "That tool is unavailable.", success: false)
         }
-        onEvent(.toolCall(id: id, name: "Mac", summary: String(command.replacingOccurrences(of: MacAccess.macTool, with: "mac").prefix(120))))
+        onEvent(.toolCall(id: id, name: "Mac",
+                          summary: String(command.replacingOccurrences(of: MacAccess.macTool, with: "mac").prefix(120)),
+                          detail: command))
         var text: String
         var success = false
         var image: Data?

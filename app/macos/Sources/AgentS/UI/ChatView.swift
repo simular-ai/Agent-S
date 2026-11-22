@@ -452,35 +452,61 @@ struct ChatRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
         case let .step(name, done, failed, output):
-            VStack(alignment: .leading, spacing: 6) {
-                Button { open.toggle() } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: failed ? "exclamationmark.circle" : done ? "checkmark.circle" : "circle.dotted")
-                            .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
-                        Text(item.text).lineLimit(1).foregroundStyle(.secondary)
-                        Text(name).font(.caption).foregroundStyle(.tertiary)
-                        Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
-                }
-                .buttonStyle(.plain)
-                if open, !output.isEmpty {
-                    ScrollView {
-                        Text(output).font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 180)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
-                }
-            }
+            toolStep(name: name, done: done, failed: failed, output: output)
         case let .approval(id, linkOnly, url, answer):
             ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer)
         case let .notice(isError):
             Text(item.text).font(.callout).foregroundStyle(isError ? Color.red : Color.secondary)
                 .padding(.horizontal, 4)
+        }
+    }
+
+    private func toolStep(name: String, done: Bool, failed: Bool, output: String) -> some View {
+        let title = ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput)
+        let status = failed ? "Failed" : done ? "Completed" : "Running"
+        let input = item.toolInput ?? (item.text == name || item.text == title ? "" : item.text)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Button { open.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: failed ? "exclamationmark.circle" : done ? "checkmark.circle" : "circle.dotted")
+                        .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
+                    Text(title).font(.callout).lineLimit(1)
+                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(status)
+            .accessibilityHint(open ? "Hide step details" : "Show step details")
+
+            if open {
+                let details = VStack(alignment: .leading, spacing: 8) {
+                    stepDetail("Tool", name)
+                    stepDetail("Input", input)
+                    stepDetail("Output", output)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ViewThatFits(in: .vertical) {
+                    details
+                    ScrollView { details }
+                }
+                .frame(maxHeight: 180)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
+            }
+        }
+    }
+
+    @ViewBuilder private func stepDetail(_ label: String, _ value: String) -> some View {
+        if !value.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(verbatim: value).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+            }
         }
     }
 }

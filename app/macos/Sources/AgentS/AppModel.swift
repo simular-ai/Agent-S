@@ -354,6 +354,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopAppWork() {
+        macTurnPanel.suppressAutomaticChatRestoration()
         accountSignIns.values.forEach { $0.cancel() }
         agents.forEach { $0.stop() }
     }
