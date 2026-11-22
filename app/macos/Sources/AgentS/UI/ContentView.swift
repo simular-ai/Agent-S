@@ -255,6 +255,9 @@ struct Sidebar: View {
             .padding(16)
         }
         .background(Theme.sidebar)
+        .task(id: model.hasOllamaAgents) {
+            if model.hasOllamaAgents, !model.ollamaChecked { await model.refreshOllama() }
+        }
         .sheet(item: $creating) { NewAgentSheet(initialLocation: $0) }
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .alert("Rename agent", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -369,21 +372,35 @@ struct AgentAvatar: View {
     }
 }
 
-/// One agent: its name, what it runs on, its last line; a spinner while it works.
+/// One agent's name, inference route, and latest message, with a spinner while it works.
 struct ConversationRow: View {
+    @EnvironmentObject private var model: AppModel
     @ObservedObject var session: AgentSession
     let selected: Bool
     let select: () -> Void
 
     var body: some View {
-        Button(action: select) {
+        let inference = model.sidebarInference(for: session.config)
+        let preview = session.lastLine ?? summary
+        let status = session.isRunning ? "\(inference.label), Working" : inference.label
+        return Button(action: select) {
             HStack(spacing: 12) {
                 AgentAvatar(config: session.config, size: 36)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
-                    Text(session.lastLine ?? summary).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(inference.label)
+                            .font(.caption.weight(.semibold))
+                            .fixedSize(horizontal: true, vertical: false)
+                        if !preview.isEmpty {
+                            Text("·").font(.caption)
+                            Text(preview).font(.callout).lineLimit(1)
+                        }
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if session.isRunning { ProgressView().controlSize(.small) }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -391,6 +408,10 @@ struct ConversationRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .help(inference.help)
+        .accessibilityLabel(Text(session.config.name))
+        .accessibilityValue(Text(preview.isEmpty ? status : "\(status), \(preview)"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// "Claude Code · gemma4", "Sai · auto": until there's a conversation.

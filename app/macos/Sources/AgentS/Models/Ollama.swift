@@ -8,7 +8,16 @@ struct Ollama {
     struct Model: Identifiable, Hashable {
         let name: String
         let size: Int64
+        let usesRemoteInference: Bool
         var id: String { name }
+
+        func matches(_ model: String) -> Bool { name == model || name == model + ":latest" }
+    }
+
+    static func isCloudReference(_ model: String) -> Bool {
+        guard let colon = model.lastIndex(of: ":") else { return false }
+        let tag = model[model.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !tag.contains("/") && (tag == "cloud" || tag.hasSuffix("-cloud"))
     }
 
     /// Ollama's version, or nil when it is not running (or older than its Anthropic endpoint).
@@ -19,12 +28,17 @@ struct Ollama {
     }
 
     static func models() async -> [Model] {
-        guard let (data, _) = try? await URLSession.shared.data(from: base.appendingPathComponent("api/tags")),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let (data, _) = try? await URLSession.shared.data(from: base.appendingPathComponent("api/tags")) else { return [] }
+        return parseModels(data)
+    }
+
+    static func parseModels(_ data: Data) -> [Model] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let list = json["models"] as? [[String: Any]] else { return [] }
         return list.compactMap { item in
             guard let name = item["name"] as? String else { return nil }
-            return Model(name: name, size: (item["size"] as? NSNumber)?.int64Value ?? 0)
+            let isRemote = ["remote_model", "remote_host"].contains { (item[$0] as? String)?.isEmpty == false }
+            return Model(name: name, size: (item["size"] as? NSNumber)?.int64Value ?? 0, usesRemoteInference: isRemote)
         }
     }
 

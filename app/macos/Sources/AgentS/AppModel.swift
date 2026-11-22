@@ -268,7 +268,30 @@ final class AppModel: ObservableObject {
     }
 
     var hasAgentModel: Bool {
-        ollamaModels.contains { $0.name == agentModel || $0.name == agentModel + ":latest" }
+        ollamaModels.contains { $0.matches(agentModel) }
+    }
+
+    var hasOllamaAgents: Bool {
+        agents.contains { $0.config.harness != .sai && $0.config.provider == .ollama }
+    }
+
+    /// Use the selected model's metadata so Ollama cloud models are identified as hosted.
+    func sidebarInference(for config: AgentConfig) -> (label: String, help: String) {
+        if config.harness == .sai { return ("Hosted model", "Sai") }
+
+        switch config.provider {
+        case .openRouter: return ("Hosted model", "OpenRouter · \(config.openRouterModel)")
+        case .claudeAccount: return ("Hosted model", "Claude Code account")
+        case .codexAccount: return ("Hosted model", "Codex account")
+        case .ollama:
+            let model = ollamaModels.first { $0.matches(config.ollamaModel) }
+            let provider = "Ollama · \(config.ollamaModel)"
+            if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
+                return ("Hosted model", provider)
+            }
+            if model != nil, ollamaReady { return ("Local model", provider) }
+            return ("Ollama", "\(provider) · Model location unavailable")
+        }
     }
 
     /// The models Ollama has, without the `:latest` tag, plus the current choice if it isn't
