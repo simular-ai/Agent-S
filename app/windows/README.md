@@ -33,7 +33,7 @@ Create a **Private** agent and enter the installed Ollama model tag. To exercise
 ## Sai cloud
 
 - Create named local agent conversations with a Sai computer and allowed model; resume their Sai session after restarting.
-- Stream chat and activity using the same `/v1/agents` contracts as `app/Sources/AgentS/Models/SaiAPI.swift`.
+- Stream chat and activity using the same `/v1/agents` contracts as the macOS app.
 - Show approval text, explicitly approve/deny, or open HTTPS link-only approvals. No automatic permission grants. Approval controls and URLs are not restored as actionable state from disk.
 - Stop through the server abort endpoint. Before a new turn returns its session ID, a stop waits for that ID instead of accidentally aborting the preceding turn. Failed aborts remain visible and retryable.
 - Discover computer availability and request a wake. **Open computer** opens Sai's live page in the default browser; there is no embedded screen panel in this increment. Live links stay in memory, not the saved transcript.
