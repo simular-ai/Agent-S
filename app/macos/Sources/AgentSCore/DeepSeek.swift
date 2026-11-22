@@ -12,17 +12,20 @@ public struct DeepSeekCommand: Equatable, Sendable {
     public var model: String
     public var provider: ModelProvider
     public var apiKey: String
+    private let guestPort: UInt16
 
     /// Pinned: dsh is a developer preview with breaking changes between releases.
     public static let version = "0.2.2-rc.5"
     static let patchPath = "/home/sai/.dsh/agent-s.patch.yml"
 
-    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama, apiKey: String? = nil) {
+    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama,
+                apiKey: String? = nil, guestPort: UInt16 = 11434) {
         self.prompt = prompt
         self.resume = resume
         self.model = model
         self.provider = provider
         self.apiKey = apiKey ?? provider.placeholderKey
+        self.guestPort = guestPort
     }
 
     /// The overlay applied on top of dsh's headless profile.
@@ -38,7 +41,7 @@ public struct DeepSeekCommand: Equatable, Sendable {
               saige:
                 apiKeyEnv: AGENT_S_PROXY_KEY
                 api: openai-completions
-                baseURL: http://127.0.0.1:11434/v1
+                baseURL: http://127.0.0.1:\(guestPort)/v1
                 models:
                   - id: "\(id)"
         - id: agent-default-model
@@ -56,18 +59,22 @@ public struct DeepSeekCommand: Equatable, Sendable {
         - id: permission
           disabled: true
         - insert:
+            - id: agent-s-live-text
+              name: ./\(DeepSeekStreamingPlugin.filename)
             - id: bash-local
               name: "@deepseek-ai/dsh-bash-local"
         """
     }
 
     public var remoteShell: String {
-        var dsh = ["dsh", "--profile", "headless", "--patch", Self.patchPath, "--json"]
+        let patchPath = provider == .openRouter ? "/home/sai/.dsh/agent-s-openrouter.patch.yml" : Self.patchPath
+        var dsh = ["dsh", "--profile", "headless", "--patch", patchPath, "--json"]
         if let resume { dsh += ["--session-id", quote(resume)] }
         dsh.append(quote(prompt))
         return "mkdir -p ~/work ~/.dsh && cd ~/work"
             + " && printf '%s\\n' \(quote(AgentInstructions.text(for: .deepSeek))) > AGENTS.md"
-            + " && printf '%s\\n' \(quote(patch)) > \(Self.patchPath)"
+            + " && printf '%s\\n' \(quote(patch)) > \(patchPath)"
+            + " && printf '%s\\n' \(quote(DeepSeekStreamingPlugin.source)) > ~/.dsh/\(DeepSeekStreamingPlugin.filename)"
             + " && DISPLAY=:0 DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY=\(quote(apiKey)) "
             + dsh.joined(separator: " ") + " </dev/null"
     }
@@ -116,6 +123,8 @@ public enum DeepSeekBoxProfile {
         root: !!js process.env.AGENT_S_DSH_SESSIONS
         compression: none
     - insert:
+        - id: agent-s-live-text
+          name: ./\(DeepSeekStreamingPlugin.filename)
         - id: llm-pi-ai
           name: '@deepseek-ai/dsh-llm-pi-ai'
           config:
@@ -171,14 +180,35 @@ public enum DeepSeekBoxProfile {
     }
 }
 
-/// Parses `dsh --profile headless --json` events into the chat's events.
-public enum DeepSeekStream {
+/// Parses one DeepSeek Harness process's output and reconciles live text with committed messages.
+public struct DeepSeekStream {
+    private var liveAttempt: String?
+
+    public init() {}
+
     public static func parse(line: String) -> [ClaudeEvent] {
+        var stream = Self()
+        return stream.consume(line: line)
+    }
+
+    public mutating func consume(line: String) -> [ClaudeEvent] {
         guard let data = line.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = object["type"] as? String
         else { return [] }
         switch type {
+        case "agent_s_text_stream":
+            guard let id = object["id"] as? String, !id.isEmpty else { return [] }
+            liveAttempt = id
+            return []
+        case "agent_s_text_delta", "agent_s_text_snapshot":
+            guard let id = object["id"] as? String, id == liveAttempt,
+                  let text = object["text"] as? String else { return [] }
+            if type == "agent_s_text_snapshot" {
+                liveAttempt = nil
+                return [.textSnapshot(id: id, text: text)]
+            }
+            return text.isEmpty ? [] : [.textDelta(id: id, text: text)]
         case "session":
             guard let id = object["sessionId"] as? String else { return [] }
             return [.started(sessionId: id, model: nil)]
@@ -187,13 +217,15 @@ public enum DeepSeekStream {
             let tool = object["tool"] as? String ?? "tool"
             let summary = (input["command"] as? String).map { ClaudeStream.summarize(tool: tool, input: ["command": $0]) }
                 ?? ClaudeStream.summarize(tool: tool, input: input)
-            return [.toolCall(id: object["callId"] as? String ?? "", name: tool, summary: summary)]
+            return [.toolCall(id: object["callId"] as? String ?? "", name: tool, summary: summary,
+                              detail: ToolActivity.detail(input: input))]
         case "tool_result":
             let result = object["result"].map { $0 as? String ?? String(describing: $0) } ?? ""
             return [.toolResult(id: object["callId"] as? String ?? "", output: ClaudeStream.clip(result),
                                 isError: (object["status"] as? String) != "completed")]
         case "text":
-            guard let text = object["text"] as? String,
+            // The bundled plugin emits canonical snapshots of these same committed messages.
+            guard liveAttempt == nil, let text = object["text"] as? String,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
             return [.text(text)]
         case "status":

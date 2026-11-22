@@ -1,7 +1,7 @@
 # Agent S for Mac
 
-Agent S is a native macOS app for computer-use agents. Choose a private Linux computer on
-your Mac, let an agent work in your Mac apps with approvals, or connect a Sai computer or
+Agent S is a native macOS app for computer-use agents. Choose a Linux VM on your Mac,
+let an agent work in your Mac apps with approvals, or connect to a Sai computer or
 Simular Box. Each agent has its own conversation and can pick up where it left off.
 
 
@@ -30,15 +30,20 @@ open "build/Agent S.app"
 The build script signs the app for local development by default. Run `./scripts/test.sh`
 from `app/macos/` to run the Swift test suite.
 
+Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
+the Dock to reopen it. Use **Quit Agent S** to stop active work and shut down the VM.
+
 ## Choose how an agent runs
 
-Click **+** in the sidebar, name the agent, and choose where it runs. In **Cloud** mode,
-choose a computer first. Then choose the harness and model provider when prompted.
-To change an existing agent's configuration, right-click it and choose **Agent Settings…**.
+Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud**, choose a
+computer first. Choose the harness and **Provider** when prompted. To change an existing
+agent's configuration, right-click it and choose **Agent Settings…**. Each **Sandbox on This Mac**
+agent keeps the provider selected when it was created. To use a different provider,
+create a new agent.
 
 | Runs on | Harness | Model provider |
 | --- | --- | --- |
-| **Private** · Linux VM on your Mac | Claude Code, Codex, DeepSeek | Ollama |
+| **Sandbox on This Mac** · Linux VM | Claude Code, Codex, DeepSeek | Ollama, OpenRouter |
 | **This Mac** · your Mac apps and files | Claude Code | Ollama, OpenRouter, Claude Code account |
 | **This Mac** · your Mac apps and files | Codex | Codex account |
 | **Cloud** · Sai computer | Sai | Sai API, with models available on your Sai account |
@@ -47,17 +52,19 @@ To change an existing agent's configuration, right-click it and choose **Agent S
 | **Cloud** · Simular Box | DeepSeek | Ollama, OpenRouter |
 
 The display button beside the chat opens the computer panel, where you can watch the
-private VM or cloud computer and see the agent's session context.
+Linux VM or cloud computer and see the agent's session context.
 
-### Private Linux computer
+### Sandbox on This Mac
 
 1. Open **Settings → Computer** and click **Set up the computer**. This downloads a
    Debian 13 ARM64 image and creates a sparse 32 GB disk that grows with use.
-2. Start [Ollama](https://ollama.com/) 0.14 or later on your Mac. Open
-   **Agent Settings… → Model** and select or download a locally running model.
-   The default is `gemma4`.
+2. When creating the agent, set **Runs** to **Sandbox on This Mac** and select a **Provider**.
+   For **Ollama**, start [Ollama](https://ollama.com/) 0.14 or later on your Mac and
+   select or download a local model in **Agent Settings… → Model**. The default is
+   `gemma4`. For **OpenRouter**, add your API key and choose a hosted model.
 3. Turn on the VM from the chat or computer panel. The first boot needs internet access
    to install the desktop and tools in the VM. Wait for setup to finish, then send a message.
+   One agent can use the shared Linux desktop at a time.
 
 In **Settings → Computer → Memory**, choose **2 GB**, **4 GB**, or **6 GB** for the next
 VM start. The default is **6 GB**. This setting allocates memory to the VM. Ollama runs
@@ -71,10 +78,12 @@ to send mouse and keyboard input to the VM.
 3. In **Settings → Mac Permissions**, allow **Accessibility**. Enable **Screen Recording**
    if you want the agent to take screenshots. These permissions apply to Agent S and are
    shared across its agents. Screen Recording may require reopening the app.
-4. Configure the model provider, then send a message. Review proposed actions in the chat
-   or in the floating **Agent Activity** panel while another app is in front. Read-only
-   observations can run automatically. **Approve for this task** approves the remaining
-   actions in the current turn. You can stop a turn from either window.
+4. For on-device inference, start Ollama on your Mac. Set **Runs** to **This Mac**,
+   select the **Claude Code** harness and the **Ollama** provider, and choose a local model.
+5. Send a message and review proposed actions in the chat or in the floating **Agent Activity**
+   panel while another app is in front. Read-only observations can run automatically.
+   **Approve for this task** approves the remaining actions in the current turn.
+   You can stop a turn from either window.
 
 ### Sai computer
 
@@ -111,14 +120,16 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 
 ## Permissions and data
 
-- **Private** routes inference through Ollama on your Mac. Choose a locally running
-  model to keep inference on-device. The VM can reach the internet, shares the clipboard,
-  and can read and write files in the app's shared folder at
+- Choose **Ollama** and a local model for on-device inference. This works with
+  **Sandbox on This Mac** and with **This Mac** when the harness is **Claude Code**.
+- **Sandbox on This Mac** agents share the guest, browser, and files. The guest can reach the internet,
+  shares the clipboard, and can read and write the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
-  Harness commands run inside the VM with per-tool approval disabled.
-- **This Mac** uses the Mac's apps, Terminal, and files. When you select a hosted
-  model, prompts and tool results supplied to the model can include page text, file
-  contents, and screenshots.
+  Harness commands run in the VM with per-tool approval disabled.
+- **This Mac** uses the Mac's apps, Terminal, and files with approvals for actions.
+- Hosted providers receive prompts and tool results sent to the model, which can include
+  web pages, file contents, and screenshots. Agent S stores the OpenRouter key in the
+  Mac's Keychain and forwards guest model requests through the app's proxy.
 - **Sai** receives tasks and runs them on the selected computer. **Simular Box**
   receives tool calls and their inputs even when the agent uses Ollama. A hosted
   model provider can also receive Box tool results used as model context. Sai API

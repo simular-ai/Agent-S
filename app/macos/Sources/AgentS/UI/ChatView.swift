@@ -6,8 +6,21 @@ import AgentSCore
 struct ChatView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
     @State private var draft = ""
+    @State private var followsLatest = true
+    @State private var transcriptViewport: CGSize?
+
+    private enum TranscriptAnchor { case working }
+
+    private struct TranscriptRevision: Equatable {
+        let agentID: UUID
+        let lastItem: ChatItem?
+        let isRunning: Bool
+    }
+
+    private static let nearBottom: CGFloat = 40
 
     var body: some View {
         chat
@@ -41,29 +54,7 @@ struct ChatView: View {
     private var chat: some View {
         VStack(spacing: 0) {
             topBar
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if agent.items.isEmpty { emptyState }
-                        ForEach(agent.items) { ChatRow(item: $0).id($0.id) }
-                        if agent.isRunning {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Working…").foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 10)
-                            .background(Capsule().fill(Theme.bubble))
-                            .id("working")
-                        }
-                    }
-                    .padding(.horizontal, 24).padding(.vertical, 16)
-                    .frame(maxWidth: 820, alignment: .leading)
-                    .frame(maxWidth: .infinity)
-                }
-                .onChange(of: agent.items.count) { _, _ in
-                    withAnimation { proxy.scrollTo(agent.isRunning ? "working" : agent.items.last?.id, anchor: .bottom) }
-                }
-            }
+            transcript
             if let banner = computerBanner {
                 banner
                     .frame(maxWidth: 820)
@@ -79,6 +70,89 @@ struct ChatView: View {
             composer
                 .frame(maxWidth: 820)
                 .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
+        }
+    }
+
+    private var transcript: some View {
+        let revision = TranscriptRevision(agentID: agent.id, lastItem: agent.items.last, isRunning: agent.isRunning)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        if agent.items.isEmpty { emptyState }
+                        ForEach(agent.items) { ChatRow(item: $0).id($0.id) }
+                        if agent.isRunning {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Working…").foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(Capsule().fill(Theme.bubble))
+                            .id(TranscriptAnchor.working)
+                        }
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, 16)
+                    .frame(maxWidth: 820, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+                }
+                .background(TranscriptScrollObserver { scrollView in
+                    if let document = scrollView.documentView {
+                        followsLatest = document.bounds.maxY - scrollView.contentView.bounds.maxY <= Self.nearBottom
+                    }
+                })
+                .onGeometryChange(for: CGSize?.self) { geometry in
+                    geometry.bounds(of: NamedCoordinateSpace.scrollView(axis: .vertical))?.size
+                } action: { size in
+                    if let size, size.height > 0 { trackViewport(size, proxy: proxy) }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                Group {
+                    if !followsLatest, revision.lastItem != nil {
+                        CircleButton(systemImage: "arrow.down", help: "Jump to latest message") {
+                            followsLatest = true
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
+                                scrollToLatest(proxy)
+                            }
+                        }
+                        .accessibilityLabel("Jump to latest message")
+                        .padding(.bottom, 8)
+                        .transition(.opacity)
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: followsLatest)
+            }
+            .onChange(of: revision.agentID) {
+                followsLatest = true
+            }
+            .task(id: revision) {
+                // Text can stream into the last item without changing the number of rows.
+                await Task.yield()
+                guard !Task.isCancelled, followsLatest, revision.lastItem != nil else { return }
+                scrollToLatest(proxy)
+            }
+        }
+    }
+
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        // Target a rendered row so an estimate of earlier Markdown heights cannot hide the newest message.
+        if agent.isRunning {
+            proxy.scrollTo(TranscriptAnchor.working, anchor: .bottom)
+        } else if let id = agent.items.last?.id {
+            proxy.scrollTo(id, anchor: .bottom)
+        }
+    }
+
+    private func trackViewport(_ size: CGSize, proxy: ScrollViewProxy) {
+        let previous = transcriptViewport
+        transcriptViewport = size
+        // Follow window and split-pane resizing without reacting to lazy content estimates.
+        if followsLatest, let previous, previous != size {
+            Task { @MainActor in
+                await Task.yield()
+                guard followsLatest, transcriptViewport == size else { return }
+                scrollToLatest(proxy)
+            }
         }
     }
 
@@ -101,8 +175,7 @@ struct ChatView: View {
             }
             .padding(.trailing, 16)
         }
-        .frame(height: Theme.titleBarHeight + 8)
-        .padding(.top, 4)
+        .frame(height: Theme.titleBarHeight)
     }
 
     /// Picks the harness, provider and model for the next message.
@@ -168,7 +241,7 @@ struct ChatView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: model.privacy.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Image(systemName: model.privacy.location.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                 Text("\(model.harness.displayName) · \(model.activeModel)").foregroundStyle(.secondary)
                 Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             }
@@ -274,8 +347,7 @@ struct ChatView: View {
             : model.computer == .box ? "Ask \(model.agent.config.name) to do something on your Simular Box…" : "Ask \(model.agent.config.name) to do something on its computer…")
     }
 
-    /// The empty chat, for the kind of agent: a private agent's local computer, Sai's all-in-one
-    /// cloud computer, or a Simular Box. Whatever is missing is set up right here.
+    /// Helps set up the selected agent's computer and provider.
     @ViewBuilder private var emptyState: some View {
         VStack(spacing: 12) {
             if model.harness == .sai {
@@ -318,11 +390,17 @@ struct ChatView: View {
                     .formStyle(.grouped).frame(maxWidth: 480, maxHeight: 260)
                 }
             } else {
-                Text("Everything runs on this Mac").font(.title3.weight(.medium))
-                Text("Sai works on its own Linux computer with your local model. Open the computer to watch, or take over.")
+                let hosted = model.privacy == .localVM
+                Text(model.privacy.location.displayName).font(.title3.weight(.medium))
+                Text(hosted
+                     ? "The sandbox runs on this Mac. OpenRouter processes model requests."
+                     : "The agent works in a Linux VM on this Mac. Open the computer to watch or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
+                if hosted, !model.hasOpenRouterKey {
+                    Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
+                }
                 if model.phase != .ready, model.files.isPrepared, !isBusy {
                     Button("Turn on the computer") { Task { await model.start() } }
                         .buttonStyle(.borderedProminent)
@@ -346,7 +424,34 @@ struct ChatView: View {
         guard canSend else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""
+        followsLatest = true
         model.send(text)
+    }
+}
+
+/// Listens to user scrolling in the transcript, separately from programmatic layout changes.
+private struct TranscriptScrollObserver: NSViewRepresentable {
+    let onScroll: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> ObserverView { ObserverView() }
+    func updateNSView(_ view: ObserverView, context: Context) { view.onScroll = onScroll }
+
+    final class ObserverView: NSView {
+        var onScroll: ((NSScrollView) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self, name: NSScrollView.didLiveScrollNotification, object: nil)
+            guard window != nil, let scrollView = enclosingScrollView else { return }
+            NotificationCenter.default.addObserver(self, selector: #selector(didScroll(_:)),
+                                                   name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        }
+
+        @objc private func didScroll(_ notification: Notification) {
+            if let scrollView = notification.object as? NSScrollView { onScroll?(scrollView) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 
@@ -371,35 +476,61 @@ struct ChatRow: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)
         case let .step(name, done, failed, output):
-            VStack(alignment: .leading, spacing: 6) {
-                Button { open.toggle() } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: failed ? "exclamationmark.circle" : done ? "checkmark.circle" : "circle.dotted")
-                            .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
-                        Text(item.text).lineLimit(1).foregroundStyle(.secondary)
-                        Text(name).font(.caption).foregroundStyle(.tertiary)
-                        Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                    }
-                    .padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
-                }
-                .buttonStyle(.plain)
-                if open, !output.isEmpty {
-                    ScrollView {
-                        Text(output).font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .frame(maxHeight: 180)
-                    .padding(10)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
-                }
-            }
+            toolStep(name: name, done: done, failed: failed, output: output)
         case let .approval(id, linkOnly, url, answer):
             ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer)
         case let .notice(isError):
             Text(item.text).font(.callout).foregroundStyle(isError ? Color.red : Color.secondary)
                 .padding(.horizontal, 4)
+        }
+    }
+
+    private func toolStep(name: String, done: Bool, failed: Bool, output: String) -> some View {
+        let title = ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput)
+        let status = failed ? "Failed" : done ? "Completed" : "Running"
+        let input = item.toolInput ?? (item.text == name || item.text == title ? "" : item.text)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Button { open.toggle() } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: failed ? "exclamationmark.circle" : done ? "checkmark.circle" : "circle.dotted")
+                        .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
+                    Text(title).font(.callout).lineLimit(1)
+                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 14).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityValue(status)
+            .accessibilityHint(open ? "Hide step details" : "Show step details")
+
+            if open {
+                let details = VStack(alignment: .leading, spacing: 8) {
+                    stepDetail("Tool", name)
+                    stepDetail("Input", input)
+                    stepDetail("Output", output)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                ViewThatFits(in: .vertical) {
+                    details
+                    ScrollView { details }
+                }
+                .frame(maxHeight: 180)
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
+            }
+        }
+    }
+
+    @ViewBuilder private func stepDetail(_ label: String, _ value: String) -> some View {
+        if !value.isEmpty {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text(verbatim: value).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+            }
         }
     }
 }

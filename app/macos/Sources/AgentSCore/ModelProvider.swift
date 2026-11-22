@@ -24,7 +24,7 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     /// The available routes depend on both where tools run and which harness controls them.
     public static func allowed(in privacy: PrivacyMode, harness: Harness, computer: CloudComputer?) -> [Self] {
         guard Harness.allowed(in: privacy, computer: computer).contains(harness) else { return [] }
-        if privacy == .fullyPrivate { return [.ollama] }
+        if privacy.usesLocalComputer { return privacy.providers }
         switch harness {
         case .claudeCode: return [.ollama, .openRouter, .claudeAccount]
         case .codex: return privacy == .thisMac ? [.codexAccount] : [.ollama, .openRouter, .codexAccount]
@@ -35,7 +35,24 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
 
     public static func fitting(_ provider: Self, in privacy: PrivacyMode, harness: Harness,
                                computer: CloudComputer?) -> Self? {
-        let choices = allowed(in: privacy, harness: harness, computer: computer)
+        fitting(provider, among: allowed(in: privacy, harness: harness, computer: computer))
+    }
+
+    /// Provider choices for a new agent, before its data route is saved.
+    public static func allowed(at location: AgentLocation, harness: Harness, computer: CloudComputer?) -> [Self] {
+        let choices = allowed(in: location.mode(for: .ollama), harness: harness, computer: computer)
+        if location == .linuxVM {
+            return choices + allowed(in: .localVM, harness: harness, computer: computer)
+        }
+        return choices
+    }
+
+    public static func fitting(_ provider: Self, at location: AgentLocation, harness: Harness,
+                               computer: CloudComputer?) -> Self? {
+        fitting(provider, among: allowed(at: location, harness: harness, computer: computer))
+    }
+
+    private static func fitting(_ provider: Self, among choices: [Self]) -> Self? {
         if choices.contains(provider) { return provider }
         if provider.usesAccount, let account = choices.first(where: \.usesAccount) { return account }
         return choices.first
@@ -58,8 +75,7 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
         }
     }
 
-    /// Sent as the API key from the guest. Not a secret: Ollama ignores it, and the Mac's
-    /// OpenRouter proxy replaces it with the real key.
+    /// Ollama ignores its placeholder. Live OpenRouter turns use the loopback proxy's token.
     public var placeholderKey: String {
         switch self {
         case .ollama: "ollama"
@@ -69,46 +85,88 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
-/// Where an agent works, and how much may leave the Mac. Private: a Linux computer that runs on
-/// this Mac, with the local model only. This Mac: the Mac itself (its apps, shell and files),
-/// every action approved by the person first. Cloud: hosted models and cloud computers, with the
-/// user's own keys.
-public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
-    case fullyPrivate = "private"
-    case thisMac = "mac"
-    case remote
+/// What a harness reports about the signed-in account's plan.
+public enum HarnessAccountPlan: Equatable, Sendable {
+    case account
+    case subscription
+
+    public init(provider: ModelProvider, reportedPlan: String?) {
+        let plan = reportedPlan?.lowercased()
+        switch (provider, plan) {
+        case (.claudeAccount, "pro"), (.claudeAccount, "max"),
+             (.codexAccount, "go"), (.codexAccount, "plus"), (.codexAccount, "pro"):
+            self = .subscription
+        default:
+            self = .account
+        }
+    }
+}
+
+/// The computer the agent controls, independent of its model provider.
+public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
+    case linuxVM
+    case thisMac
+    case cloud
 
     public var id: String { rawValue }
 
     public var displayName: String {
         switch self {
-        case .fullyPrivate: "Private"
+        case .linuxVM: "Sandbox on This Mac"
         case .thisMac: "This Mac"
-        case .remote: "Cloud"
+        case .cloud: "Cloud"
         }
     }
 
-    /// SF Symbol for the mode chip.
     public var symbol: String {
         switch self {
-        case .fullyPrivate: "lock.fill"
+        case .linuxVM: "desktopcomputer"
         case .thisMac: "laptopcomputer"
-        case .remote: "cloud"
+        case .cloud: "cloud"
         }
     }
 
     public var summary: String {
         switch self {
-        case .fullyPrivate: "Works on a private Linux computer that runs on this Mac, with a model on this Mac. It can't touch your Mac's own files or apps. Only the web pages it visits leave this Mac."
-        case .thisMac: "Works on this Mac itself: its apps, Terminal and files. It asks you before every command, click or change, and you can stop it any time. With a hosted model, your messages and what the agent reads go to its provider."
-        case .remote: "Works on a Sai computer or Simular Box. Your messages and what the agent reads go to the services you choose."
+        case .linuxVM: "Runs in a Linux VM."
+        case .thisMac: "Works in your Mac apps, Terminal, and files. You approve actions as it works."
+        case .cloud: "Works on a Sai computer or Simular Box. Your messages and what the agent reads go to the services you choose."
         }
     }
+
+    public func mode(for provider: ModelProvider) -> PrivacyMode {
+        switch self {
+        case .linuxVM: provider == .openRouter ? .localVM : .fullyPrivate
+        case .thisMac: .thisMac
+        case .cloud: .remote
+        }
+    }
+}
+
+/// The saved computer and provider route. Keep the existing values for saved conversations.
+public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
+    case fullyPrivate = "private"
+    case localVM = "local-vm"
+    case thisMac = "mac"
+    case remote
+
+    public var id: String { rawValue }
+
+    public var location: AgentLocation {
+        switch self {
+        case .fullyPrivate, .localVM: .linuxVM
+        case .thisMac: .thisMac
+        case .remote: .cloud
+        }
+    }
+
+    public var usesLocalComputer: Bool { location == .linuxVM }
 
     /// The providers this mode allows.
     public var providers: [ModelProvider] {
         switch self {
         case .fullyPrivate: [.ollama]
+        case .localVM: [.openRouter]
         case .thisMac, .remote: ModelProvider.allCases
         }
     }

@@ -299,7 +299,7 @@ public struct MacClaudeCommand: Equatable, Sendable {
         let usesAccount = provider == .claudeAccount
         var args = usesAccount ? ["-p"] : ["-p", prompt]
         args += [
-            "--output-format", "stream-json", "--verbose",
+            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--tools", usesAccount ? "" : MacAgent.tools.joined(separator: ","),
             "--strict-mcp-config",
             "--setting-sources", "",

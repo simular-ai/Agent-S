@@ -29,7 +29,8 @@ struct CodexBoxTools {
         guard names.contains(name) else {
             return ["success": false, "contentItems": [["type": "inputText", "text": "That Box tool is unavailable."]]]
         }
-        onEvent(.toolCall(id: id, name: name, summary: ClaudeStream.summarize(tool: name, input: arguments)))
+        onEvent(.toolCall(id: id, name: name, summary: ClaudeStream.summarize(tool: name, input: arguments),
+                          detail: ToolActivity.detail(input: arguments)))
         let items: [[String: String]]
         let success: Bool
         do {

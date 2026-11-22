@@ -48,10 +48,13 @@ struct ContentView: View {
                 .layoutPriority(1)
             Divider()
             HSplitView {
+                // Split panes host their own views and reapply the window's title bar inset.
                 ChatView(showComputer: $showComputer)
+                    .ignoresSafeArea(.container, edges: .top)
                     .frame(minWidth: 380, maxWidth: .infinity)
                 if showComputer {
                     ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized)
+                        .ignoresSafeArea(.container, edges: .top)
                         .frame(minWidth: 420, idealWidth: Self.panelWidth, maxWidth: .infinity)
                 }
             }
@@ -224,7 +227,7 @@ struct CircleButton: View {
 struct Sidebar: View {
     @EnvironmentObject private var model: AppModel
     @Binding var showSettings: Bool
-    @State private var creating: PrivacyMode?
+    @State private var creating: AgentLocation?
     @State private var renaming: AgentSession?
     @State private var newName = ""
     @State private var agentSettings = false
@@ -233,17 +236,16 @@ struct Sidebar: View {
         VStack(spacing: 0) {
             HStack {
                 Spacer()
-                CircleButton(systemImage: "plus", help: "New agent") { creating = .fullyPrivate }
+                CircleButton(systemImage: "plus", help: "New agent") { creating = .linuxVM }
             }
             .padding(.horizontal, 16)
             .frame(height: Theme.titleBarHeight)
 
 
-            // Like Notes' "On My Mac" and "iCloud": private agents on top, cloud agents below.
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(PrivacyMode.allCases) { side in
-                        AgentSection(side: side, creating: $creating, renaming: $renaming, newName: $newName, agentSettings: $agentSettings)
+                    ForEach(AgentLocation.allCases) { location in
+                        AgentSection(location: location, creating: $creating, renaming: $renaming, newName: $newName, agentSettings: $agentSettings)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -256,7 +258,10 @@ struct Sidebar: View {
             .padding(16)
         }
         .background(Theme.sidebar)
-        .sheet(item: $creating) { NewAgentSheet(initialSide: $0) }
+        .task(id: model.hasOllamaAgents) {
+            if model.hasOllamaAgents, !model.ollamaChecked { await model.refreshOllama() }
+        }
+        .sheet(item: $creating) { NewAgentSheet(initialLocation: $0) }
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .alert("Rename agent", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -269,24 +274,32 @@ struct Sidebar: View {
 /// One side of the sidebar: its header and its agents, with Rename / New conversation / Delete.
 struct AgentSection: View {
     @EnvironmentObject private var model: AppModel
-    let side: PrivacyMode
-    @Binding var creating: PrivacyMode?
+    let location: AgentLocation
+    @Binding var creating: AgentLocation?
     @Binding var renaming: AgentSession?
     @Binding var newName: String
     @Binding var agentSettings: Bool
 
     var body: some View {
-        SideHeader(title: side.displayName, symbol: side.symbol)
-            .padding(.top, side == .fullyPrivate ? 0 : 14)
-        let list = model.agents(on: side)
+        SideHeader(title: location.displayName, symbol: location.symbol)
+            .padding(.top, location == .linuxVM ? 0 : 14)
+        let list = model.agents(at: location)
         if list.isEmpty {
-            Button(side == .fullyPrivate ? "New private agent…" : side == .thisMac ? "New agent for this Mac…" : "New cloud agent…") { creating = side }
+            Button(newAgentLabel) { creating = location }
                 .buttonStyle(.plain).font(.callout).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.vertical, 6)
         }
         ForEach(list) { session in
             ConversationRow(session: session, selected: session.id == model.selectedAgentID) { model.select(session) }
                 .contextMenu { menu(for: session) }
+        }
+    }
+
+    private var newAgentLabel: String {
+        switch location {
+        case .linuxVM: "New sandbox agent…"
+        case .thisMac: "New agent for this Mac…"
+        case .cloud: "New cloud agent…"
         }
     }
 
@@ -362,21 +375,37 @@ struct AgentAvatar: View {
     }
 }
 
-/// One agent: its name, what it runs on, its last line; a spinner while it works.
+/// One agent's name, inference route, and latest message, with a spinner while it works.
 struct ConversationRow: View {
+    @EnvironmentObject private var model: AppModel
     @ObservedObject var session: AgentSession
     let selected: Bool
     let select: () -> Void
 
     var body: some View {
-        Button(action: select) {
+        let inference = model.sidebarInference(for: session.config)
+        let preview = session.lastLine ?? summary
+        let detail = "\(inference.label) · \(inference.help)"
+        let status = session.isRunning ? "\(detail), Working" : detail
+        return Button(action: select) {
             HStack(spacing: 12) {
                 AgentAvatar(config: session.config, size: 36)
+                    .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
-                    Text(session.lastLine ?? summary).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
+                        Image(systemName: inference.symbol)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 16)
+                            .background(Theme.bubble, in: Capsule())
+                            .accessibilityHidden(true)
+                    }
+                    if !preview.isEmpty {
+                        Text(preview).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
-                Spacer(minLength: 0)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 if session.isRunning { ProgressView().controlSize(.small) }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)
@@ -384,6 +413,10 @@ struct ConversationRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
+        .help(detail)
+        .accessibilityLabel(Text(session.config.name))
+        .accessibilityValue(Text(preview.isEmpty ? status : "\(status), \(preview)"))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     /// "Claude Code · gemma4", "Sai · auto": until there's a conversation.

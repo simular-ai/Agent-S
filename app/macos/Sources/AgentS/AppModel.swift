@@ -21,8 +21,13 @@ final class AppModel: ObservableObject {
         case signedOut
         case connecting
         case awaitingSignIn
-        case connected
+        case connected(HarnessAccountPlan)
         case failed(String)
+
+        var isConnected: Bool {
+            if case .connected = self { return true }
+            return false
+        }
     }
 
     /// Claude Code's model: tool calling and a long context matter most.
@@ -68,7 +73,9 @@ final class AppModel: ObservableObject {
     /// The selected agent, whose chat and settings the window shows.
     var agent: AgentSession { agents.first { $0.id == selectedAgentID } ?? agents[0] }
 
-    func agents(on side: PrivacyMode) -> [AgentSession] { agents.filter { $0.config.privacy == side } }
+    func agents(at location: AgentLocation) -> [AgentSession] {
+        agents.filter { $0.config.privacy.location == location }
+    }
 
     // The selected agent's settings, so views keep binding to `model.harness` and friends.
     private func update(_ change: (inout AgentConfig) -> Void) {
@@ -86,7 +93,7 @@ final class AppModel: ObservableObject {
             }
         }
     }
-    /// A cloud agent's computer (nil for private agents, which use the local VM).
+    /// The selected cloud computer, if any.
     var computer: CloudComputer? { agent.config.computer }
     var boxName: String {
         get { agent.config.boxName ?? "" }
@@ -266,7 +273,32 @@ final class AppModel: ObservableObject {
     }
 
     var hasAgentModel: Bool {
-        ollamaModels.contains { $0.name == agentModel || $0.name == agentModel + ":latest" }
+        ollamaModels.contains { $0.matches(agentModel) }
+    }
+
+    var hasOllamaAgents: Bool {
+        agents.contains { $0.config.harness != .sai && $0.config.provider == .ollama }
+    }
+
+    /// Use the selected model's metadata so Ollama cloud models are identified as hosted.
+    func sidebarInference(for config: AgentConfig) -> (label: String, symbol: String, help: String) {
+        if config.harness == .sai { return ("Hosted inference", "cloud", "Sai") }
+
+        switch config.provider {
+        case .openRouter: return ("Hosted inference", "cloud", "OpenRouter · \(config.openRouterModel)")
+        case .claudeAccount, .codexAccount:
+            let confirmed = accountStatuses[config.provider] == .connected(.subscription)
+            let provider = config.provider == .claudeAccount ? "Claude Code account" : "Codex account"
+            return confirmed ? ("Subscription", "creditcard", provider) : ("Account", "person.crop.circle", provider)
+        case .ollama:
+            let model = ollamaModels.first { $0.matches(config.ollamaModel) }
+            let provider = "Ollama · \(config.ollamaModel)"
+            if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
+                return ("Hosted inference", "cloud", provider)
+            }
+            if model != nil, ollamaReady { return ("Local inference", "laptopcomputer", provider) }
+            return ("Inference location unconfirmed", "questionmark.circle", provider)
+        }
     }
 
     /// The models Ollama has, without the `:latest` tag, plus the current choice if it isn't
@@ -276,9 +308,6 @@ final class AppModel: ObservableObject {
         if !names.contains(agentModel) { names.insert(agentModel, at: 0) }
         return names
     }
-
-    /// Ollama as the guest reaches it: its own loopback, tunnelled back over each turn's SSH.
-    let ollamaURLForGuest = "http://127.0.0.1:\(Ollama.guestPort)"
 
     // MARK: Actions
 
@@ -325,6 +354,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopAppWork() {
+        macTurnPanel.suppressAutomaticChatRestoration()
         accountSignIns.values.forEach { $0.cancel() }
         agents.forEach { $0.stop() }
     }
@@ -386,14 +416,17 @@ final class AppModel: ObservableObject {
     var shouldCheckOllamaForChat: Bool { usesOllama && computerChatBlocker == nil }
 
     private var modelBlocker: String? {
-        if provider.usesAccount, accountStatus != .connected {
+        if provider.usesAccount, !accountStatus.isConnected {
             return accountStatus == .checking ? "Checking sign-in…" : "Connect your \(accountName) account to chat"
         }
         if usesOllama {
             if !ollamaChecked { return "Checking Ollama…" }
             if !hasAgentModel { return "Download \(agentModel) in Settings first" }
         }
-        if provider == .openRouter, !hasOpenRouterKey || openRouterModel.isEmpty { return "Add your OpenRouter key in Settings first" }
+        if provider == .openRouter {
+            if !hasOpenRouterKey { return "Add your OpenRouter key in Settings first" }
+            if openRouterModel.isEmpty { return "Choose an OpenRouter model in Settings first" }
+        }
         return nil
     }
 
@@ -430,7 +463,11 @@ final class AppModel: ObservableObject {
         }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
-        case .ready: return nil
+        case .ready:
+            if agents.contains(where: { $0 !== agent && $0.config.usesLocalComputer && $0.isRunning }) {
+                return "Another agent is using the sandbox"
+            }
+            return nil
         default: return "Turn the computer on to chat"
         }
     }
@@ -538,12 +575,12 @@ final class AppModel: ObservableObject {
         let errorDescription: String?
     }
 
-    private func accountIsConnected(_ provider: ModelProvider) async throws -> Bool {
-        if provider == .codexAccount { return try await CodexAccount.status(dataFolder: files.root) }
+    private func accountPlan(_ provider: ModelProvider) async throws -> HarnessAccountPlan? {
+        if provider == .codexAccount { return try await CodexAccount.accountPlan(dataFolder: files.root) }
         guard let claude = BoxAccount.claude else {
             throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
         }
-        return await ClaudeAccount.isSignedIn(claude: claude, profile: ClaudeAccount.profile(in: files.root))
+        return await ClaudeAccount.accountPlan(claude: claude, profile: ClaudeAccount.profile(in: files.root))
     }
 
     func refreshAccountStatus() async {
@@ -552,11 +589,11 @@ final class AppModel: ObservableObject {
         let check = UUID()
         let previous = accountStatuses[provider] ?? .unchecked
         accountChecks[provider] = check
-        if previous != .connected, previous != .awaitingSignIn { accountStatuses[provider] = .checking }
+        if !previous.isConnected, previous != .awaitingSignIn { accountStatuses[provider] = .checking }
         let status: AccountStatus
         do {
-            let connected = try await accountIsConnected(provider)
-            status = connected ? .connected : (previous == .awaitingSignIn ? .awaitingSignIn : .signedOut)
+            let plan = try await accountPlan(provider)
+            status = plan.map(AccountStatus.connected) ?? (previous == .awaitingSignIn ? .awaitingSignIn : .signedOut)
         } catch {
             status = .failed(error.localizedDescription)
         }
@@ -574,9 +611,9 @@ final class AppModel: ObservableObject {
             defer { accountSignIns[provider] = nil }
             do {
                 if provider == .codexAccount {
-                    try await CodexAccount.signIn(dataFolder: files.root)
+                    let plan = try await CodexAccount.signIn(dataFolder: files.root)
                     try Task.checkCancellation()
-                    accountStatuses[provider] = .connected
+                    accountStatuses[provider] = .connected(plan)
                 } else {
                     guard let claude = BoxAccount.claude else {
                         throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
@@ -611,19 +648,19 @@ final class AppModel: ObservableObject {
             sendToMac(prompt)
             return
         }
-        guard !provider.usesAccount, let ip = guestIP else { return }
+        guard config.usesLocalComputer, let ip = guestIP else { return }
         let shell = shell
-        var tunnel = Ollama.port
+        let port = provider == .openRouter ? OpenRouter.proxyPort : Ollama.port
         var apiKey: String?
         if provider == .openRouter {
-            apiKey = openRouterProxy.token
             do { try openRouterProxy.start() } catch {
-                NSLog("Agent S: couldn't start the OpenRouter proxy: %@", "\(error)")
+                agent.noticeFromApp("Couldn't start the OpenRouter connection: \(error.localizedDescription)")
+                return
             }
-            tunnel = OpenRouter.proxyPort
+            apiKey = openRouterProxy.token
         }
-        agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel, ollamaURL: ollamaURLForGuest,
-                   provider: provider, apiKey: apiKey, tunnelTo: tunnel) {
+        agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel,
+                   ollamaURL: "http://127.0.0.1:\(port)", provider: provider, apiKey: apiKey, tunnelTo: port) {
             await Self.screenNow(shell: shell, ip: ip)
         }
     }
@@ -648,6 +685,7 @@ final class AppModel: ObservableObject {
     // MARK: This Mac agents
 
     private let macTurnPanel = MacTurnPanelController()
+    var openMainWindow: (() -> Void)?
 
     func showMacTurnPanel(for session: AgentSession, presentation: MacTurnPanelController.Presentation = .manual) {
         guard session.config.privacy == .thisMac else { return }
@@ -657,9 +695,13 @@ final class AppModel: ObservableObject {
             self.select(session)
             NSApp.unhide(nil)
             NSApp.activate()
-            let window = mainWindow ?? NSApp.windows.first { $0.canBecomeMain }
-            if window?.isMiniaturized == true { window?.deminiaturize(nil) }
-            window?.makeKeyAndOrderFront(nil)
+            let windows = [mainWindow].compactMap { $0 } + NSApp.windows
+            guard let window = windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized) }) else {
+                self.openMainWindow?()
+                return
+            }
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
         }
     }
 

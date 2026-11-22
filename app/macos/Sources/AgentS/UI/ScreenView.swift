@@ -115,8 +115,7 @@ struct ComputerPanel: View {
         .padding(.horizontal, 16)
         // Maximized, the panel starts at the window's left edge: clear the traffic lights.
         .padding(.leading, maximized ? 64 : 0)
-        .frame(height: Theme.titleBarHeight + 8)
-        .padding(.top, 4)
+        .frame(height: Theme.titleBarHeight)
     }
 
     @ViewBuilder private var powerButton: some View {

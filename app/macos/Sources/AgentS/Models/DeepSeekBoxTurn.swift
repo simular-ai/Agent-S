@@ -49,6 +49,8 @@ final class DeepSeekBoxTurn {
         defer { try? FileManager.default.removeItem(at: home) }
         let patch = home.appendingPathComponent("box.patch.yml")
         try DeepSeekBoxProfile.patch.write(to: patch, atomically: true, encoding: .utf8)
+        let streamPlugin = home.appendingPathComponent(DeepSeekStreamingPlugin.filename)
+        try DeepSeekStreamingPlugin.source.write(to: streamPlugin, atomically: true, encoding: .utf8)
 
         let path = executable.deletingLastPathComponent().path + ":/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
         var environment = [
@@ -77,10 +79,11 @@ final class DeepSeekBoxTurn {
         ]) { _, value in value }
 
         let arguments = DeepSeekBoxProfile.arguments(prompt: prompt, resume: resume, patchPath: patch.path)
+        var stream = DeepSeekStream()
         var final: ClaudeEvent?
         let status = try await launch(executable: executable, arguments: arguments, environment: environment, work: work) { line in
             guard bridge.listedTools else { return }
-            for event in DeepSeekStream.parse(line: line) {
+            for event in stream.consume(line: line) {
                 if case .finished = event { final = event }
                 else { onEvent(event) }
             }

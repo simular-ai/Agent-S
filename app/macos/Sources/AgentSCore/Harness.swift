@@ -28,7 +28,7 @@ public enum Harness: String, CaseIterable, Identifiable, Codable, Sendable {
     /// Every harness a privacy mode can use, across its computers.
     public static func allowed(in mode: PrivacyMode) -> [Harness] {
         switch mode {
-        case .fullyPrivate: [.claudeCode, .codex, .deepSeek]
+        case .fullyPrivate, .localVM: [.claudeCode, .codex, .deepSeek]
         case .thisMac: [.claudeCode, .codex]
         case .remote: CloudComputer.box.harnesses + CloudComputer.sai.harnesses
         }
@@ -38,14 +38,17 @@ public enum Harness: String, CaseIterable, Identifiable, Codable, Sendable {
     public func remoteShell(prompt: String, resume: String?, model: String, ollamaURL: String,
                             provider: ModelProvider = .ollama, apiKey: String? = nil) -> String {
         guard !provider.usesAccount else { return "" } // Account harnesses run on the Mac.
+        let guestPort = URLComponents(string: ollamaURL)?.port.flatMap { UInt16(exactly: $0) } ?? 11434
         return switch self {
         case .claudeCode:
             ClaudeCommand(prompt: prompt, resume: resume, model: model, ollamaURL: ollamaURL, provider: provider,
                           apiKey: apiKey).remoteShell
         case .codex:
-            CodexCommand(prompt: prompt, resume: resume, model: model, provider: provider, apiKey: apiKey).remoteShell
+            CodexCommand(prompt: prompt, resume: resume, model: model, provider: provider,
+                         apiKey: apiKey, guestPort: guestPort).remoteShell
         case .deepSeek:
-            DeepSeekCommand(prompt: prompt, resume: resume, model: model, provider: provider, apiKey: apiKey).remoteShell
+            DeepSeekCommand(prompt: prompt, resume: resume, model: model, provider: provider,
+                            apiKey: apiKey, guestPort: guestPort).remoteShell
         case .sai:
             "" // not a shell: AgentSession calls the Sai API instead
         }
@@ -143,13 +146,16 @@ public struct CodexCommand: Equatable, Sendable {
     public var provider: ModelProvider
     /// For OpenRouter, the Mac proxy's per-launch token (not the real key).
     public var apiKey: String
+    public var guestPort: UInt16
 
-    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama, apiKey: String? = nil) {
+    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama,
+                apiKey: String? = nil, guestPort: UInt16 = 11434) {
         self.prompt = prompt
         self.resume = resume
         self.model = model
         self.provider = provider
         self.apiKey = apiKey ?? provider.placeholderKey
+        self.guestPort = guestPort
     }
 
     /// Ollama through Codex's built-in --oss provider; OpenRouter as a custom Responses-API
@@ -160,7 +166,7 @@ public struct CodexCommand: Equatable, Sendable {
             ["--oss", "--local-provider", "ollama"]
         case .openRouter:
             ["-c", quote("model_provider=\"saige\""),
-             "-c", quote(#"model_providers.saige={name="OpenRouter via Agent S",base_url="http://127.0.0.1:11434/v1",env_key="AGENT_S_PROXY_KEY",wire_api="responses"}"#)]
+             "-c", quote(#"model_providers.saige={name="OpenRouter via Agent S",base_url="http://127.0.0.1:\#(guestPort)/v1",env_key="AGENT_S_PROXY_KEY",wire_api="responses"}"#)]
         case .claudeAccount, .codexAccount:
             []
         }
@@ -209,7 +215,8 @@ public enum CodexStream {
             let id = item["id"] as? String ?? ""
             switch (type, kind) {
             case ("item.started", "command_execution"):
-                return [.toolCall(id: id, name: "Shell", summary: summary(of: item["command"] as? String ?? ""))]
+                let command = item["command"] as? String
+                return [.toolCall(id: id, name: "Shell", summary: summary(of: command ?? ""), detail: command)]
             case ("item.completed", "command_execution"):
                 let exit = item["exit_code"] as? Int ?? 0
                 return [.toolResult(id: id, output: ClaudeStream.clip(item["aggregated_output"] as? String ?? ""),

@@ -4,7 +4,7 @@ import AgentSCore
 /// What an agent is: where it runs (private or cloud), its harness, and its model. Chosen when the
 /// agent is created; each agent has its own conversation and harness context.
 struct AgentConfig: Codable, Identifiable, Equatable {
-    /// A private agent never uses a cloud provider or harness, whatever a saved file says.
+    /// Reapply the supported harness and provider options when loading saved agents.
     var enforcingPrivacy: AgentConfig {
         var config = self
         if privacy != .remote { config.cloudComputer = nil }
@@ -22,8 +22,7 @@ struct AgentConfig: Codable, Identifiable, Equatable {
         return cloudComputer ?? (harness == .sai ? .sai : .box)
     }
 
-    /// Whether the agent works on the local VM (private agents only).
-    var usesLocalComputer: Bool { privacy == .fullyPrivate }
+    var usesLocalComputer: Bool { privacy.usesLocalComputer }
 
     var id = UUID()
     var name: String
@@ -64,6 +63,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     let id: String
     var kind: Kind
     var text: String
+    var toolInput: String? = nil
 }
 
 /// One agent: its definition, its conversation, and its harness context. A turn is one SSH process
@@ -142,8 +142,10 @@ final class AgentSession: ObservableObject, Identifiable {
         self.harness = harness
         activeAccountProvider = nil
         turn = UUID().uuidString
+        let turnID = turn
         Task { @MainActor in
             let now = await screen()
+            guard turn == turnID, isRunning else { return }
             let message = now.map { "[\($0)]\n\n\(prompt)" } ?? prompt
             start(message, harness: harness, shell: shell, ip: ip, model: model, ollamaURL: ollamaURL,
                   provider: provider, apiKey: apiKey, tunnelTo: tunnelTo)
@@ -156,20 +158,23 @@ final class AgentSession: ObservableObject, Identifiable {
         let command = harness.remoteShell(prompt: prompt, resume: sessions[harness], model: model, ollamaURL: ollamaURL,
                                           provider: provider, apiKey: apiKey)
         do {
-            process = try shell.stream(command, on: ip, tunnelTo: tunnelTo, line: { [weak self] line in
-                let events = harness.parse(line: line)
-                guard !events.isEmpty else { return }
-                Task { @MainActor in self?.apply(events) }
-            }, finished: { [weak self] status, stderr in
-                Task { @MainActor in self?.finish(status: status, stderr: stderr) }
-            })
+            let (process, output) = try shell.stream(command, on: ip, tunnelTo: tunnelTo)
+            self.process = process
+            read(output, harness: harness, turnID: turn, inApp: false)
         } catch {
             notice("Couldn't reach the computer: \(error.localizedDescription)", isError: true)
             isRunning = false
+            onChange?()
         }
     }
 
     func stop() {
+        // The guest turn may still be reading the screen before it launches SSH.
+        if isRunning, process == nil, appProcess == nil, hostedTask == nil, saiTask == nil {
+            turn = UUID().uuidString
+            finish(status: 15, stderr: "")
+            return
+        }
         if let process, process.isRunning { process.terminate() }
         if let appProcess, appProcess.isRunning { appProcess.terminate() }
         closeClaudeMacTool()
@@ -345,10 +350,7 @@ final class AgentSession: ObservableObject, Identifiable {
             process.environment = environment
             process.currentDirectoryURL = workingDirectory ?? work
             process.standardInput = FileHandle.nullDevice
-            let out = Pipe(), err = Pipe()
-            process.standardOutput = out
-            process.standardError = err
-            let reader = LineReader { [weak self, weak process] line in
+            let output = try TurnProcessOutput(starting: process) { [weak process] line in
                 // Defense in depth: if Claude Code ever starts with a tool it shouldn't have, stop
                 // before the model can use it.
                 if line.contains("\"subtype\":\"init\""),
@@ -356,44 +358,50 @@ final class AgentSession: ObservableObject, Identifiable {
                    let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    let tools = object["tools"] as? [String], !toolsAllowed(tools) {
                     process?.terminate()
-                    Task { @MainActor in
-                        guard self?.turn == turnID else { return }
-                        self?.notice("Stopped: Claude Code started with other tools (\(tools.joined(separator: ", "))). \(toolsRule).", isError: true)
-                    }
-                    return
+                    return .rejected("Stopped: Claude Code started with other tools (\(tools.joined(separator: ", "))). \(toolsRule).")
                 }
-                let events = ClaudeStream.parse(line: line)
-                guard !events.isEmpty else { return }
-                Task { @MainActor in
-                    if self?.turn == turnID { self?.apply(events) }
-                }
+                return .output(line)
             }
-            out.fileHandleForReading.readabilityHandler = { handle in
-                let data = handle.availableData
-                if data.isEmpty { handle.readabilityHandler = nil } else { reader.feed(data) }
-            }
-            process.terminationHandler = { [weak self] process in
-                out.fileHandleForReading.readabilityHandler = nil
-                reader.feed(out.fileHandleForReading.readDataToEndOfFile())
-                reader.flush()
-                let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                    .split(separator: "\n").filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
-                    .joined(separator: "\n")
-                let status = process.terminationStatus
-                Task { @MainActor in
-                    self?.appProcess = nil
-                    self?.closeClaudeMacTool()
-                    self?.denyPendingApprovals()
-                    if self?.turn == turnID { self?.finish(status: status, stderr: stderr) }
-                    else { self?.isRunning = false }
-                }
-            }
-            try process.run()
             appProcess = process
+            read(output, harness: .claudeCode, turnID: turnID, inApp: true)
         } catch {
             closeClaudeMacTool()
             notice("Couldn't start Claude Code: \(error.localizedDescription)", isError: true)
             isRunning = false
+        }
+    }
+
+    private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool) {
+        Task { @MainActor [weak self] in
+            var claude = ClaudeStream()
+            var deepSeek = DeepSeekStream()
+            for await line in output.lines {
+                guard let self, self.turn == turnID else { continue }
+                switch line {
+                case let .output(line):
+                    switch harness {
+                    case .claudeCode: self.apply(claude.consume(line: line))
+                    case .deepSeek: self.apply(deepSeek.consume(line: line))
+                    default: self.apply(harness.parse(line: line))
+                    }
+                case let .rejected(message):
+                    self.notice(message, isError: true)
+                }
+            }
+            let (status, stderr) = await output.completion()
+            guard let self else { return }
+            if inApp {
+                self.appProcess = nil
+                self.closeClaudeMacTool()
+                self.denyPendingApprovals()
+            } else {
+                self.process = nil
+            }
+            guard self.turn == turnID else { self.isRunning = false; return }
+            let error = inApp ? stderr.split(separator: "\n")
+                .filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
+                .joined(separator: "\n") : stderr
+            self.finish(status: status, stderr: error)
         }
     }
 
@@ -406,16 +414,16 @@ final class AgentSession: ObservableObject, Identifiable {
         let runner = CodexAccountTurn()
         let config = config
         let usesBox = config.computer == .box
-        runHostedTurn(prompt, harness: .codex, stop: runner.stop) { [weak self] resume, onEvent, onTextDelta in
+        runHostedTurn(prompt, harness: .codex, stop: runner.stop) { [weak self] resume, onEvent in
             if usesBox {
                 try await runner.runOnBox(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: config.id,
                                           model: model, provider: config.provider, baseURL: baseURL, apiKey: apiKey,
-                                          boxName: config.boxName, onEvent: onEvent, onTextDelta: onTextDelta)
+                                          boxName: config.boxName, onEvent: onEvent)
             } else {
                 try await runner.run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: config.id, approve: { command in
                     guard let self else { return false }
                     return await self.requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool)
-                }, onEvent: onEvent, onTextDelta: onTextDelta)
+                }, onEvent: onEvent)
             }
         }
     }
@@ -423,15 +431,14 @@ final class AgentSession: ObservableObject, Identifiable {
     func sendWithDeepSeekOnBox(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String) {
         let runner = DeepSeekBoxTurn()
         let config = config
-        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop) { resume, onEvent, _ in
+        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop) { resume, onEvent in
             try await runner.run(prompt: prompt, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
                                  dataFolder: dataFolder, agentID: config.id, boxName: config.boxName, onEvent: onEvent)
         }
     }
 
     private func runHostedTurn(_ prompt: String, harness: Harness, stop: @escaping () -> Void,
-                               run: @escaping (String?, @escaping (ClaudeEvent) -> Void,
-                                               @escaping (String, String) -> Void) async throws -> Void) {
+                               run: @escaping (String?, @escaping (ClaudeEvent) -> Void) async throws -> Void) {
         guard !isRunning else { return }
         let resume = currentSessionID
         let context = boxSessionKey
@@ -457,14 +464,6 @@ final class AgentSession: ObservableObject, Identifiable {
                     guard self.turn == turnID else { return }
                     if let context, case let .started(id, _) = event { self.boxSessions[context] = id }
                     else { self.apply([event]) }
-                }, { id, delta in
-                    guard self.turn == turnID, !delta.isEmpty else { return }
-                    let textID = "\(turnID)/text/\(id)"
-                    if let index = self.items.lastIndex(where: { $0.id == textID }) {
-                        self.items[index].text += delta
-                    } else {
-                        self.items.append(ChatItem(id: textID, kind: .agent, text: delta))
-                    }
                 })
             } catch {
                 guard self.turn == turnID else { return }
@@ -478,8 +477,6 @@ final class AgentSession: ObservableObject, Identifiable {
 
     private var saiTask: Task<Void, Never>?
     private var saiMachine: String?
-    /// The text item each streamed text id is being written into.
-    private var saiText: [String: String] = [:]
 
     /// Sends one message to Sai on `machine`. Follow-ups continue the same Sai session while the
     /// machine stays the same.
@@ -490,17 +487,18 @@ final class AgentSession: ObservableObject, Identifiable {
         harness = .sai
         activeAccountProvider = nil
         turn = UUID().uuidString
+        let turnID = turn
         if saiMachine != machine { sessions[.sai] = nil; saiMachine = machine }
         let session = sessions[.sai]
         saiTask = Task { @MainActor [weak self] in
             do {
                 try await SaiAPI.run(message: prompt, machine: machine, session: session, model: model) { event in
-                    self?.applySai(event)
+                    if self?.turn == turnID { self?.applySai(event) }
                 }
             } catch is CancellationError {
-                self?.notice("Stopped.", isError: false)
+                if self?.turn == turnID { self?.notice("Stopped.", isError: false) }
             } catch {
-                if !Task.isCancelled { self?.notice(error.localizedDescription, isError: true) }
+                if self?.turn == turnID, !Task.isCancelled { self?.notice(error.localizedDescription, isError: true) }
             }
             self?.isRunning = false
             self?.saiTask = nil
@@ -534,23 +532,22 @@ final class AgentSession: ObservableObject, Identifiable {
         case "data-session":
             if let id = data["sessionId"] as? String { sessions[.sai] = id }
         case "text-delta":
-            let textId = "\(turn)/text/\(event["id"] as? String ?? "")"
-            let delta = event["delta"] as? String ?? ""
-            if let index = items.lastIndex(where: { $0.id == textId }) {
-                items[index].text += delta
-            } else if !delta.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                items.append(ChatItem(id: textId, kind: .agent, text: delta))
+            if let delta = event["delta"] as? String {
+                updateText(id: event["id"] as? String ?? "", text: delta, append: true)
             }
         case "tool-input-start", "tool-input-available":
             guard let callId = event["toolCallId"] as? String else { return }
             let id = "\(turn)/\(callId)"
-            let title = (event["input"] as? [String: Any])?["title"] as? String
+            let input = event["input"] as? [String: Any] ?? [:]
+            let title = input["title"] as? String
+            let detail = ToolActivity.detail(input: input)
             if let index = items.lastIndex(where: { $0.id == id }) {
                 if let title { items[index].text = title }
+                if let detail { items[index].toolInput = detail }
             } else {
                 let name = event["toolName"] as? String ?? "tool"
                 items.append(ChatItem(id: id, kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: title ?? name))
+                                      text: title ?? name, toolInput: detail))
             }
         case "data-progress":
             // Progress lines belong to the latest running step.
@@ -594,7 +591,7 @@ final class AgentSession: ObservableObject, Identifiable {
     /// A fresh context: forgets the chat and the harness sessions; the next message starts new.
     func reset() {
         stop()
-        if hostedTask != nil || (isRunning && activeAccountProvider != nil) { turn = UUID().uuidString }
+        if isRunning { turn = UUID().uuidString }
         items = []
         sessions = [:]
         accountSessions = [:]
@@ -611,10 +608,14 @@ final class AgentSession: ObservableObject, Identifiable {
                 else { sessions[harness] = id }
             case let .text(text):
                 items.append(ChatItem(id: UUID().uuidString, kind: .agent, text: text))
-            case let .toolCall(id, name, summary):
+            case let .textDelta(id, text):
+                updateText(id: id, text: text, append: true)
+            case let .textSnapshot(id, text):
+                updateText(id: id, text: text, append: false)
+            case let .toolCall(id, name, summary, detail):
                 items.append(ChatItem(id: id.isEmpty ? UUID().uuidString : "\(turn)/\(id)",
                                       kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: summary))
+                                      text: summary, toolInput: detail))
             case let .toolResult(id, output, isError):
                 if let index = items.lastIndex(where: { $0.id == "\(turn)/\(id)" }),
                    case let .step(name, _, _, _) = items[index].kind {
@@ -628,8 +629,22 @@ final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
+    private func updateText(id: String, text: String, append: Bool) {
+        let id = "\(turn)/text/\(id)"
+        if let index = items.lastIndex(where: { $0.id == id }) {
+            if append {
+                if !text.isEmpty { items[index].text += text }
+            } else if text.isEmpty {
+                items.remove(at: index)
+            } else if items[index].text != text {
+                items[index].text = text
+            }
+        } else if !text.isEmpty {
+            items.append(ChatItem(id: id, kind: .agent, text: text))
+        }
+    }
+
     private func finish(status: Int32, stderr: String) {
-        process = nil
         isRunning = false
         defer { onChange?() }
         // 15: stopped by the user (SIGTERM).

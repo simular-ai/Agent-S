@@ -12,8 +12,38 @@ struct ClaudeStreamTests {
         let line = #"{"type":"assistant","message":{"content":[{"type":"text","text":"Opening the site."},{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"simulang run open.ts\nmore","description":"Open the site"}}]}}"#
         #expect(ClaudeStream.parse(line: line) == [
             .text("Opening the site."),
-            .toolCall(id: "t1", name: "Bash", summary: "Open the site"),
+            .toolCall(id: "t1", name: "Bash", summary: "Open the site", detail: "simulang run open.ts\nmore"),
         ])
+    }
+
+    @Test func streamsTextBeforeEachCompletedBlock() {
+        var stream = ClaudeStream()
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hidden"}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"First"}}}"#) == [.textDelta(id: "m1/1", text: "First")])
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" "}}}"#) == [.textDelta(id: "m1/1", text: " ")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"First block."}]}}"#) == [.textSnapshot(id: "m1/1", text: "First block.")])
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_stop","index":1}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","api_message_id":"m1","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Second"}}}"#) == [.textDelta(id: "m1/2", text: "Second")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Second block."}]}}"#) == [.textSnapshot(id: "m1/2", text: "Second block.")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Completed only."}]}}"#) == [.text("Completed only.")])
+    }
+
+    @Test(arguments: [true, false])
+    func discardsInterruptedPartialTextOnRetry(_ streamsRetry: Bool) {
+        var stream = ClaudeStream()
+        _ = stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}"#)
+        _ = stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Interrupted"}}}"#)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_stop"}}"#).isEmpty)
+        let remove = ClaudeEvent.textSnapshot(id: "m1/0", text: "")
+        let reply = #"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Retried."}]}}"#
+        if streamsRetry {
+            #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m2"}}}"#) == [remove])
+            #expect(stream.consume(line: reply) == [.text("Retried.")])
+        } else {
+            #expect(stream.consume(line: reply) == [remove, .text("Retried.")])
+        }
     }
 
     @Test func readsToolResultsAndClipsThem() {
@@ -112,7 +142,7 @@ struct ClaudeCommandTests {
         #expect(shell.hasPrefix("cd ~/work && rm -f AGENTS.md && DISPLAY=:0 "))
         #expect(shell.contains("ANTHROPIC_BASE_URL='http://192.168.64.1:11434'"))
         #expect(shell.contains("ANTHROPIC_AUTH_TOKEN='ollama'"))
-        #expect(shell.contains("--output-format stream-json --verbose"))
+        #expect(shell.contains("--output-format stream-json --verbose --include-partial-messages"))
         #expect(!shell.contains("--resume"))
         // Replaces Claude Code's large default prompt and tool set to keep each call small.
         #expect(shell.contains("--system-prompt '"))
@@ -172,8 +202,8 @@ struct CodexTests {
 
     @Test func parsesCodexEvents() {
         #expect(CodexStream.parse(line: #"{"type":"thread.started","thread_id":"t-1"}"#) == [.started(sessionId: "t-1", model: nil)])
-        #expect(CodexStream.parse(line: #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc 'echo hi'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#)
-                == [.toolCall(id: "item_2", name: "Shell", summary: "echo hi")])
+        #expect(CodexStream.parse(line: #"{"type":"item.started","item":{"id":"item_2","type":"command_execution","command":"/bin/bash -lc 'echo hi\necho again'","aggregated_output":"","exit_code":null,"status":"in_progress"}}"#)
+                == [.toolCall(id: "item_2", name: "Shell", summary: "echo hi", detail: "/bin/bash -lc 'echo hi\necho again'")])
         #expect(CodexStream.parse(line: #"{"type":"item.completed","item":{"id":"item_2","type":"command_execution","command":"x","aggregated_output":"hi\n","exit_code":1,"status":"completed"}}"#)
                 == [.toolResult(id: "item_2", output: "hi\n", isError: true)])
         #expect(CodexStream.parse(line: #"{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Done."}}"#) == [.text("Done.")])
@@ -296,7 +326,7 @@ struct DeepSeekTests {
         #expect(DeepSeekStream.parse(line: #"{"type":"session","sessionId":"session-1","cwd":"/home/sai/work"}"#)
                 == [.started(sessionId: "session-1", model: nil)])
         #expect(DeepSeekStream.parse(line: #"{"type":"tool_call","callId":"c1","tool":"bash","input":{"command":"web open https://x.com","description":"Open X"}}"#)
-                == [.toolCall(id: "c1", name: "bash", summary: "web open https://x.com")])
+                == [.toolCall(id: "c1", name: "bash", summary: "web open https://x.com", detail: "web open https://x.com")])
         #expect(DeepSeekStream.parse(line: #"{"type":"tool_result","callId":"c1","status":"error","result":"Error: nope"}"#)
                 == [.toolResult(id: "c1", output: "Error: nope", isError: true)])
         #expect(DeepSeekStream.parse(line: #"{"type":"text","text":"Done."}"#) == [.text("Done.")])

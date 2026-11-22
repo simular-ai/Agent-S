@@ -104,7 +104,7 @@ private struct ContextItem: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label).font(.caption.weight(.semibold)).foregroundStyle(color)
-            Text(item.text).font(.callout).textSelection(.enabled)
+            Text(item.toolInput ?? item.text).font(.callout).textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
             if case let .step(_, done, _, output) = item.kind {
                 Text(done ? (output.isEmpty ? "(no output)" : output) : "running…")
@@ -123,7 +123,8 @@ private struct ContextItem: View {
         switch item.kind {
         case .user: "You"
         case .agent: "Sai"
-        case let .step(name, _, failed, _): failed ? "\(name) · failed" : name
+        case let .step(name, _, failed, _):
+            ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput) + (failed ? " · failed" : "")
         case let .notice(isError): isError ? "Error" : "Note"
         case .approval: "Approval"
         }

@@ -13,18 +13,18 @@ enum CodexAccount {
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    static func status(dataFolder: URL) async throws -> Bool {
+    static func accountPlan(dataFolder: URL) async throws -> HarnessAccountPlan? {
         let connection = try connect(dataFolder: dataFolder)
         defer { connection.close() }
         try await connection.initialize()
-        return try await signedIn(on: connection)
+        return try await accountPlan(on: connection)
     }
 
-    static func signIn(dataFolder: URL) async throws {
+    static func signIn(dataFolder: URL) async throws -> HarnessAccountPlan {
         let connection = try connect(dataFolder: dataFolder)
         defer { connection.close() }
         try await connection.initialize()
-        if try await signedIn(on: connection) { return }
+        if let plan = try await accountPlan(on: connection) { return plan }
 
         let login = try await connection.request("account/login/start", ["type": "chatgpt"])
         guard let id = login["loginId"] as? String, let link = login["authUrl"] as? String,
@@ -45,13 +45,14 @@ enum CodexAccount {
             guard result["success"] as? Bool == true else {
                 throw CodexFailure("Codex sign-in didn’t complete. Try again.")
             }
-            return
+            return (try? await accountPlan(on: connection)) ?? .account
         }
     }
 
-    fileprivate static func signedIn(on connection: CodexConnection) async throws -> Bool {
+    fileprivate static func accountPlan(on connection: CodexConnection) async throws -> HarnessAccountPlan? {
         let result = try await connection.request("account/read", ["refreshToken": false])
-        return (result["account"] as? [String: Any])?["type"] as? String == "chatgpt"
+        guard let account = result["account"] as? [String: Any], account["type"] as? String == "chatgpt" else { return nil }
+        return HarnessAccountPlan(provider: .codexAccount, reportedPlan: account["planType"] as? String)
     }
 
     fileprivate static func connect(dataFolder: URL, inference: CodexInference = .account) throws -> CodexConnection {
@@ -273,32 +274,29 @@ final class CodexAccountTurn {
     }
 
     func run(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
-             approve: @escaping (String) async -> Bool, onEvent: @escaping (ClaudeEvent) -> Void,
-             onTextDelta: ((String, String) -> Void)? = nil) async throws {
+             approve: @escaping (String) async -> Bool, onEvent: @escaping (ClaudeEvent) -> Void) async throws {
         try await run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: agentID,
-                      inference: .account, target: .mac(approve: approve), onEvent: onEvent, onTextDelta: onTextDelta)
+                      inference: .account, target: .mac(approve: approve), onEvent: onEvent)
     }
 
     func runOnBox(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
                   model: String, provider: ModelProvider, baseURL: String, apiKey: String,
-                  boxName: String?, onEvent: @escaping (ClaudeEvent) -> Void,
-                  onTextDelta: ((String, String) -> Void)? = nil) async throws {
+                  boxName: String?, onEvent: @escaping (ClaudeEvent) -> Void) async throws {
         try checkRunning()
         let inference = try CodexInference(provider: provider, baseURL: baseURL, model: model, apiKey: apiKey)
         let tools = try await CodexBoxTools.load(boxName: boxName)
         try await run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: agentID,
-                      inference: inference, target: .box(tools), onEvent: onEvent, onTextDelta: onTextDelta)
+                      inference: inference, target: .box(tools), onEvent: onEvent)
     }
 
     private func run(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
-                     inference: CodexInference, target: Target, onEvent: (ClaudeEvent) -> Void,
-                     onTextDelta: ((String, String) -> Void)?) async throws {
+                     inference: CodexInference, target: Target, onEvent: (ClaudeEvent) -> Void) async throws {
         try checkRunning()
         let connection = try CodexAccount.connect(dataFolder: dataFolder, inference: inference)
         self.connection = connection
         defer { connection.close(); self.connection = nil }
         try await connection.initialize()
-        if case .account = inference, try await !CodexAccount.signedIn(on: connection) {
+        if case .account = inference, try await CodexAccount.accountPlan(on: connection) == nil {
             throw CodexFailure("Sign in to Codex in Agent Settings.")
         }
 
@@ -317,7 +315,6 @@ final class CodexAccountTurn {
             throw CodexFailure("Codex didn’t start a turn.")
         }
         onEvent(.started(sessionId: thread.id, model: thread.model))
-        var streamed = Set<String>()
         while true {
             let message = try await connection.next()
             try checkRunning()
@@ -336,14 +333,13 @@ final class CodexAccountTurn {
             guard params["threadId"] as? String == thread.id else { continue }
             switch method {
             case "item/agentMessage/delta" where params["turnId"] as? String == turnID:
-                if let onTextDelta, let id = params["itemId"] as? String, let delta = params["delta"] as? String {
-                    streamed.insert(id)
-                    onTextDelta(id, delta)
+                if let id = params["itemId"] as? String, let delta = params["delta"] as? String {
+                    onEvent(.textDelta(id: id, text: delta))
                 }
             case "item/completed" where params["turnId"] as? String == turnID:
                 if let item = params["item"] as? [String: Any], item["type"] as? String == "agentMessage",
-                   let text = item["text"] as? String, !streamed.contains(item["id"] as? String ?? "") {
-                    onEvent(.text(text))
+                   let text = item["text"] as? String {
+                    onEvent((item["id"] as? String).map { .textSnapshot(id: $0, text: text) } ?? .text(text))
                 }
             case "thread/tokenUsage/updated" where params["turnId"] as? String == turnID:
                 if let usage = (params["tokenUsage"] as? [String: Any])?["last"] as? [String: Any],
@@ -454,7 +450,9 @@ final class CodexAccountTurn {
               !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return Self.toolResponse(text: "That tool is unavailable.", success: false)
         }
-        onEvent(.toolCall(id: id, name: "Mac", summary: String(command.replacingOccurrences(of: MacAccess.macTool, with: "mac").prefix(120))))
+        onEvent(.toolCall(id: id, name: "Mac",
+                          summary: String(command.replacingOccurrences(of: MacAccess.macTool, with: "mac").prefix(120)),
+                          detail: command))
         var text: String
         var success = false
         var image: Data?

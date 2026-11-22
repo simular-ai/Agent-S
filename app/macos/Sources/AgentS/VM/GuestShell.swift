@@ -39,13 +39,13 @@ struct GuestShell {
         (try? await run("test -f \(GuestSetup.readyMarker)", on: ip)) != nil
     }
 
-    /// `tunnelTo` adds a reverse forward: the guest's 127.0.0.1:`Ollama.guestPort` reaches that
-    /// port on the Mac's loopback (Ollama, or the OpenRouter proxy) through this SSH connection.
+    /// `tunnelTo` forwards the same loopback port in the guest and on the Mac through SSH.
+    /// Ollama and the OpenRouter proxy have separate ports so each route reaches its own provider.
     /// The app only connects out, so nothing on the Mac listens on the network (no firewall
     /// prompt, and only this session can use it).
     func sshArguments(ip: String, command: String, tunnelTo: UInt16? = nil) -> [String] {
         let tunnel = tunnelTo.map {
-            ["-R", "127.0.0.1:\(Ollama.guestPort):127.0.0.1:\($0)", "-o", "ExitOnForwardFailure=yes"]
+            ["-R", "127.0.0.1:\($0):127.0.0.1:\($0)", "-o", "ExitOnForwardFailure=yes"]
         } ?? []
         return tunnel + [
             "-i", files.sshKey.path,
@@ -87,32 +87,76 @@ struct GuestShell {
         }
     }
 
-    /// Runs a command, handing each line of its output to `line` as it arrives.
-    /// Returns the process so the caller can stop it.
-    func stream(_ command: String, on ip: String, tunnelTo: UInt16? = nil,
-                line: @escaping @Sendable (String) -> Void,
-                finished: @escaping @Sendable (Int32, String) -> Void) throws -> Process {
+    /// Runs a command and returns its output and the process the caller can stop.
+    func stream(_ command: String, on ip: String, tunnelTo: UInt16? = nil) throws -> (Process, TurnProcessOutput) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = sshArguments(ip: ip, command: command, tunnelTo: tunnelTo)
+        return (process, try TurnProcessOutput(starting: process))
+    }
+}
+
+/// Reads stdout until EOF independently of the exit notification so the last text delta is delivered.
+struct TurnProcessOutput {
+    enum Line: Sendable {
+        case output(String)
+        case rejected(String)
+    }
+
+    let lines: AsyncStream<Line>
+    private let errors: AsyncStream<Data>
+    private let statuses: AsyncStream<Int32>
+
+    init(starting process: Process, inspect: @escaping @Sendable (String) -> Line = { .output($0) }) throws {
+        let (lines, stdout) = AsyncStream<Line>.makeStream()
+        let (errors, stderr) = AsyncStream<Data>.makeStream()
+        let (statuses, exit) = AsyncStream<Int32>.makeStream()
+        self.lines = lines
+        self.errors = errors
+        self.statuses = statuses
+
         let out = Pipe()
         let err = Pipe()
         process.standardOutput = out
         process.standardError = err
-        let reader = LineReader(line: line)
+        let reader = LineReader { stdout.yield(inspect($0)) }
         out.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if data.isEmpty { handle.readabilityHandler = nil } else { reader.feed(data) }
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                reader.flush()
+                stdout.finish()
+            } else {
+                reader.feed(data)
+            }
+        }
+        err.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                stderr.finish()
+            } else {
+                stderr.yield(data)
+            }
         }
         process.terminationHandler = { process in
-            out.fileHandleForReading.readabilityHandler = nil
-            reader.feed(out.fileHandleForReading.readDataToEndOfFile())
-            reader.flush()
-            let stderr = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-            finished(process.terminationStatus, stderr)
+            exit.yield(process.terminationStatus)
+            exit.finish()
         }
-        try process.run()
-        return process
+        do {
+            try process.run()
+        } catch {
+            out.fileHandleForReading.readabilityHandler = nil
+            err.fileHandleForReading.readabilityHandler = nil
+            throw error
+        }
+    }
+
+    func completion() async -> (Int32, String) {
+        var stderr = Data()
+        for await data in errors { stderr.append(data) }
+        var status = statuses.makeAsyncIterator()
+        return (await status.next() ?? 1, String(decoding: stderr, as: UTF8.self))
     }
 }
 
