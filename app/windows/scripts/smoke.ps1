@@ -74,13 +74,28 @@ try {
     Assert-State $accounts.Current.IsEnabled 'Native window starts and Accounts is available'
     Assert-State (-not $accounts.Current.IsOffscreen) 'Accounts is visible inside the desktop work area'
     Assert-State (-not (Find-Element 'SendButton').Current.IsEnabled) 'Send stays disabled without credentials'
-    Assert-State (-not (Find-Element 'StopButton').Current.IsEnabled) 'Stop stays disabled without a running turn'
+    # Like the macOS composer, Stop replaces Send only while a turn runs; when idle it is hidden.
+    $stopCondition = New-Object System.Windows.Automation.PropertyCondition(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'StopButton')
+    $stop = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $stopCondition)
+    Assert-State ($null -eq $stop -or -not $stop.Current.IsEnabled) 'Stop stays disabled without a running turn'
     $newAgent = Find-Element 'NewAgentButton'
     Assert-State $newAgent.Current.IsEnabled 'New agent is available without a Sai account'
     Capture 'startup'
     $newAgent.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $localModel = Find-Element 'PrivateModel'
-    Assert-State (-not $localModel.Current.IsOffscreen) 'New agent defaults to a local Ollama model'
+    # With a saved Sai key and no Private computer, the dialog starts on Cloud; choose This PC explicitly.
+    $privateTarget = Find-Element 'TargetPrivate'
+    $privateTarget.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    # A fresh PC shows the one-button setup checklist; a ready PC shows the local model picker.
+    $setupCondition = New-Object System.Windows.Automation.OrCondition(
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'PrivateSetup')),
+        (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'PrivateModel')))
+    $localSetup = $null
+    for ($i = 0; $i -lt 75 -and $null -eq $localSetup; $i++) {
+        $localSetup = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $setupCondition)
+        if ($null -eq $localSetup) { Start-Sleep -Milliseconds 200 }
+    }
+    Assert-State ($null -ne $localSetup -and -not $localSetup.Current.IsOffscreen) 'New agent defaults to local setup or a local model'
     Capture 'private-agent'
     $cancelCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Cancel')
