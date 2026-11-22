@@ -296,7 +296,7 @@ final class AppModel: ObservableObject {
             if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
                 return ("Hosted inference", "cloud", provider)
             }
-            if model != nil, ollamaReady { return ("Local inference", "cpu", provider) }
+            if model != nil, ollamaReady { return ("Local inference", "laptopcomputer", provider) }
             return ("Inference location unconfirmed", "questionmark.circle", provider)
         }
     }
@@ -465,7 +465,7 @@ final class AppModel: ObservableObject {
         case .needsSetup: return "Set up the computer in Settings to chat"
         case .ready:
             if agents.contains(where: { $0 !== agent && $0.config.usesLocalComputer && $0.isRunning }) {
-                return "Another agent is using the local sandbox"
+                return "Another agent is using the sandbox"
             }
             return nil
         default: return "Turn the computer on to chat"

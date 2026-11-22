@@ -124,7 +124,7 @@ struct NewAgentSheet: View {
             }
             .padding(12)
         }
-        .frame(width: 480, height: 600)
+        .frame(width: 520, height: 600)
         .onChange(of: computer) { _, _ in fitHarnessAndProvider() }
         .onChange(of: harness) { _, _ in fitProvider() }
         .onChange(of: model.saiMachines) { _, machines in

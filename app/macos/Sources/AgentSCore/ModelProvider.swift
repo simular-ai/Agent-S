@@ -112,7 +112,7 @@ public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .linuxVM: "Local Sandbox"
+        case .linuxVM: "Sandbox on This Mac"
         case .thisMac: "This Mac"
         case .cloud: "Cloud"
         }
@@ -128,7 +128,7 @@ public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
 
     public var summary: String {
         switch self {
-        case .linuxVM: "Runs in a Linux VM on this Mac."
+        case .linuxVM: "Runs in a Linux VM."
         case .thisMac: "Works in your Mac apps, Terminal, and files. You approve actions as it works."
         case .cloud: "Works on a Sai computer or Simular Box. Your messages and what the agent reads go to the services you choose."
         }
