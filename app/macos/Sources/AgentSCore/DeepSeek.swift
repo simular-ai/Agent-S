@@ -59,6 +59,8 @@ public struct DeepSeekCommand: Equatable, Sendable {
         - id: permission
           disabled: true
         - insert:
+            - id: agent-s-live-text
+              name: ./\(DeepSeekStreamingPlugin.filename)
             - id: bash-local
               name: "@deepseek-ai/dsh-bash-local"
         """
@@ -72,6 +74,7 @@ public struct DeepSeekCommand: Equatable, Sendable {
         return "mkdir -p ~/work ~/.dsh && cd ~/work"
             + " && printf '%s\\n' \(quote(AgentInstructions.text(for: .deepSeek))) > AGENTS.md"
             + " && printf '%s\\n' \(quote(patch)) > \(patchPath)"
+            + " && printf '%s\\n' \(quote(DeepSeekStreamingPlugin.source)) > ~/.dsh/\(DeepSeekStreamingPlugin.filename)"
             + " && DISPLAY=:0 DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY=\(quote(apiKey)) "
             + dsh.joined(separator: " ") + " </dev/null"
     }
@@ -120,6 +123,8 @@ public enum DeepSeekBoxProfile {
         root: !!js process.env.AGENT_S_DSH_SESSIONS
         compression: none
     - insert:
+        - id: agent-s-live-text
+          name: ./\(DeepSeekStreamingPlugin.filename)
         - id: llm-pi-ai
           name: '@deepseek-ai/dsh-llm-pi-ai'
           config:
@@ -175,14 +180,35 @@ public enum DeepSeekBoxProfile {
     }
 }
 
-/// Parses `dsh --profile headless --json` events into the chat's events.
-public enum DeepSeekStream {
+/// Parses one DeepSeek Harness process's output and reconciles live text with committed messages.
+public struct DeepSeekStream {
+    private var liveAttempt: String?
+
+    public init() {}
+
     public static func parse(line: String) -> [ClaudeEvent] {
+        var stream = Self()
+        return stream.consume(line: line)
+    }
+
+    public mutating func consume(line: String) -> [ClaudeEvent] {
         guard let data = line.data(using: .utf8),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = object["type"] as? String
         else { return [] }
         switch type {
+        case "agent_s_text_stream":
+            guard let id = object["id"] as? String, !id.isEmpty else { return [] }
+            liveAttempt = id
+            return []
+        case "agent_s_text_delta", "agent_s_text_snapshot":
+            guard let id = object["id"] as? String, id == liveAttempt,
+                  let text = object["text"] as? String else { return [] }
+            if type == "agent_s_text_snapshot" {
+                liveAttempt = nil
+                return [.textSnapshot(id: id, text: text)]
+            }
+            return text.isEmpty ? [] : [.textDelta(id: id, text: text)]
         case "session":
             guard let id = object["sessionId"] as? String else { return [] }
             return [.started(sessionId: id, model: nil)]
@@ -198,7 +224,8 @@ public enum DeepSeekStream {
             return [.toolResult(id: object["callId"] as? String ?? "", output: ClaudeStream.clip(result),
                                 isError: (object["status"] as? String) != "completed")]
         case "text":
-            guard let text = object["text"] as? String,
+            // The bundled plugin emits canonical snapshots of these same committed messages.
+            guard liveAttempt == nil, let text = object["text"] as? String,
                   !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
             return [.text(text)]
         case "status":

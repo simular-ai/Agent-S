@@ -374,11 +374,16 @@ final class AgentSession: ObservableObject, Identifiable {
     private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool) {
         Task { @MainActor [weak self] in
             var claude = ClaudeStream()
+            var deepSeek = DeepSeekStream()
             for await line in output.lines {
                 guard let self, self.turn == turnID else { continue }
                 switch line {
                 case let .output(line):
-                    self.apply(harness == .claudeCode ? claude.consume(line: line) : harness.parse(line: line))
+                    switch harness {
+                    case .claudeCode: self.apply(claude.consume(line: line))
+                    case .deepSeek: self.apply(deepSeek.consume(line: line))
+                    default: self.apply(harness.parse(line: line))
+                    }
                 case let .rejected(message):
                     self.notice(message, isError: true)
                 }
