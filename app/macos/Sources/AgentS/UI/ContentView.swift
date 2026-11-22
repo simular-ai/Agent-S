@@ -382,25 +382,25 @@ struct ConversationRow: View {
     var body: some View {
         let inference = model.sidebarInference(for: session.config)
         let preview = session.lastLine ?? summary
-        let status = session.isRunning ? "\(inference.label), Working" : inference.label
+        let detail = "\(inference.label) · \(inference.help)"
+        let status = session.isRunning ? "\(detail), Working" : detail
         return Button(action: select) {
             HStack(spacing: 12) {
                 AgentAvatar(config: session.config, size: 36)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
                     HStack(spacing: 6) {
-                        Text(inference.label)
+                        Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
+                        Image(systemName: inference.symbol)
                             .font(.caption2.weight(.semibold))
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 22, height: 16)
                             .background(Theme.bubble, in: Capsule())
-                            .fixedSize(horizontal: true, vertical: false)
-                        if !preview.isEmpty {
-                            Text(preview).font(.callout).lineLimit(1)
-                        }
+                            .accessibilityHidden(true)
                     }
-                    .foregroundStyle(.secondary)
+                    if !preview.isEmpty {
+                        Text(preview).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if session.isRunning { ProgressView().controlSize(.small) }
@@ -410,7 +410,7 @@ struct ConversationRow: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
-        .help(inference.help)
+        .help(detail)
         .accessibilityLabel(Text(session.config.name))
         .accessibilityValue(Text(preview.isEmpty ? status : "\(status), \(preview)"))
         .accessibilityAddTraits(selected ? .isSelected : [])

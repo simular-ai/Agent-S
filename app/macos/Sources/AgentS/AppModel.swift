@@ -281,23 +281,23 @@ final class AppModel: ObservableObject {
     }
 
     /// Use the selected model's metadata so Ollama cloud models are identified as hosted.
-    func sidebarInference(for config: AgentConfig) -> (label: String, help: String) {
-        if config.harness == .sai { return ("Hosted", "Sai") }
+    func sidebarInference(for config: AgentConfig) -> (label: String, symbol: String, help: String) {
+        if config.harness == .sai { return ("Hosted inference", "cloud", "Sai") }
 
         switch config.provider {
-        case .openRouter: return ("Hosted", "OpenRouter · \(config.openRouterModel)")
+        case .openRouter: return ("Hosted inference", "cloud", "OpenRouter · \(config.openRouterModel)")
         case .claudeAccount, .codexAccount:
             let confirmed = accountStatuses[config.provider] == .connected(.subscription)
             let provider = config.provider == .claudeAccount ? "Claude Code account" : "Codex account"
-            return (confirmed ? "Subscription" : "Account", provider)
+            return confirmed ? ("Subscription", "creditcard", provider) : ("Account", "person.crop.circle", provider)
         case .ollama:
             let model = ollamaModels.first { $0.matches(config.ollamaModel) }
             let provider = "Ollama · \(config.ollamaModel)"
             if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
-                return ("Hosted", provider)
+                return ("Hosted inference", "cloud", provider)
             }
-            if model != nil, ollamaReady { return ("Local", provider) }
-            return ("Ollama", "\(provider) · Model location unavailable")
+            if model != nil, ollamaReady { return ("Local inference", "cpu", provider) }
+            return ("Inference location unconfirmed", "questionmark.circle", provider)
         }
     }
 
