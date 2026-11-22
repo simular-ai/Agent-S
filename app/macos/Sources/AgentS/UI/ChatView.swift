@@ -10,21 +10,14 @@ struct ChatView: View {
     @Binding var showComputer: Bool
     @State private var draft = ""
     @State private var followsLatest = true
-    @State private var transcriptPosition: TranscriptPosition?
+    @State private var transcriptViewport: CGSize?
 
-    private enum TranscriptAnchor { case bottom }
+    private enum TranscriptAnchor { case working }
 
     private struct TranscriptRevision: Equatable {
         let agentID: UUID
         let lastItem: ChatItem?
         let isRunning: Bool
-    }
-
-    private struct TranscriptPosition: Equatable, Sendable {
-        let content: CGRect
-        let viewportHeight: CGFloat
-
-        var distanceFromBottom: CGFloat { max(0, content.maxY - viewportHeight) }
     }
 
     private static let nearBottom: CGFloat = 40
@@ -95,20 +88,22 @@ struct ChatView: View {
                             }
                             .padding(.horizontal, 16).padding(.vertical, 10)
                             .background(Capsule().fill(Theme.bubble))
+                            .id(TranscriptAnchor.working)
                         }
                     }
                     .padding(.horizontal, 24).padding(.vertical, 16)
                     .frame(maxWidth: 820, alignment: .leading)
                     .frame(maxWidth: .infinity)
-
-                    Color.clear.frame(height: 1).id(TranscriptAnchor.bottom).accessibilityHidden(true)
                 }
-                .onGeometryChange(for: TranscriptPosition?.self) { geometry in
-                    let coordinateSpace = NamedCoordinateSpace.scrollView(axis: .vertical)
-                    guard let viewport = geometry.bounds(of: coordinateSpace), viewport.height > 0 else { return nil }
-                    return TranscriptPosition(content: geometry.frame(in: coordinateSpace), viewportHeight: viewport.height)
-                } action: { position in
-                    if let position { trackTranscript(position, proxy: proxy) }
+                .background(TranscriptScrollObserver { scrollView in
+                    if let document = scrollView.documentView {
+                        followsLatest = document.bounds.maxY - scrollView.contentView.bounds.maxY <= Self.nearBottom
+                    }
+                })
+                .onGeometryChange(for: CGSize?.self) { geometry in
+                    geometry.bounds(of: NamedCoordinateSpace.scrollView(axis: .vertical))?.size
+                } action: { size in
+                    if let size, size.height > 0 { trackViewport(size, proxy: proxy) }
                 }
             }
             .overlay(alignment: .bottom) {
@@ -117,7 +112,7 @@ struct ChatView: View {
                         CircleButton(systemImage: "arrow.down", help: "Jump to latest message") {
                             followsLatest = true
                             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
-                                proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                                scrollToLatest(proxy)
                             }
                         }
                         .accessibilityLabel("Jump to latest message")
@@ -129,31 +124,35 @@ struct ChatView: View {
             }
             .onChange(of: revision.agentID) {
                 followsLatest = true
-                transcriptPosition = nil
             }
             .task(id: revision) {
                 // Text can stream into the last item without changing the number of rows.
                 await Task.yield()
                 guard !Task.isCancelled, followsLatest, revision.lastItem != nil else { return }
-                proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                scrollToLatest(proxy)
             }
         }
     }
 
-    private func trackTranscript(_ position: TranscriptPosition, proxy: ScrollViewProxy) {
-        let previous = transcriptPosition
-        transcriptPosition = position
-        if position.distanceFromBottom <= Self.nearBottom {
-            followsLatest = true
-        } else if let previous, position.content.minY > previous.content.minY {
-            // Growing messages move the end down. A scroll toward older messages moves the top down.
-            followsLatest = false
+    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+        // Target a rendered row so an estimate of earlier Markdown heights cannot hide the newest message.
+        if agent.isRunning {
+            proxy.scrollTo(TranscriptAnchor.working, anchor: .bottom)
+        } else if let id = agent.items.last?.id {
+            proxy.scrollTo(id, anchor: .bottom)
         }
+    }
 
-        // The content can resize after the text update, especially when Markdown reflows.
-        if followsLatest, position.distanceFromBottom > 1, let previous,
-           position.content.height != previous.content.height || position.viewportHeight != previous.viewportHeight {
-            proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+    private func trackViewport(_ size: CGSize, proxy: ScrollViewProxy) {
+        let previous = transcriptViewport
+        transcriptViewport = size
+        // Follow window and split-pane resizing without reacting to lazy content estimates.
+        if followsLatest, let previous, previous != size {
+            Task { @MainActor in
+                await Task.yield()
+                guard followsLatest, transcriptViewport == size else { return }
+                scrollToLatest(proxy)
+            }
         }
     }
 
@@ -427,6 +426,32 @@ struct ChatView: View {
         draft = ""
         followsLatest = true
         model.send(text)
+    }
+}
+
+/// Listens to user scrolling in the transcript, separately from programmatic layout changes.
+private struct TranscriptScrollObserver: NSViewRepresentable {
+    let onScroll: (NSScrollView) -> Void
+
+    func makeNSView(context: Context) -> ObserverView { ObserverView() }
+    func updateNSView(_ view: ObserverView, context: Context) { view.onScroll = onScroll }
+
+    final class ObserverView: NSView {
+        var onScroll: ((NSScrollView) -> Void)?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            NotificationCenter.default.removeObserver(self, name: NSScrollView.didLiveScrollNotification, object: nil)
+            guard window != nil, let scrollView = enclosingScrollView else { return }
+            NotificationCenter.default.addObserver(self, selector: #selector(didScroll(_:)),
+                                                   name: NSScrollView.didLiveScrollNotification, object: scrollView)
+        }
+
+        @objc private func didScroll(_ notification: Notification) {
+            if let scrollView = notification.object as? NSScrollView { onScroll?(scrollView) }
+        }
+
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
     }
 }
 
