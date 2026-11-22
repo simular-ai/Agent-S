@@ -85,6 +85,23 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
+/// What a harness reports about the signed-in account's plan.
+public enum HarnessAccountPlan: Equatable, Sendable {
+    case account
+    case subscription
+
+    public init(provider: ModelProvider, reportedPlan: String?) {
+        let plan = reportedPlan?.lowercased()
+        switch (provider, plan) {
+        case (.claudeAccount, "pro"), (.claudeAccount, "max"),
+             (.codexAccount, "go"), (.codexAccount, "plus"), (.codexAccount, "pro"):
+            self = .subscription
+        default:
+            self = .account
+        }
+    }
+}
+
 /// The computer the agent controls, independent of its model provider.
 public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
     case linuxVM

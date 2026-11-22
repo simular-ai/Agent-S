@@ -13,18 +13,18 @@ enum CodexAccount {
             .first { FileManager.default.isExecutableFile(atPath: $0.path) }
     }
 
-    static func status(dataFolder: URL) async throws -> Bool {
+    static func accountPlan(dataFolder: URL) async throws -> HarnessAccountPlan? {
         let connection = try connect(dataFolder: dataFolder)
         defer { connection.close() }
         try await connection.initialize()
-        return try await signedIn(on: connection)
+        return try await accountPlan(on: connection)
     }
 
-    static func signIn(dataFolder: URL) async throws {
+    static func signIn(dataFolder: URL) async throws -> HarnessAccountPlan {
         let connection = try connect(dataFolder: dataFolder)
         defer { connection.close() }
         try await connection.initialize()
-        if try await signedIn(on: connection) { return }
+        if let plan = try await accountPlan(on: connection) { return plan }
 
         let login = try await connection.request("account/login/start", ["type": "chatgpt"])
         guard let id = login["loginId"] as? String, let link = login["authUrl"] as? String,
@@ -45,13 +45,14 @@ enum CodexAccount {
             guard result["success"] as? Bool == true else {
                 throw CodexFailure("Codex sign-in didn’t complete. Try again.")
             }
-            return
+            return (try? await accountPlan(on: connection)) ?? .account
         }
     }
 
-    fileprivate static func signedIn(on connection: CodexConnection) async throws -> Bool {
+    fileprivate static func accountPlan(on connection: CodexConnection) async throws -> HarnessAccountPlan? {
         let result = try await connection.request("account/read", ["refreshToken": false])
-        return (result["account"] as? [String: Any])?["type"] as? String == "chatgpt"
+        guard let account = result["account"] as? [String: Any], account["type"] as? String == "chatgpt" else { return nil }
+        return HarnessAccountPlan(provider: .codexAccount, reportedPlan: account["planType"] as? String)
     }
 
     fileprivate static func connect(dataFolder: URL, inference: CodexInference = .account) throws -> CodexConnection {
@@ -295,7 +296,7 @@ final class CodexAccountTurn {
         self.connection = connection
         defer { connection.close(); self.connection = nil }
         try await connection.initialize()
-        if case .account = inference, try await !CodexAccount.signedIn(on: connection) {
+        if case .account = inference, try await CodexAccount.accountPlan(on: connection) == nil {
             throw CodexFailure("Sign in to Codex in Agent Settings.")
         }
 

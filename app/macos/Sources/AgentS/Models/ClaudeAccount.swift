@@ -1,4 +1,5 @@
 import AppKit
+import AgentSCore
 
 /// The installed CLI owns authentication and stores its sign-in in Agent S's Claude Code profile.
 enum ClaudeAccount {
@@ -8,8 +9,8 @@ enum ClaudeAccount {
         dataFolder.appendingPathComponent("claude-account", isDirectory: true)
     }
 
-    static func isSignedIn(claude: URL, profile: URL) async -> Bool {
-        guard FileManager.default.fileExists(atPath: profile.path) else { return false }
+    static func accountPlan(claude: URL, profile: URL) async -> HarnessAccountPlan? {
+        guard FileManager.default.fileExists(atPath: profile.path) else { return nil }
         let process = Process()
         let output = Pipe()
         process.executableURL = claude
@@ -22,11 +23,13 @@ enum ClaudeAccount {
         return await withCheckedContinuation { continuation in
             process.terminationHandler = { finished in
                 let data = output.fileHandleForReading.readDataToEndOfFile()
-                let status = try? JSONDecoder().decode(AuthStatus.self, from: data)
-                continuation.resume(returning: finished.terminationStatus == 0 && status?.authMethod == "claude.ai")
+                guard finished.terminationStatus == 0,
+                      let status = try? JSONDecoder().decode(AuthStatus.self, from: data),
+                      status.authMethod == "claude.ai" else { continuation.resume(returning: nil); return }
+                continuation.resume(returning: HarnessAccountPlan(provider: .claudeAccount, reportedPlan: status.subscriptionType))
             }
             do { try process.run() }
-            catch { continuation.resume(returning: false) }
+            catch { continuation.resume(returning: nil) }
         }
     }
 
@@ -60,6 +63,7 @@ enum ClaudeAccount {
 
     private struct AuthStatus: Decodable {
         let authMethod: String
+        let subscriptionType: String?
     }
 
     private static func environment(profile: URL) -> [String: String] {

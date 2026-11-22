@@ -389,12 +389,14 @@ struct ConversationRow: View {
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(session.config.name).font(.body.weight(.medium)).lineLimit(1)
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
                         Text(inference.label)
-                            .font(.caption.weight(.semibold))
+                            .font(.caption2.weight(.semibold))
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(Theme.bubble, in: Capsule())
                             .fixedSize(horizontal: true, vertical: false)
                         if !preview.isEmpty {
-                            Text("·").font(.caption)
                             Text(preview).font(.callout).lineLimit(1)
                         }
                     }

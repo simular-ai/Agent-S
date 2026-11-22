@@ -21,8 +21,13 @@ final class AppModel: ObservableObject {
         case signedOut
         case connecting
         case awaitingSignIn
-        case connected
+        case connected(HarnessAccountPlan)
         case failed(String)
+
+        var isConnected: Bool {
+            if case .connected = self { return true }
+            return false
+        }
     }
 
     /// Claude Code's model: tool calling and a long context matter most.
@@ -277,19 +282,21 @@ final class AppModel: ObservableObject {
 
     /// Use the selected model's metadata so Ollama cloud models are identified as hosted.
     func sidebarInference(for config: AgentConfig) -> (label: String, help: String) {
-        if config.harness == .sai { return ("Hosted model", "Sai") }
+        if config.harness == .sai { return ("Hosted", "Sai") }
 
         switch config.provider {
-        case .openRouter: return ("Hosted model", "OpenRouter · \(config.openRouterModel)")
-        case .claudeAccount: return ("Hosted model", "Claude Code account")
-        case .codexAccount: return ("Hosted model", "Codex account")
+        case .openRouter: return ("Hosted", "OpenRouter · \(config.openRouterModel)")
+        case .claudeAccount, .codexAccount:
+            let confirmed = accountStatuses[config.provider] == .connected(.subscription)
+            let provider = config.provider == .claudeAccount ? "Claude Code account" : "Codex account"
+            return (confirmed ? "Subscription" : "Account", provider)
         case .ollama:
             let model = ollamaModels.first { $0.matches(config.ollamaModel) }
             let provider = "Ollama · \(config.ollamaModel)"
             if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
-                return ("Hosted model", provider)
+                return ("Hosted", provider)
             }
-            if model != nil, ollamaReady { return ("Local model", provider) }
+            if model != nil, ollamaReady { return ("Local", provider) }
             return ("Ollama", "\(provider) · Model location unavailable")
         }
     }
@@ -408,7 +415,7 @@ final class AppModel: ObservableObject {
     var shouldCheckOllamaForChat: Bool { usesOllama && computerChatBlocker == nil }
 
     private var modelBlocker: String? {
-        if provider.usesAccount, accountStatus != .connected {
+        if provider.usesAccount, !accountStatus.isConnected {
             return accountStatus == .checking ? "Checking sign-in…" : "Connect your \(accountName) account to chat"
         }
         if usesOllama {
@@ -567,12 +574,12 @@ final class AppModel: ObservableObject {
         let errorDescription: String?
     }
 
-    private func accountIsConnected(_ provider: ModelProvider) async throws -> Bool {
-        if provider == .codexAccount { return try await CodexAccount.status(dataFolder: files.root) }
+    private func accountPlan(_ provider: ModelProvider) async throws -> HarnessAccountPlan? {
+        if provider == .codexAccount { return try await CodexAccount.accountPlan(dataFolder: files.root) }
         guard let claude = BoxAccount.claude else {
             throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
         }
-        return await ClaudeAccount.isSignedIn(claude: claude, profile: ClaudeAccount.profile(in: files.root))
+        return await ClaudeAccount.accountPlan(claude: claude, profile: ClaudeAccount.profile(in: files.root))
     }
 
     func refreshAccountStatus() async {
@@ -581,11 +588,11 @@ final class AppModel: ObservableObject {
         let check = UUID()
         let previous = accountStatuses[provider] ?? .unchecked
         accountChecks[provider] = check
-        if previous != .connected, previous != .awaitingSignIn { accountStatuses[provider] = .checking }
+        if !previous.isConnected, previous != .awaitingSignIn { accountStatuses[provider] = .checking }
         let status: AccountStatus
         do {
-            let connected = try await accountIsConnected(provider)
-            status = connected ? .connected : (previous == .awaitingSignIn ? .awaitingSignIn : .signedOut)
+            let plan = try await accountPlan(provider)
+            status = plan.map(AccountStatus.connected) ?? (previous == .awaitingSignIn ? .awaitingSignIn : .signedOut)
         } catch {
             status = .failed(error.localizedDescription)
         }
@@ -603,9 +610,9 @@ final class AppModel: ObservableObject {
             defer { accountSignIns[provider] = nil }
             do {
                 if provider == .codexAccount {
-                    try await CodexAccount.signIn(dataFolder: files.root)
+                    let plan = try await CodexAccount.signIn(dataFolder: files.root)
                     try Task.checkCancellation()
-                    accountStatuses[provider] = .connected
+                    accountStatuses[provider] = .connected(plan)
                 } else {
                     guard let claude = BoxAccount.claude else {
                         throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
