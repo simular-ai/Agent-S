@@ -366,9 +366,7 @@ struct ChatRow: View {
                     .background(RoundedRectangle(cornerRadius: 20).fill(Theme.accent))
             }
         case .agent:
-            Text((try? AttributedString(markdown: item.text,
-                                        options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(item.text))
-                .textSelection(.enabled)
+            ChatMarkdown(markdown: item.text)
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4)

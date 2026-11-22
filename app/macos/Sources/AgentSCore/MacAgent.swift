@@ -42,6 +42,28 @@ public enum MacAgent {
         """
     }
 
+    /// Recognizes a direct invocation of Agent S's Mac UI tool for the activity panel.
+    public static func isUICommand(tool: String, input: [String: Any], macToolPath: String) -> Bool {
+        guard tool == "Bash", let command = input["command"] as? String else { return false }
+        let trimmed = command.drop(while: \.isWhitespace)
+        let executables = [macToolPath, "mac"].flatMap { path in
+            let quoted = ["\"\(path)\"", "'\(path)'"]
+            return path.contains(where: \.isWhitespace) ? quoted : [path] + quoted
+        }
+        for executable in executables where trimmed.hasPrefix(executable) {
+            let arguments = trimmed.dropFirst(executable.count)
+            if arguments.allSatisfy(\.isWhitespace) { return true }
+            guard arguments.first == " " || arguments.first == "\t" else { continue }
+            let verb = arguments.drop(while: { $0 == " " || $0 == "\t" })
+                .prefix { !" \t\n;&|<>".contains($0) }
+            switch verb {
+            case "apps", "open", "tree", "click", "type", "key", "screenshot": return true
+            default: return false
+            }
+        }
+        return false
+    }
+
     /// Commands that only look (no clicks, typing, files or changes): these run without asking.
     public static func isLookOnly(tool: String, input: [String: Any], macToolPath: String) -> Bool {
         guard tool == "Bash", let command = (input["command"] as? String)?.trimmingCharacters(in: .whitespaces) else {

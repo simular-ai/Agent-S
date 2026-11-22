@@ -68,7 +68,7 @@
 
 ## 🚀 Quick Start
 
-- **[Agent S for macOS](./app/README.md)** is a native app for Apple Silicon Macs running macOS 14 or later. Build it from source and choose where your agent works.
+- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build the [macOS app](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
   - **Private** runs in a local Linux VM in the background while you keep using your Mac. Choose a local Ollama model for on-device inference.
   - **This Mac** works in your apps, Terminal, and files with approvals for actions.
   - **Cloud** works on a Sai computer or Simular Box.

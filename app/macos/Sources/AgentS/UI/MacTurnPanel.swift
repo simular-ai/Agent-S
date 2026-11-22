@@ -2,47 +2,74 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// Keeps This Mac turns visible independently of the main window and its selected conversation.
+/// Keeps local UI activity visible independently of the main window and its selected conversation.
 @MainActor
-final class MacTurnPanelController {
+final class MacTurnPanelController: NSObject, NSWindowDelegate {
+    enum Presentation {
+        case manual
+        case macUI(needsApproval: Bool)
+    }
+
     private let state = MacTurnPanelState()
-    private var observations: [UUID: AnyCancellable] = [:]
+    private var approvalObservations: [UUID: AnyCancellable] = [:]
+    private var turnObservations: [UUID: AnyCancellable] = [:]
+    private var manualSessionID: UUID?
     private var panel: NSPanel?
     private var openConversation: ((AgentSession) -> Void)?
 
-    func show(_ session: AgentSession, openConversation: @escaping (AgentSession) -> Void) {
-        self.openConversation = openConversation
-        for previous in state.sessions where previous.id != session.id && !previous.isRunning {
-            remove(previous)
-        }
-        if observations[session.id] == nil {
-            state.sessions.append(session)
-            state.approvals[session.id] = Set(session.pendingMacApprovals.map(\.id))
-            observations[session.id] = session.$items.dropFirst().sink { [weak self, weak session] items in
-                guard let self, let session else { return }
-                self.approvalsChanged(session, items: items)
+    func show(_ session: AgentSession, presentation: Presentation, openConversation: @escaping (AgentSession) -> Void) {
+        let id = session.id
+        switch presentation {
+        case .manual:
+            if let previous = manualSessionID, previous != id { clearManualSession() }
+            manualSessionID = id
+        case let .macUI(needsApproval):
+            guard session.isRunning else { return }
+            if turnObservations[id] == nil {
+                turnObservations[id] = session.$isRunning.dropFirst().sink { [weak self, weak session] isRunning in
+                    guard !isRunning, let self, let session else { return }
+                    self.turnObservations[id] = nil
+                    if self.manualSessionID != id { self.remove(session) }
+                }
+            } else if !needsApproval {
+                return
             }
         }
-        state.selectedID = session.id
+
+        self.openConversation = openConversation
+        if approvalObservations[id] == nil {
+            state.sessions.append(session)
+            state.approvals[id] = Set(session.pendingMacApprovals.map(\.id))
+            approvalObservations[id] = session.$items.dropFirst().sink { [weak self, weak session] items in
+                guard let self, let session else { return }
+                let approvals = Set(session.pendingMacApprovals(in: items).map(\.id))
+                if self.state.approvals[id] != approvals { self.state.approvals[id] = approvals }
+            }
+        }
+        state.selectedID = id
         reveal()
     }
 
     func remove(_ session: AgentSession) {
-        observations[session.id] = nil
-        state.sessions.removeAll { $0.id == session.id }
-        state.approvals[session.id] = nil
-        if state.selectedID == session.id { state.selectedID = state.sessions.last?.id }
+        let id = session.id
+        approvalObservations[id] = nil
+        turnObservations[id] = nil
+        if manualSessionID == id { manualSessionID = nil }
+        state.sessions.removeAll { $0.id == id }
+        state.approvals[id] = nil
+        if state.selectedID == id { state.selectedID = state.sessions.last?.id }
         if state.sessions.isEmpty { panel?.orderOut(nil) }
     }
 
-    private func approvalsChanged(_ session: AgentSession, items: [ChatItem]) {
-        let current = Set(session.pendingMacApprovals(in: items).map(\.id))
-        let previous = state.approvals[session.id, default: []]
-        guard current != previous else { return }
-        state.approvals[session.id] = current
-        if !current.isSubset(of: previous) {
-            state.selectedID = session.id
-            reveal()
+    func windowWillClose(_ notification: Notification) {
+        clearManualSession()
+    }
+
+    private func clearManualSession() {
+        guard let id = manualSessionID else { return }
+        manualSessionID = nil
+        if turnObservations[id] == nil, let session = state.sessions.first(where: { $0.id == id }) {
+            remove(session)
         }
     }
 
@@ -56,6 +83,7 @@ final class MacTurnPanelController {
                                   styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
                                   backing: .buffered, defer: false)
         panel.title = "Agent Activity"
+        panel.delegate = self
         panel.contentMinSize = NSSize(width: 354, height: 240)
         panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
@@ -114,7 +142,8 @@ private struct MacTurnPanelContent: View {
 }
 
 private final class MacTurnWindow: NSPanel {
-    override var canBecomeKey: Bool { false }
+    // The nonactivating panel can accept keyboard copy when a user clicks selectable reply text.
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }
 
