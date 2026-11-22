@@ -86,7 +86,7 @@ final class AppModel: ObservableObject {
             }
         }
     }
-    /// A cloud agent's computer (nil for private agents, which use the local VM).
+    /// The selected cloud computer, if any.
     var computer: CloudComputer? { agent.config.computer }
     var boxName: String {
         get { agent.config.boxName ?? "" }
@@ -277,9 +277,6 @@ final class AppModel: ObservableObject {
         return names
     }
 
-    /// Ollama as the guest reaches it: its own loopback, tunnelled back over each turn's SSH.
-    let ollamaURLForGuest = "http://127.0.0.1:\(Ollama.guestPort)"
-
     // MARK: Actions
 
     func prepare() async {
@@ -393,7 +390,10 @@ final class AppModel: ObservableObject {
             if !ollamaChecked { return "Checking Ollama…" }
             if !hasAgentModel { return "Download \(agentModel) in Settings first" }
         }
-        if provider == .openRouter, !hasOpenRouterKey || openRouterModel.isEmpty { return "Add your OpenRouter key in Settings first" }
+        if provider == .openRouter {
+            if !hasOpenRouterKey { return "Add your OpenRouter key in Settings first" }
+            if openRouterModel.isEmpty { return "Choose an OpenRouter model in Settings first" }
+        }
         return nil
     }
 
@@ -430,7 +430,11 @@ final class AppModel: ObservableObject {
         }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
-        case .ready: return nil
+        case .ready:
+            if agents.contains(where: { $0 !== agent && $0.config.usesLocalComputer && $0.isRunning }) {
+                return "Another agent is using the Linux computer"
+            }
+            return nil
         default: return "Turn the computer on to chat"
         }
     }
@@ -611,19 +615,19 @@ final class AppModel: ObservableObject {
             sendToMac(prompt)
             return
         }
-        guard !provider.usesAccount, let ip = guestIP else { return }
+        guard config.usesLocalComputer, let ip = guestIP else { return }
         let shell = shell
-        var tunnel = Ollama.port
+        let port = provider == .openRouter ? OpenRouter.proxyPort : Ollama.port
         var apiKey: String?
         if provider == .openRouter {
-            apiKey = openRouterProxy.token
             do { try openRouterProxy.start() } catch {
-                NSLog("Agent S: couldn't start the OpenRouter proxy: %@", "\(error)")
+                agent.noticeFromApp("Couldn't start the OpenRouter connection: \(error.localizedDescription)")
+                return
             }
-            tunnel = OpenRouter.proxyPort
+            apiKey = openRouterProxy.token
         }
-        agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel, ollamaURL: ollamaURLForGuest,
-                   provider: provider, apiKey: apiKey, tunnelTo: tunnel) {
+        agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel,
+                   ollamaURL: "http://127.0.0.1:\(port)", provider: provider, apiKey: apiKey, tunnelTo: port) {
             await Self.screenNow(shell: shell, ip: ip)
         }
     }
@@ -648,6 +652,7 @@ final class AppModel: ObservableObject {
     // MARK: This Mac agents
 
     private let macTurnPanel = MacTurnPanelController()
+    var openMainWindow: (() -> Void)?
 
     func showMacTurnPanel(for session: AgentSession, presentation: MacTurnPanelController.Presentation = .manual) {
         guard session.config.privacy == .thisMac else { return }
@@ -657,9 +662,13 @@ final class AppModel: ObservableObject {
             self.select(session)
             NSApp.unhide(nil)
             NSApp.activate()
-            let window = mainWindow ?? NSApp.windows.first { $0.canBecomeMain }
-            if window?.isMiniaturized == true { window?.deminiaturize(nil) }
-            window?.makeKeyAndOrderFront(nil)
+            let windows = [mainWindow].compactMap { $0 } + NSApp.windows
+            guard let window = windows.first(where: { $0.canBecomeMain && ($0.isVisible || $0.isMiniaturized) }) else {
+                self.openMainWindow?()
+                return
+            }
+            if window.isMiniaturized { window.deminiaturize(nil) }
+            window.makeKeyAndOrderFront(nil)
         }
     }
 

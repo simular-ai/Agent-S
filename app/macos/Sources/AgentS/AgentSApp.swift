@@ -4,14 +4,18 @@ import SwiftUI
 struct AgentSApp: App {
     @StateObject private var model = AppModel()
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    private static let mainWindowID = "main"
 
     var body: some Scene {
-        WindowGroup("Agent S") {
+        WindowGroup("Agent S", id: Self.mainWindowID) {
             ContentView()
                 .environmentObject(model)
                 .frame(minHeight: 560)
                 .onAppear {
                     delegate.model = model
+                    model.openMainWindow = { [openWindow] in openWindow(id: Self.mainWindowID) }
                     model.refreshMacAccess()
                 }
                 .onChange(of: model.selectedAgentID) { _, _ in
@@ -55,5 +59,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    // Keep the app model, agent turns, and guest alive until the user quits the app.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 }

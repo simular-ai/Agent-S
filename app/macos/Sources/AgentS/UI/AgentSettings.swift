@@ -24,8 +24,8 @@ struct AgentSettings: View {
                 Section("Agent") {
                     TextField("Name", text: $name)
                         .onSubmit(saveName)
-                    LabeledContent("Works on", value: model.privacy == .fullyPrivate
-                                   ? "A private computer on this Mac"
+                    LabeledContent("Works on", value: model.agent.config.usesLocalComputer
+                                   ? "A Linux VM on this Mac"
                                    : model.privacy == .thisMac ? "This Mac itself (asks before each step)"
                                    : "The cloud: \(model.computer?.displayName ?? "a cloud computer")")
                 }

@@ -27,11 +27,11 @@ public enum CloudComputer: String, CaseIterable, Identifiable, Codable, Sendable
 }
 
 public extension Harness {
-    /// The harnesses an agent may use: in the local VM for private agents, or the ones that fit
+    /// The harnesses an agent may use: in the local VM, or the ones that fit
     /// a cloud agent's computer.
     static func allowed(in mode: PrivacyMode, computer: CloudComputer?) -> [Harness] {
         switch mode {
-        case .fullyPrivate: [.claudeCode, .codex, .deepSeek]
+        case .fullyPrivate, .localVM: [.claudeCode, .codex, .deepSeek]
         // Both harnesses run on the Mac with approval gates for their tools.
         case .thisMac: [.claudeCode, .codex]
         case .remote: (computer ?? .box).harnesses
@@ -141,7 +141,7 @@ public struct BoxClaudeCommand: Equatable, Sendable {
         let usesAccount = provider == .claudeAccount
         var args = usesAccount ? ["-p"] : ["-p", prompt]
         args += [
-            "--output-format", "stream-json", "--verbose",
+            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             // No shell, files or web tools on the Mac: only box's MCP tools.
             "--tools", "",
             "--strict-mcp-config", "--mcp-config", mcpConfigPath,

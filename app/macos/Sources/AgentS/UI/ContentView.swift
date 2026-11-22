@@ -239,7 +239,6 @@ struct Sidebar: View {
             .frame(height: Theme.titleBarHeight)
 
 
-            // Like Notes' "On My Mac" and "iCloud": private agents on top, cloud agents below.
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(PrivacyMode.allCases) { side in
@@ -280,13 +279,22 @@ struct AgentSection: View {
             .padding(.top, side == .fullyPrivate ? 0 : 14)
         let list = model.agents(on: side)
         if list.isEmpty {
-            Button(side == .fullyPrivate ? "New private agent…" : side == .thisMac ? "New agent for this Mac…" : "New cloud agent…") { creating = side }
+            Button(newAgentLabel) { creating = side }
                 .buttonStyle(.plain).font(.callout).foregroundStyle(.secondary)
                 .padding(.horizontal, 14).padding(.vertical, 6)
         }
         ForEach(list) { session in
             ConversationRow(session: session, selected: session.id == model.selectedAgentID) { model.select(session) }
                 .contextMenu { menu(for: session) }
+        }
+    }
+
+    private var newAgentLabel: String {
+        switch side {
+        case .fullyPrivate: "New private agent…"
+        case .localVM: "New local VM agent…"
+        case .thisMac: "New agent for this Mac…"
+        case .remote: "New cloud agent…"
         }
     }
 

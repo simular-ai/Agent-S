@@ -24,7 +24,7 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     /// The available routes depend on both where tools run and which harness controls them.
     public static func allowed(in privacy: PrivacyMode, harness: Harness, computer: CloudComputer?) -> [Self] {
         guard Harness.allowed(in: privacy, computer: computer).contains(harness) else { return [] }
-        if privacy == .fullyPrivate { return [.ollama] }
+        if privacy.usesLocalComputer { return privacy.providers }
         switch harness {
         case .claudeCode: return [.ollama, .openRouter, .claudeAccount]
         case .codex: return privacy == .thisMac ? [.codexAccount] : [.ollama, .openRouter, .codexAccount]
@@ -58,8 +58,7 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
         }
     }
 
-    /// Sent as the API key from the guest. Not a secret: Ollama ignores it, and the Mac's
-    /// OpenRouter proxy replaces it with the real key.
+    /// Ollama ignores its placeholder. Live OpenRouter turns use the loopback proxy's token.
     public var placeholderKey: String {
         switch self {
         case .ollama: "ollama"
@@ -69,20 +68,21 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     }
 }
 
-/// Where an agent works, and how much may leave the Mac. Private: a Linux computer that runs on
-/// this Mac, with the local model only. This Mac: the Mac itself (its apps, shell and files),
-/// every action approved by the person first. Cloud: hosted models and cloud computers, with the
-/// user's own keys.
+/// Where an agent works and which routes it can use to reach a model.
 public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
     case fullyPrivate = "private"
+    case localVM = "local-vm"
     case thisMac = "mac"
     case remote
 
     public var id: String { rawValue }
 
+    public var usesLocalComputer: Bool { self == .fullyPrivate || self == .localVM }
+
     public var displayName: String {
         switch self {
         case .fullyPrivate: "Private"
+        case .localVM: "Local VM"
         case .thisMac: "This Mac"
         case .remote: "Cloud"
         }
@@ -92,6 +92,7 @@ public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
     public var symbol: String {
         switch self {
         case .fullyPrivate: "lock.fill"
+        case .localVM: "desktopcomputer"
         case .thisMac: "laptopcomputer"
         case .remote: "cloud"
         }
@@ -99,7 +100,8 @@ public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
 
     public var summary: String {
         switch self {
-        case .fullyPrivate: "Works on a private Linux computer that runs on this Mac, with a model on this Mac. It can't touch your Mac's own files or apps. Only the web pages it visits leave this Mac."
+        case .fullyPrivate: "Works in a Linux VM on this Mac and uses a local Ollama model."
+        case .localVM: "Works in the same Linux VM as Private agents. OpenRouter receives your messages and content the agent reads."
         case .thisMac: "Works on this Mac itself: its apps, Terminal and files. It asks you before every command, click or change, and you can stop it any time. With a hosted model, your messages and what the agent reads go to its provider."
         case .remote: "Works on a Sai computer or Simular Box. Your messages and what the agent reads go to the services you choose."
         }
@@ -109,6 +111,7 @@ public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
     public var providers: [ModelProvider] {
         switch self {
         case .fullyPrivate: [.ollama]
+        case .localVM: [.openRouter]
         case .thisMac, .remote: ModelProvider.allCases
         }
     }

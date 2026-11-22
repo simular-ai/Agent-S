@@ -16,6 +16,36 @@ struct ClaudeStreamTests {
         ])
     }
 
+    @Test func streamsTextBeforeEachCompletedBlock() {
+        var stream = ClaudeStream()
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hidden"}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"First"}}}"#) == [.textDelta(id: "m1/1", text: "First")])
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":" "}}}"#) == [.textDelta(id: "m1/1", text: " ")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"First block."}]}}"#) == [.textSnapshot(id: "m1/1", text: "First block.")])
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_stop","index":1}}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"stream_event","api_message_id":"m1","event":{"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Second"}}}"#) == [.textDelta(id: "m1/2", text: "Second")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"Second block."}]}}"#) == [.textSnapshot(id: "m1/2", text: "Second block.")])
+        #expect(stream.consume(line: #"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Completed only."}]}}"#) == [.text("Completed only.")])
+    }
+
+    @Test(arguments: [true, false])
+    func discardsInterruptedPartialTextOnRetry(_ streamsRetry: Bool) {
+        var stream = ClaudeStream()
+        _ = stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}"#)
+        _ = stream.consume(line: #"{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Interrupted"}}}"#)
+        #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_stop"}}"#).isEmpty)
+        let remove = ClaudeEvent.textSnapshot(id: "m1/0", text: "")
+        let reply = #"{"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Retried."}]}}"#
+        if streamsRetry {
+            #expect(stream.consume(line: #"{"type":"stream_event","event":{"type":"message_start","message":{"id":"m2"}}}"#) == [remove])
+            #expect(stream.consume(line: reply) == [.text("Retried.")])
+        } else {
+            #expect(stream.consume(line: reply) == [remove, .text("Retried.")])
+        }
+    }
+
     @Test func readsToolResultsAndClipsThem() {
         let long = String(repeating: "x", count: ClaudeStream.maxToolOutput + 10)
         let line = #"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","content":[{"type":"text","text":"\#(long)"}],"is_error":true}]}}"#
@@ -112,7 +142,7 @@ struct ClaudeCommandTests {
         #expect(shell.hasPrefix("cd ~/work && rm -f AGENTS.md && DISPLAY=:0 "))
         #expect(shell.contains("ANTHROPIC_BASE_URL='http://192.168.64.1:11434'"))
         #expect(shell.contains("ANTHROPIC_AUTH_TOKEN='ollama'"))
-        #expect(shell.contains("--output-format stream-json --verbose"))
+        #expect(shell.contains("--output-format stream-json --verbose --include-partial-messages"))
         #expect(!shell.contains("--resume"))
         // Replaces Claude Code's large default prompt and tool set to keep each call small.
         #expect(shell.contains("--system-prompt '"))

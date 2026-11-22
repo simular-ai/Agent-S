@@ -30,6 +30,9 @@ open "build/Agent S.app"
 The build script signs the app for local development by default. Run `./scripts/test.sh`
 from `app/macos/` to run the Swift test suite.
 
+Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
+the Dock to reopen it. Use **Quit Agent S** to stop active work and shut down the VM.
+
 ## Choose how an agent runs
 
 Click **+** in the sidebar, name the agent, and choose where it runs. In **Cloud** mode,
@@ -39,6 +42,7 @@ To change an existing agent's configuration, right-click it and choose **Agent S
 | Runs on | Harness | Model provider |
 | --- | --- | --- |
 | **Private** · Linux VM on your Mac | Claude Code, Codex, DeepSeek | Ollama |
+| **Local VM** · Linux VM on your Mac | Claude Code, Codex, DeepSeek | OpenRouter |
 | **This Mac** · your Mac apps and files | Claude Code | Ollama, OpenRouter, Claude Code account |
 | **This Mac** · your Mac apps and files | Codex | Codex account |
 | **Cloud** · Sai computer | Sai | Sai API, with models available on your Sai account |
@@ -49,15 +53,17 @@ To change an existing agent's configuration, right-click it and choose **Agent S
 The display button beside the chat opens the computer panel, where you can watch the
 private VM or cloud computer and see the agent's session context.
 
-### Private Linux computer
+### Linux computer on your Mac
 
 1. Open **Settings → Computer** and click **Set up the computer**. This downloads a
    Debian 13 ARM64 image and creates a sparse 32 GB disk that grows with use.
-2. Start [Ollama](https://ollama.com/) 0.14 or later on your Mac. Open
-   **Agent Settings… → Model** and select or download a locally running model.
-   The default is `gemma4`.
+2. Choose **Private** for Ollama. Start [Ollama](https://ollama.com/) 0.14 or later on
+   your Mac and select or download a model in **Agent Settings… → Model**. The default
+   is `gemma4`. Choose **Local VM** for OpenRouter. Add your OpenRouter key and choose
+   a model when creating the agent or in **Agent Settings…**.
 3. Turn on the VM from the chat or computer panel. The first boot needs internet access
    to install the desktop and tools in the VM. Wait for setup to finish, then send a message.
+   One agent can use the shared Linux desktop at a time.
 
 In **Settings → Computer → Memory**, choose **2 GB**, **4 GB**, or **6 GB** for the next
 VM start. The default is **6 GB**. This setting allocates memory to the VM. Ollama runs
@@ -116,6 +122,9 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
   and can read and write files in the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
   Harness commands run inside the VM with per-tool approval disabled.
+- **Local VM** uses the same guest, browser, and files as **Private**. OpenRouter receives
+  your messages and content the agent reads from the guest. The OpenRouter key stays in
+  the Mac’s Keychain and requests travel through a local proxy.
 - **This Mac** uses the Mac's apps, Terminal, and files. When you select a hosted
   model, prompts and tool results supplied to the model can include page text, file
   contents, and screenshots.

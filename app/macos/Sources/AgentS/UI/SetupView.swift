@@ -20,7 +20,7 @@ struct SetupView: View {
                         Text(SystemMemory.format(allocation.bytes)).tag(allocation)
                     }
                 }
-                Text("Applies the next time you turn on the private computer.")
+                Text("Applies the next time you turn on the Linux computer.")
                     .font(.caption).foregroundStyle(.secondary)
                 if case let .preparing(step) = model.phase {
                     VStack(alignment: .leading) {

@@ -12,17 +12,20 @@ public struct DeepSeekCommand: Equatable, Sendable {
     public var model: String
     public var provider: ModelProvider
     public var apiKey: String
+    private let guestPort: UInt16
 
     /// Pinned: dsh is a developer preview with breaking changes between releases.
     public static let version = "0.2.2-rc.5"
     static let patchPath = "/home/sai/.dsh/agent-s.patch.yml"
 
-    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama, apiKey: String? = nil) {
+    public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama,
+                apiKey: String? = nil, guestPort: UInt16 = 11434) {
         self.prompt = prompt
         self.resume = resume
         self.model = model
         self.provider = provider
         self.apiKey = apiKey ?? provider.placeholderKey
+        self.guestPort = guestPort
     }
 
     /// The overlay applied on top of dsh's headless profile.
@@ -38,7 +41,7 @@ public struct DeepSeekCommand: Equatable, Sendable {
               saige:
                 apiKeyEnv: AGENT_S_PROXY_KEY
                 api: openai-completions
-                baseURL: http://127.0.0.1:11434/v1
+                baseURL: http://127.0.0.1:\(guestPort)/v1
                 models:
                   - id: "\(id)"
         - id: agent-default-model
@@ -62,12 +65,13 @@ public struct DeepSeekCommand: Equatable, Sendable {
     }
 
     public var remoteShell: String {
-        var dsh = ["dsh", "--profile", "headless", "--patch", Self.patchPath, "--json"]
+        let patchPath = provider == .openRouter ? "/home/sai/.dsh/agent-s-openrouter.patch.yml" : Self.patchPath
+        var dsh = ["dsh", "--profile", "headless", "--patch", patchPath, "--json"]
         if let resume { dsh += ["--session-id", quote(resume)] }
         dsh.append(quote(prompt))
         return "mkdir -p ~/work ~/.dsh && cd ~/work"
             + " && printf '%s\\n' \(quote(AgentInstructions.text(for: .deepSeek))) > AGENTS.md"
-            + " && printf '%s\\n' \(quote(patch)) > \(Self.patchPath)"
+            + " && printf '%s\\n' \(quote(patch)) > \(patchPath)"
             + " && DISPLAY=:0 DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY=\(quote(apiKey)) "
             + dsh.joined(separator: " ") + " </dev/null"
     }

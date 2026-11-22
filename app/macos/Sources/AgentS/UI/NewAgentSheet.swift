@@ -1,9 +1,7 @@
 import SwiftUI
 import AgentSCore
 
-/// The + button: a new agent with its own context. Pick where it works (a private computer, this
-/// Mac itself, or the cloud),
-/// its harness, and its provider and model (or, for Sai, its computer and model).
+/// The + button: a new agent with its own context, computer, harness, and model.
 struct NewAgentSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -129,7 +127,11 @@ struct NewAgentSheet: View {
             if saiMachine.isEmpty { saiMachine = machines.first(where: \.online)?.id ?? machines.first?.id ?? "" }
         }
         .onChange(of: side, initial: true) { _, side in
-            provider = side == .fullyPrivate ? .ollama : (model.hasOpenRouterKey ? .openRouter : .ollama)
+            provider = switch side {
+            case .fullyPrivate: .ollama
+            case .localVM: .openRouter
+            case .thisMac, .remote: model.hasOpenRouterKey ? .openRouter : .ollama
+            }
             fitHarnessAndProvider()
         }
         .task {

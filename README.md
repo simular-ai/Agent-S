@@ -69,7 +69,8 @@
 ## 🚀 Quick Start
 
 - **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build the [macOS app](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
-  - **Private** runs in a local Linux VM in the background while you keep using your Mac. Choose a local Ollama model for on-device inference.
+  - **Private** runs in a local Linux VM in the background and uses Ollama for on-device inference.
+  - **Local VM** runs in the same Linux VM and uses OpenRouter models.
   - **This Mac** works in your apps, Terminal, and files with approvals for actions.
   - **Cloud** works on a Sai computer or Simular Box.
 - **No setup:** run [Sai](https://www.sai.work/), our production agent, on a cloud computer through the [Simular API](https://platform.simular.ai/). See the [API docs](https://platform.simular.ai/documentation) and the [workflow template gallery](https://www.simular.ai/workflow-templates).

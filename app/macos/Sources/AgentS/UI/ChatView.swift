@@ -6,8 +6,28 @@ import AgentSCore
 struct ChatView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
     @State private var draft = ""
+    @State private var followsLatest = true
+    @State private var transcriptPosition: TranscriptPosition?
+
+    private enum TranscriptAnchor { case bottom }
+
+    private struct TranscriptRevision: Equatable {
+        let agentID: UUID
+        let lastItem: ChatItem?
+        let isRunning: Bool
+    }
+
+    private struct TranscriptPosition: Equatable, Sendable {
+        let content: CGRect
+        let viewportHeight: CGFloat
+
+        var distanceFromBottom: CGFloat { max(0, content.maxY - viewportHeight) }
+    }
+
+    private static let nearBottom: CGFloat = 40
 
     var body: some View {
         chat
@@ -41,29 +61,7 @@ struct ChatView: View {
     private var chat: some View {
         VStack(spacing: 0) {
             topBar
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 12) {
-                        if agent.items.isEmpty { emptyState }
-                        ForEach(agent.items) { ChatRow(item: $0).id($0.id) }
-                        if agent.isRunning {
-                            HStack(spacing: 8) {
-                                ProgressView().controlSize(.small)
-                                Text("Working…").foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 16).padding(.vertical, 10)
-                            .background(Capsule().fill(Theme.bubble))
-                            .id("working")
-                        }
-                    }
-                    .padding(.horizontal, 24).padding(.vertical, 16)
-                    .frame(maxWidth: 820, alignment: .leading)
-                    .frame(maxWidth: .infinity)
-                }
-                .onChange(of: agent.items.count) { _, _ in
-                    withAnimation { proxy.scrollTo(agent.isRunning ? "working" : agent.items.last?.id, anchor: .bottom) }
-                }
-            }
+            transcript
             if let banner = computerBanner {
                 banner
                     .frame(maxWidth: 820)
@@ -79,6 +77,83 @@ struct ChatView: View {
             composer
                 .frame(maxWidth: 820)
                 .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
+        }
+    }
+
+    private var transcript: some View {
+        let revision = TranscriptRevision(agentID: agent.id, lastItem: agent.items.last, isRunning: agent.isRunning)
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        if agent.items.isEmpty { emptyState }
+                        ForEach(agent.items) { ChatRow(item: $0).id($0.id) }
+                        if agent.isRunning {
+                            HStack(spacing: 8) {
+                                ProgressView().controlSize(.small)
+                                Text("Working…").foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 16).padding(.vertical, 10)
+                            .background(Capsule().fill(Theme.bubble))
+                        }
+                    }
+                    .padding(.horizontal, 24).padding(.vertical, 16)
+                    .frame(maxWidth: 820, alignment: .leading)
+                    .frame(maxWidth: .infinity)
+
+                    Color.clear.frame(height: 1).id(TranscriptAnchor.bottom).accessibilityHidden(true)
+                }
+                .onGeometryChange(for: TranscriptPosition?.self) { geometry in
+                    let coordinateSpace = NamedCoordinateSpace.scrollView(axis: .vertical)
+                    guard let viewport = geometry.bounds(of: coordinateSpace), viewport.height > 0 else { return nil }
+                    return TranscriptPosition(content: geometry.frame(in: coordinateSpace), viewportHeight: viewport.height)
+                } action: { position in
+                    if let position { trackTranscript(position, proxy: proxy) }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                Group {
+                    if !followsLatest, revision.lastItem != nil {
+                        CircleButton(systemImage: "arrow.down", help: "Jump to latest message") {
+                            followsLatest = true
+                            withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
+                                proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+                            }
+                        }
+                        .accessibilityLabel("Jump to latest message")
+                        .padding(.bottom, 8)
+                        .transition(.opacity)
+                    }
+                }
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: followsLatest)
+            }
+            .onChange(of: revision.agentID) {
+                followsLatest = true
+                transcriptPosition = nil
+            }
+            .task(id: revision) {
+                // Text can stream into the last item without changing the number of rows.
+                await Task.yield()
+                guard !Task.isCancelled, followsLatest, revision.lastItem != nil else { return }
+                proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
+            }
+        }
+    }
+
+    private func trackTranscript(_ position: TranscriptPosition, proxy: ScrollViewProxy) {
+        let previous = transcriptPosition
+        transcriptPosition = position
+        if position.distanceFromBottom <= Self.nearBottom {
+            followsLatest = true
+        } else if let previous, position.content.minY > previous.content.minY {
+            // Growing messages move the end down. A scroll toward older messages moves the top down.
+            followsLatest = false
+        }
+
+        // The content can resize after the text update, especially when Markdown reflows.
+        if followsLatest, position.distanceFromBottom > 1, let previous,
+           position.content.height != previous.content.height || position.viewportHeight != previous.viewportHeight {
+            proxy.scrollTo(TranscriptAnchor.bottom, anchor: .bottom)
         }
     }
 
@@ -274,8 +349,7 @@ struct ChatView: View {
             : model.computer == .box ? "Ask \(model.agent.config.name) to do something on your Simular Box…" : "Ask \(model.agent.config.name) to do something on its computer…")
     }
 
-    /// The empty chat, for the kind of agent: a private agent's local computer, Sai's all-in-one
-    /// cloud computer, or a Simular Box. Whatever is missing is set up right here.
+    /// Helps set up the selected agent's computer and provider.
     @ViewBuilder private var emptyState: some View {
         VStack(spacing: 12) {
             if model.harness == .sai {
@@ -318,11 +392,17 @@ struct ChatView: View {
                     .formStyle(.grouped).frame(maxWidth: 480, maxHeight: 260)
                 }
             } else {
-                Text("Everything runs on this Mac").font(.title3.weight(.medium))
-                Text("Sai works on its own Linux computer with your local model. Open the computer to watch, or take over.")
+                let hosted = model.privacy == .localVM
+                Text(hosted ? "Linux VM with OpenRouter" : "Everything runs on this Mac").font(.title3.weight(.medium))
+                Text(hosted
+                     ? "The agent works in your Linux VM. OpenRouter processes its model requests."
+                     : "Sai works on its own Linux computer with your local model. Open the computer to watch, or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
+                if hosted, !model.hasOpenRouterKey {
+                    Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
+                }
                 if model.phase != .ready, model.files.isPrepared, !isBusy {
                     Button("Turn on the computer") { Task { await model.start() } }
                         .buttonStyle(.borderedProminent)
@@ -346,6 +426,7 @@ struct ChatView: View {
         guard canSend else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         draft = ""
+        followsLatest = true
         model.send(text)
     }
 }

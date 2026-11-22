@@ -4,9 +4,6 @@ import Foundation
 struct Ollama {
     static let base = URL(string: "http://127.0.0.1:11434")!
     static let port: UInt16 = 11434
-    /// Where the guest reaches Ollama: its own loopback port, reverse-forwarded over SSH. The same
-    /// port as on the Mac, so Codex's built-in Ollama provider finds it without configuration.
-    static let guestPort: UInt16 = 11434
 
     struct Model: Identifiable, Hashable {
         let name: String

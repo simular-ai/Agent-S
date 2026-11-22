@@ -2,8 +2,7 @@ import Foundation
 
 /// The command that runs one Claude Code turn inside the guest, over SSH.
 ///
-/// Claude Code talks to Ollama on the host through Ollama's Anthropic-compatible endpoint
-/// (`ANTHROPIC_BASE_URL`, Ollama >= 0.14). This is supported by Ollama, not by Anthropic.
+/// The guest reaches the host's Ollama endpoint or OpenRouter proxy through the SSH tunnel.
 /// Permissions are bypassed: the guest is a throwaway VM with only the shared folder and the web,
 /// which is the isolation that makes that acceptable.
 public struct ClaudeCommand: Equatable, Sendable {
@@ -46,6 +45,7 @@ public struct ClaudeCommand: Equatable, Sendable {
             "DISPLAY=:0",
             "ANTHROPIC_BASE_URL=\(quote(ollamaURL))",
             "ANTHROPIC_AUTH_TOKEN=\(quote(apiKey))",
+            "ANTHROPIC_API_KEY=''",
             "ANTHROPIC_MODEL=\(quote(model))",
             "ANTHROPIC_DEFAULT_HAIKU_MODEL=\(quote(model))",
             "CLAUDE_CODE_MAX_CONTEXT_TOKENS=\(contextTokens)",
@@ -57,7 +57,7 @@ public struct ClaudeCommand: Equatable, Sendable {
         ]
         var args = [
             "claude", "-p", quote(prompt),
-            "--output-format", "stream-json", "--verbose",
+            "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--permission-mode", "bypassPermissions",
             // A small request: Claude Code's default prompt, its full tool set, skills and MCP add
             // up to ~17.6K tokens a call, which a local model re-reads on every step (~10 s each
