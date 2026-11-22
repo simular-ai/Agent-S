@@ -118,7 +118,7 @@
           <StackPanel x:Name="EmptyChat" Spacing="8" Margin="0,80,0,0" HorizontalAlignment="Center" Visibility="Collapsed">
             <Image x:Name="EmptyChatLogo" Width="56" Height="56" />
             <TextBlock x:Name="EmptyChatTitle" Text="Create an agent to get started" FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center" />
-            <TextBlock x:Name="EmptyChatText" Text="Agents work on a private computer on this PC or on a Sai computer in the cloud." Foreground="{ThemeResource MutedText}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
+            <TextBlock x:Name="EmptyChatText" FontSize="16" Text="Agents work on a private computer on this PC or on a Sai computer in the cloud." Foreground="{ThemeResource MutedText}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
           </StackPanel>
           <Border x:Name="WorkingChip" Visibility="Collapsed" Margin="0,18,0,0" HorizontalAlignment="Left" CornerRadius="20" Padding="16,10" Background="{ThemeResource ChipBackground}">
             <StackPanel Orientation="Horizontal" Spacing="10">
@@ -133,8 +133,8 @@
         <Grid ColumnSpacing="8">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
           <TextBox x:Name="Composer" PlaceholderText="Ask this agent to do something…" AcceptsReturn="True" TextWrapping="Wrap"
-                   MaxHeight="160" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" Padding="0,8"
-                   AutomationProperties.Name="Message" KeyDown="ComposerKeyDown" TextChanged="ComposerChanged">
+                   MaxHeight="160" FontSize="16" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" Padding="0,8"
+                   AutomationProperties.Name="Message" PreviewKeyDown="ComposerPreviewKeyDown" TextChanged="ComposerChanged">
             <TextBox.Resources>
               <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
               <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />

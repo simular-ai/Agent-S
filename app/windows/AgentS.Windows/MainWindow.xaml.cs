@@ -108,7 +108,7 @@ public sealed partial class MainWindow : Window
 
     // ---- Chat chrome -----------------------------------------------------------------------------
 
-    private void ComposerKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    private void ComposerPreviewKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
     {
         // Enter sends; Shift+Enter adds a new line, like the macOS composer.
         if (e.Key != VirtualKey.Enter) return;
@@ -805,7 +805,7 @@ public sealed partial class MainWindow : Window
 
     private void Draw(ChatEntry entry)
     {
-        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 15, LineHeight = 22 };
+        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 16, LineHeight = 24 };
         entryText[entry.Id] = text;
         FrameworkElement element;
         StackPanel? panel = null;
