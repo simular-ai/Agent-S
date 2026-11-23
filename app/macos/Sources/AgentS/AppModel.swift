@@ -539,27 +539,41 @@ final class AppModel: ObservableObject {
         guestIP = ip
 
         let install: (command: String, step: String)?
-        if resuming, !sandboxNeedsFullToolInstall, await shell.isReady(on: ip) {
-            guard vm.machine === machine, vm.state == .running else { return }
-            phase = .booting("Checking the sandbox tools…")
-            let deepSeekReady = (try? await shell.run(GuestTools.deepSeekReadyCommand, on: ip)) != nil
-            install = deepSeekReady ? nil : (GuestTools.installDeepSeekCommand, "Updating DeepSeek Harness in the sandbox…")
-        } else {
-            guard vm.machine === machine, vm.state == .running else { return }
-            phase = .booting("Waiting for the sandbox’s first-time setup…")
-            let clock = ContinuousClock()
-            let deadline = clock.now.advanced(by: .seconds(600))
-            while !(await shell.isReady(on: ip)) {
+        do {
+            if resuming, !sandboxNeedsFullToolInstall, try await shell.isReady(on: ip) {
                 guard vm.machine === machine, vm.state == .running else { return }
-                guard clock.now < deadline else {
-                    phase = .failed("The sandbox’s first-time setup is taking longer than expected. Try again to check its progress.")
-                    return
+                phase = .booting("Checking the sandbox tools…")
+                do {
+                    try await shell.run(GuestTools.deepSeekReadyCommand, on: ip, timeout: 20)
+                    install = nil
+                } catch let failure as GuestShell.CommandFailure where failure.status == GuestTools.deepSeekUpdateRequiredStatus {
+                    install = (GuestTools.installDeepSeekCommand, "Updating DeepSeek Harness in the sandbox…")
                 }
-                try? await Task.sleep(for: .seconds(3))
+            } else {
+                guard vm.machine === machine, vm.state == .running else { return }
+                phase = .booting("Waiting for the sandbox’s first-time setup…")
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: .seconds(600))
+                while (try? await shell.isReady(on: ip)) != true {
+                    guard vm.machine === machine, vm.state == .running else { return }
+                    guard clock.now < deadline else {
+                        phase = .failed("The sandbox’s first-time setup is taking longer than expected. Try again to check its progress.")
+                        return
+                    }
+                    try await Task.sleep(for: .seconds(3))
+                }
+                guard vm.machine === machine, vm.state == .running else { return }
+                sandboxNeedsFullToolInstall = true
+                install = (GuestTools.installCommand, "Installing the sandbox tools…")
             }
+        } catch {
             guard vm.machine === machine, vm.state == .running else { return }
-            sandboxNeedsFullToolInstall = true
-            install = (GuestTools.installCommand, "Installing the sandbox tools…")
+            let status = (error as? GuestShell.CommandFailure)?.status
+            let timedOut = error is GuestShell.CommandTimeout || status == 124 || status == 137
+            phase = .failed(timedOut
+                            ? "Checking the sandbox tools timed out."
+                            : "Couldn’t verify the sandbox tools.")
+            return
         }
 
         guard vm.machine === machine, vm.state == .running else { return }
@@ -769,6 +783,8 @@ final class AppModel: ObservableObject {
         if isSavingSandbox { return "Saving the sandbox…" }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
+        case .preparing, .booting: return "Waiting for the sandbox…"
+        case .failed where vm.state == .running: return "Finish sandbox setup to chat"
         case .ready:
             if agents.contains(where: { $0 !== session && $0.config.usesLocalComputer && $0.isRunning }) {
                 return "Another agent is using the sandbox"

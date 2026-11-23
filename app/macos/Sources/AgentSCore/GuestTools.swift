@@ -511,9 +511,18 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
     /// The terminal used to sign in to harness accounts from the guest desktop.
     private static let terminal = "(command -v xterm >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q xterm >/dev/null 2>&1)"
 
-    /// The installed harness is usable only with a supported Node runtime.
+    /// A completed check requests an update only when the installed versions are unsuitable.
+    public static let deepSeekUpdateRequiredStatus: Int32 = 65
+
     public static var deepSeekReadyCommand: String {
-        "\(GuestSetup.nodeReadyCommand) && \(deepSeekVersionCheck)"
+        """
+        /usr/bin/timeout --kill-after=2s 8s /bin/bash -s <<'AGENT_S_TOOL_CHECK'
+        if \(GuestSetup.nodeReadyCommand) && \(deepSeekVersionCheck); then
+          exit 0
+        fi
+        exit \(deepSeekUpdateRequiredStatus)
+        AGENT_S_TOOL_CHECK
+        """
     }
 
     /// Repairs the runtime on an existing guest without restarting its desktop.

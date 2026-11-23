@@ -240,6 +240,8 @@ struct GuestToolsTests {
     @Test func existingGuestChecksAndRepairsOnlyTheDeepSeekRuntime() {
         let ready = GuestTools.deepSeekReadyCommand
         let install = GuestTools.installDeepSeekCommand
+        #expect(ready.contains("/usr/bin/timeout --kill-after=2s 8s"))
+        #expect(ready.contains("exit \(GuestTools.deepSeekUpdateRequiredStatus)"))
         #expect(ready.contains("major < 24 || (major === 24 && minor < 9)"))
         #expect(ready.contains("npm --version"))
         #expect(ready.contains("dsh_version=$(dsh --version 2>/dev/null) &&"))
