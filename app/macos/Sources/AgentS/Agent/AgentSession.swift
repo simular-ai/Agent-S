@@ -459,12 +459,16 @@ final class AgentSession: ObservableObject, Identifiable {
             completeTurn(success: false)
             return
         }
+        let codexTurn = harness == .codex ? SandboxCodexTurn(agentID: config.id) : nil
+        let launch = codexTurn?.launchCommand(command) ?? command
         do {
-            let (process, output) = try shell.stream(command, on: ip, tunnelTo: tunnelTo, standardInput: steering?.input)
+            let (process, output) = try shell.stream(launch, on: ip, tunnelTo: tunnelTo, standardInput: steering?.input)
             self.process = process
             deepSeekSteering = steering
             submitSteering = steering.map { $0.send }
-            read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey)
+            read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey) {
+                if let codexTurn { _ = try? await shell.run(codexTurn.stopCommand, on: ip) }
+            }
         } catch {
             notice("Couldn't reach the computer: \(error.localizedDescription)", isError: true)
             finishMemoryTurn(success: false)
@@ -725,10 +729,12 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool,
-                      sandboxSessionKey: String? = nil) {
+                      sandboxSessionKey: String? = nil, stopSandboxTurn: (() async -> Void)? = nil) {
         Task { @MainActor [weak self] in
             var claude = ClaudeStream()
             var deepSeek = DeepSeekStream()
+            let isSandboxCodex = !inApp && harness == .codex
+            var writerConflict: String?
             for await line in output.lines {
                 guard let self, self.turn == turnID else { continue }
                 switch line {
@@ -738,7 +744,16 @@ final class AgentSession: ObservableObject, Identifiable {
                     case .deepSeek: deepSeek.consume(line: line)
                     default: harness.parse(line: line)
                     }
-                    self.apply(events, sandboxSessionKey: sandboxSessionKey)
+                    for event in events {
+                        if isSandboxCodex, case let .finished(diagnostic?, true, _) = event,
+                           let message = SandboxTurnFailure.codexWriterMessage(for: diagnostic) {
+                            writerConflict = message
+                            self.noteTurnResult(success: false)
+                            self.memoryTurn?.canCommit = false
+                        } else {
+                            self.apply([event], sandboxSessionKey: sandboxSessionKey)
+                        }
+                    }
                 case let .rejected(message):
                     self.noteTurnResult(success: false)
                     self.memoryTurn?.canCommit = false
@@ -746,6 +761,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 }
             }
             let (status, stderr) = await output.completion()
+            if status == 15 || status == 255 { await stopSandboxTurn?() }
             guard let self else { return }
             if inApp {
                 self.appProcess = nil
@@ -761,7 +777,10 @@ final class AgentSession: ObservableObject, Identifiable {
             let error = inApp ? stderr.split(separator: "\n")
                 .filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
                 .joined(separator: "\n") : stderr
-            self.finish(status: status, stderr: error, sandboxTurn: !inApp)
+            if isSandboxCodex, writerConflict == nil {
+                writerConflict = SandboxTurnFailure.codexWriterMessage(for: error)
+            }
+            self.finish(status: status, stderr: error, sandboxTurn: !inApp, writerConflict: writerConflict)
         }
     }
 
@@ -1092,13 +1111,17 @@ final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
-    private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false) {
+    private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false, writerConflict: String? = nil) {
         endSteering()
-        let completed = status == 0 && turnResult == true
+        let completed = status == 0 && turnResult == true && writerConflict == nil
         finishMemoryTurn(success: completed)
         defer { completeTurn(success: completed) }
         // 15: stopped by the user (SIGTERM).
         if status == 15 { notice("Stopped.", isError: false); return }
+        if let writerConflict {
+            notice(writerConflict, isError: true)
+            return
+        }
         if status != 0 {
             let reason = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             let message: String
@@ -1106,6 +1129,8 @@ final class AgentSession: ObservableObject, Identifiable {
                 message = reason.contains("remote port forwarding failed")
                     ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
                     : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."
+            } else if sandboxTurn, harness == .codex, reason.contains(SandboxCodexTurn.lifecycleFailureMarker) {
+                message = "The sandbox couldn’t start or stop Codex safely. Wait a moment and try again in this chat."
             } else if harness == .deepSeek, reason.contains("already owned by an active write handle") {
                 message = "DeepSeek still has this conversation open. Wait for the previous turn to finish before sending again."
             } else {
