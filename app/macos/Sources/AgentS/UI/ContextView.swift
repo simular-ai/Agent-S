@@ -5,6 +5,7 @@ import AgentSCore
 struct ContextView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @State private var showActionItems = false
     @State private var showSessionDetails = false
     @State private var showInstructions = false
 
@@ -30,31 +31,37 @@ struct ContextView: View {
         let requests = agent.pendingActionItems
         let work = model.openWork(for: agent)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("Action items").font(.headline).accessibilityAddTraits(.isHeader)
-            if requests.isEmpty, work.isEmpty {
-                Text("Nothing needs your attention.").font(.callout).foregroundStyle(.secondary)
-            }
-            ForEach(requests) { item in
-                HStack(spacing: 8) {
-                    Label(item.text, systemImage: "hand.raised")
-                        .font(.callout)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Review") { model.revealChatItem(item.id, in: agent) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+        return DisclosureGroup(isExpanded: $showActionItems) {
+            VStack(alignment: .leading, spacing: 8) {
+                if requests.isEmpty, work.isEmpty {
+                    Text("Nothing needs your attention.").font(.callout).foregroundStyle(.secondary)
                 }
-                .padding(10)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline).allowsHitTesting(false))
-            }
-            if !work.isEmpty {
-                section("Open work") {
-                    OpenWorkChecklist(notes: work)
-                        .id("\(agent.id)/\(model.memoryRoute(for: agent).continuationKey)")
+                ForEach(requests) { item in
+                    HStack(spacing: 8) {
+                        Label(item.text, systemImage: "hand.raised")
+                            .font(.callout)
+                            .lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Review") { model.revealChatItem(item.id, in: agent) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline).allowsHitTesting(false))
+                }
+                if !work.isEmpty {
+                    section("Open work") {
+                        OpenWorkChecklist(notes: work)
+                            .id("\(agent.id)/\(model.memoryRoute(for: agent).continuationKey)")
+                    }
                 }
             }
+            .padding(.top, 8)
+        } label: {
+            Text("Action items (\(requests.count + work.count))")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
         }
     }
 
