@@ -1,7 +1,7 @@
 import SwiftUI
 import AgentSCore
 
-/// The selected agent's memory and session details, below the computer screen.
+/// The selected agent's action items, memory, and session details, below the computer screen.
 struct ContextView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
@@ -11,6 +11,8 @@ struct ContextView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
+                actionItems
+                Divider()
                 AgentMemoryView()
                 Divider()
                 DisclosureGroup("Session and instructions", isExpanded: $showSessionDetails) {
@@ -21,6 +23,44 @@ struct ContextView: View {
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var actionItems: some View {
+        let requests = agent.pendingActionItems
+        let work = agent.memory.notes(for: model.memoryRoute(for: agent))
+            .filter { $0.kind == .activeWork && $0.status == .open }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Action items").font(.headline).accessibilityAddTraits(.isHeader)
+            if requests.isEmpty, work.isEmpty {
+                Text("Nothing needs your attention.").font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(requests) { item in
+                HStack(spacing: 8) {
+                    Label(item.text, systemImage: "hand.raised")
+                        .font(.callout)
+                        .lineLimit(2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Review") { model.revealChatItem(item.id, in: agent) }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                .padding(10)
+                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline).allowsHitTesting(false))
+            }
+            if !work.isEmpty {
+                section("Open work") {
+                    ForEach(work) { note in
+                        Text(note.text)
+                            .font(.callout)
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .help(note.text)
+                    }
+                }
+            }
         }
     }
 

@@ -147,7 +147,7 @@ struct ChatView: View {
             .onChange(of: revision.agentID) {
                 followsLatest = true
             }
-            .onChange(of: agent.memorySourceRequest) { _, request in
+            .onChange(of: agent.chatItemRequest) { _, request in
                 guard let request else { return }
                 followsLatest = false
                 withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {

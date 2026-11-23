@@ -208,7 +208,7 @@ final class AppModel: ObservableObject {
     func revealChatItem(_ id: String, in session: AgentSession) {
         guard agents.contains(where: { $0 === session }) else { return }
         select(session)
-        session.revealMemorySource(id)
+        session.revealChatItem(id)
     }
 
     // MARK: Headshots

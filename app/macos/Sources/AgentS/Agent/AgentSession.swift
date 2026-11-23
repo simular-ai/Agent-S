@@ -85,7 +85,7 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var followUpsPaused = false
     @Published private(set) var memory = AgentMemory()
     @Published private(set) var memoryError: String?
-    @Published private(set) var memorySourceRequest: MemorySourceRequest?
+    @Published private(set) var chatItemRequest: ChatItemRequest?
     @Published private(set) var sessions: [Harness: String] = [:]
     @Published private var sandboxSessions: [String: String] = [:]
     private var accountSessions: [ModelProvider: String] = [:]
@@ -185,7 +185,7 @@ final class AgentSession: ObservableObject, Identifiable {
         let route: AgentMemoryRoute
     }
 
-    struct MemorySourceRequest: Equatable {
+    struct ChatItemRequest: Equatable {
         let itemID: String
         private let requestID = UUID()
     }
@@ -218,9 +218,9 @@ final class AgentSession: ObservableObject, Identifiable {
         memoryTurn?.canCommit = false
     }
 
-    func revealMemorySource(_ itemID: String) {
+    func revealChatItem(_ itemID: String) {
         guard items.contains(where: { $0.id == itemID }) else { return }
-        memorySourceRequest = MemorySourceRequest(itemID: itemID)
+        chatItemRequest = ChatItemRequest(itemID: itemID)
     }
 
     func saveMemoryNote(id: UUID?, kind: AgentMemoryKind, text: String, route: AgentMemoryRoute?,
@@ -577,6 +577,18 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Steps waiting for the person, by approval id.
     private var pendingApprovals: [String: CheckedContinuation<Bool, Never>] = [:]
     var pendingMacApprovals: [ChatItem] { pendingMacApprovals(in: items) }
+
+    var pendingActionItems: [ChatItem] {
+        guard harness == .sai, saiTask?.isCancelled == false,
+              let turnStart = items.lastIndex(where: { $0.kind == .user && $0.isSteering != true }) else {
+            return pendingMacApprovals
+        }
+        // Sai emits requests for the active turn. Historical cards may still be unanswered.
+        return items[turnStart...].filter { item in
+            if case .approval(_, _, _, nil) = item.kind { return true }
+            return false
+        }
+    }
 
     /// The publisher emits its new items before the stored `items` value changes.
     func pendingMacApprovals(in transcript: [ChatItem]) -> [ChatItem] {
@@ -981,7 +993,7 @@ final class AgentSession: ObservableObject, Identifiable {
         queuedFollowUps = []
         resumeQueuedFollowUps()
         memoryTurn = nil
-        memorySourceRequest = nil
+        chatItemRequest = nil
         items = []
         sessions = [:]
         sandboxSessions = [:]
