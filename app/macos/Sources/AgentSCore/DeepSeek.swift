@@ -90,89 +90,110 @@ public struct DeepSeekCommand: Equatable, Sendable {
 /// The Box profile layers over the pinned standalone SDK profile. It exposes only the remote
 /// Box bridge rather than the SDK's local filesystem, shell, or working-directory tools.
 public enum DeepSeekBoxProfile {
-    public static let patch = """
-    - id: sdk-app-startup
-      disabled: true
-    - id: sdk-jsonrpc-server
-      disabled: true
-    - id: llm-deepseek
-      disabled: true
-    - id: session-log-deepseek
-      disabled: true
-    - id: plugin-package-inventory-deepseek
-      disabled: true
-    - id: deepseek-llm-api-extensions
-      disabled: true
-    - id: tool-fs
-      disabled: true
-    - id: tool-working-directory
-      disabled: true
-    - id: persistent-bash
-      disabled: true
-    - id: persistent-pwsh
-      disabled: true
-    - id: terminal-bash
-      disabled: true
-    - id: terminal-pwsh
-      disabled: true
-    - id: pty
-      disabled: true
-    - id: subprocess
-      disabled: true
-    - id: mcp-resources
-      disabled: true
-    - id: sessions
-      config:
-        root: !!js process.env.AGENT_S_DSH_SESSIONS
-        compression: none
-    - insert:
-        - id: agent-s-live-text
-          name: ./\(DeepSeekStreamingPlugin.filename)
-        - id: llm-pi-ai
-          name: '@deepseek-ai/dsh-llm-pi-ai'
-          config:
-            providers:
-              agent-s:
-                api: openai-completions
-                apiKeyEnv: AGENT_S_MODEL_TOKEN
-                baseURL: !!js process.env.AGENT_S_MODEL_URL
-                models:
-                  - id: !!js process.env.AGENT_S_MODEL
-                    contextWindow: !!js Number(process.env.AGENT_S_MODEL_CONTEXT)
-                    maxTokens: !!js Number(process.env.AGENT_S_MODEL_OUTPUT)
-        - id: agent-default-model
-          name: '@deepseek-ai/dsh-agent-default-model'
-          config:
-            provider: agent-s
-            model: !!js process.env.AGENT_S_MODEL
-        - id: session-query-sqlite
-          name: '@deepseek-ai/dsh-session-query-sqlite'
-          config:
-            path: ':memory:'
-        - id: headless-startup
-          name: '@deepseek-ai/dsh-headless/startup'
-        - id: headless-runner
-          name: '@deepseek-ai/dsh-headless'
-          inject: [headlessStartup]
-          config:
-            task: !!js ctx.headlessStartup.task
-            sessionId: !!js ctx.headlessStartup.sessionId
-            json: !!js ctx.headlessStartup.json
-        - id: mcp-box
-          name: '@deepseek-ai/dsh-mcp-client'
-          config:
-            serverName: box
-            transport: streamable-http
-            url: !!js process.env.AGENT_S_BOX_URL
-            headers:
-              Authorization: !!js process.env.AGENT_S_BOX_AUTHORIZATION
-            startupTimeoutMs: 10000
-            reconnect:
-              enabled: false
-            failOnStartupError: true
-    """
+    public static let patch = DeepSeekMCPProfile.patch(server: "box", environmentPrefix: "AGENT_S_BOX")
 
     public static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
+        DeepSeekMCPProfile.arguments(prompt: prompt, resume: resume, patchPath: patchPath)
+    }
+}
+
+/// The Mac profile uses the same restricted runtime with the app's approval-gated Mac bridge.
+public enum DeepSeekMacProfile {
+    public static let patch = DeepSeekMCPProfile.patch(server: "agent_s", environmentPrefix: "AGENT_S_MAC",
+                                                      toolCallTimeoutMs: 1_800_000)
+
+    public static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
+        DeepSeekMCPProfile.arguments(prompt: prompt, resume: resume, patchPath: patchPath)
+    }
+}
+
+private enum DeepSeekMCPProfile {
+    static func patch(server: String, environmentPrefix: String, toolCallTimeoutMs: Int? = nil) -> String {
+        let timeout = toolCallTimeoutMs.map { "\n        toolCallTimeoutMs: \($0)" } ?? ""
+        return """
+        - id: sdk-app-startup
+          disabled: true
+        - id: sdk-jsonrpc-server
+          disabled: true
+        - id: llm-deepseek
+          disabled: true
+        - id: session-log-deepseek
+          disabled: true
+        - id: plugin-package-inventory-deepseek
+          disabled: true
+        - id: deepseek-llm-api-extensions
+          disabled: true
+        - id: tool-fs
+          disabled: true
+        - id: tool-working-directory
+          disabled: true
+        - id: persistent-bash
+          disabled: true
+        - id: persistent-pwsh
+          disabled: true
+        - id: terminal-bash
+          disabled: true
+        - id: terminal-pwsh
+          disabled: true
+        - id: pty
+          disabled: true
+        - id: subprocess
+          disabled: true
+        - id: mcp-resources
+          disabled: true
+        - id: sessions
+          config:
+            root: !!js process.env.AGENT_S_DSH_SESSIONS
+            compression: none
+        - insert:
+            - id: agent-s-live-text
+              name: ./\(DeepSeekStreamingPlugin.filename)
+            - id: llm-pi-ai
+              name: '@deepseek-ai/dsh-llm-pi-ai'
+              config:
+                providers:
+                  agent-s:
+                    api: openai-completions
+                    apiKeyEnv: AGENT_S_MODEL_TOKEN
+                    baseURL: !!js process.env.AGENT_S_MODEL_URL
+                    models:
+                      - id: !!js process.env.AGENT_S_MODEL
+                        contextWindow: !!js Number(process.env.AGENT_S_MODEL_CONTEXT)
+                        maxTokens: !!js Number(process.env.AGENT_S_MODEL_OUTPUT)
+            - id: agent-default-model
+              name: '@deepseek-ai/dsh-agent-default-model'
+              config:
+                provider: agent-s
+                model: !!js process.env.AGENT_S_MODEL
+            - id: session-query-sqlite
+              name: '@deepseek-ai/dsh-session-query-sqlite'
+              config:
+                path: ':memory:'
+            - id: headless-startup
+              name: '@deepseek-ai/dsh-headless/startup'
+            - id: headless-runner
+              name: '@deepseek-ai/dsh-headless'
+              inject: [headlessStartup]
+              config:
+                task: !!js ctx.headlessStartup.task
+                sessionId: !!js ctx.headlessStartup.sessionId
+                json: !!js ctx.headlessStartup.json
+            - id: mcp-\(server)
+              name: '@deepseek-ai/dsh-mcp-client'
+              config:
+                serverName: \(server)
+                transport: streamable-http
+                url: !!js process.env.\(environmentPrefix)_URL
+                headers:
+                  Authorization: !!js process.env.\(environmentPrefix)_AUTHORIZATION
+                startupTimeoutMs: 10000\(timeout)
+                reconnect:
+                  enabled: false
+                failOnStartupError: true
+        """
+    }
+
+    static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
         var args = ["--profile", "sdk-minimal", "--patch", patchPath, "--json"]
         if let resume, resume.hasPrefix("session-"),
            UUID(uuidString: String(resume.dropFirst("session-".count))) != nil {

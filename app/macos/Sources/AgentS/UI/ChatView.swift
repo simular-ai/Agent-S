@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var drafts: [UUID: String] = [:]
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
+    @State private var showsOpenRouterSettings = false
 
     private enum TranscriptAnchor: Hashable {
         case row(String)
@@ -41,6 +42,18 @@ struct ChatView: View {
                     Task { await model.refreshAccountStatus() }
                 }
             }
+            .sheet(isPresented: $showsOpenRouterSettings) {
+                VStack(spacing: 0) {
+                    Form { OpenRouterSettings() }.formStyle(.grouped)
+                    Divider()
+                    HStack {
+                        Spacer()
+                        Button("Done") { showsOpenRouterSettings = false }.keyboardShortcut(.defaultAction)
+                    }
+                    .padding(12)
+                }
+                .frame(width: 520, height: 420)
+            }
     }
 
     private var accountSelection: String? {
@@ -68,6 +81,11 @@ struct ChatView: View {
                     .padding(12)
                     .frame(maxWidth: 820, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
+                    .padding(.horizontal, 24).padding(.top, 8)
+            }
+            if !agent.queuedFollowUps.isEmpty {
+                queuedFollowUps
+                    .frame(maxWidth: 820)
                     .padding(.horizontal, 24).padding(.top, 8)
             }
             composer
@@ -142,7 +160,7 @@ struct ChatView: View {
             .onChange(of: revision.agentID) {
                 followsLatest = true
             }
-            .onChange(of: agent.memorySourceRequest) { _, request in
+            .onChange(of: agent.chatItemRequest) { _, request in
                 guard let request else { return }
                 followsLatest = false
                 withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
@@ -252,7 +270,8 @@ struct ChatView: View {
                                 if name == model.openRouterModel { Label(name, systemImage: "checkmark") } else { Text(name) }
                             }
                         }
-                        Text("Any other model: right-click the agent → Agent Settings")
+                        Button("Search OpenRouter models…") { showsOpenRouterSettings = true }
+                        Toggle("Request Zero Data Retention (ZDR)", isOn: $model.openRouterRequiresZDR)
                     } else if let notice = model.provider.accountDataNotice {
                         Text("Automatic")
                         Text(notice)
@@ -286,20 +305,36 @@ struct ChatView: View {
 
     // MARK: Computer state, inline
 
-    /// When this agent needs the local computer and it isn't on: say so above the composer, with
-    /// the one action that unblocks the chat.
+    /// Shows the local computer's status and available controls above the composer.
     private var computerBanner: AnyView? {
         guard model.agent.config.usesLocalComputer else { return nil }
+        if model.isSavingSandbox {
+            return AnyView(bannerRow(symbol: nil, text: "Saving sandbox…") { EmptyView() })
+        }
         switch model.phase {
         case .ready:
             return nil
         case .stopped:
+            if model.hasSavedSandbox {
+                return AnyView(bannerRow(symbol: "pause.circle", text: "Sandbox saved") {
+                    Button("Resume") { Task { await model.start() } }
+                        .buttonStyle(.borderedProminent).tint(Theme.accent)
+                })
+            }
             return AnyView(MemoryBanner())
         case let .booting(step), let .preparing(step):
             return AnyView(bannerRow(symbol: nil, text: step) { EmptyView() })
         case let .failed(message):
-            return AnyView(bannerRow(symbol: "exclamationmark.triangle", text: message) {
-                Button("Try again") { Task { await model.start() } }
+            return AnyView(VStack(alignment: .trailing, spacing: 6) {
+                bannerRow(symbol: "exclamationmark.triangle", text: message) {
+                    if model.vm.machine != nil, model.vm.state != .running {
+                        Button("Turn off") { Task { await model.stop() } }
+                    } else {
+                        let title = model.hasSavedSandbox ? "Resume" : model.vm.state == .running ? "Try again" : "Turn on"
+                        Button(title) { Task { await model.start() } }
+                    }
+                }
+                if model.hasSavedSandbox { DiscardSavedSandboxButton().padding(.trailing, 14) }
             })
         case .needsSetup:
             return AnyView(bannerRow(symbol: "gearshape", text: "Set up the computer in Settings (the gear, bottom left) to chat.") {
@@ -331,13 +366,65 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        let acceptsInput = agent.isRunning ? agent.canSteer && !agent.isSendingSteering : model.canChat
-        return acceptsInput && hasDraft
+        (agent.isRunning || model.canChat) && !agent.isSendingSteering && hasDraft
+    }
+
+    private var queuedFollowUps: some View {
+        let status = if agent.followUpsPaused { "Follow-ups paused" }
+            else if agent.queuedFollowUps.count == 1 { "Queued for the next turn" }
+            else { "Queued follow-ups (\(agent.queuedFollowUps.count))" }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Label(status, systemImage: agent.followUpsPaused ? "pause.circle" : "clock")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if agent.followUpsPaused {
+                    Button("Send next") { model.sendQueuedFollowUp(for: agent) }
+                        .buttonStyle(.borderless)
+                        .disabled(!model.canSendQueuedFollowUp(for: agent))
+                        .help("Send the first queued follow-up")
+                }
+            }
+            .font(.caption)
+
+            ViewThatFits(in: .vertical) {
+                queuedFollowUpRows.fixedSize(horizontal: false, vertical: true)
+                ScrollView { queuedFollowUpRows }
+            }
+            .frame(maxHeight: 84)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bubble))
+    }
+
+    private var queuedFollowUpRows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(agent.queuedFollowUps, id: \.id) { followUp in
+                HStack(spacing: 8) {
+                    Text(verbatim: followUp.text)
+                        .font(.callout).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(followUp.text)
+                    Button { agent.removeQueuedFollowUp(followUp.id) } label: {
+                        Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Remove queued follow-up")
+                    .help("Remove queued follow-up")
+                }
+            }
+        }
     }
 
     private var composer: some View {
         let stopsTurn = agent.isRunning && !hasDraft
-        let submissionLabel = agent.isRunning ? "Steer the current turn" : "Send"
+        let submissionLabel = if agent.isSendingSteering { "Sending steering message" }
+            else if !agent.isRunning { "Send" }
+            else if agent.canSteer { "Steer the current turn" }
+            else { "Queue follow-up" }
+        let actionSymbol = stopsTurn ? "stop.fill" : agent.isSendingSteering ? "hourglass" : "arrow.up"
         let actionEnabled = stopsTurn || canSend
         return HStack(alignment: .bottom, spacing: 10) {
             TextField(placeholder, text: draft, axis: .vertical)
@@ -347,7 +434,7 @@ struct ChatView: View {
                 .onSubmit(send)
                 .disabled(!model.canChat && !agent.isRunning)
                 .padding(.vertical, 9)
-            roundButton(stopsTurn ? "stop.fill" : "arrow.up", help: stopsTurn ? "Stop" : submissionLabel) {
+            roundButton(actionSymbol, help: stopsTurn ? "Stop" : submissionLabel) {
                 if stopsTurn { agent.stop() }
                 else { send() }
             }
@@ -375,7 +462,7 @@ struct ChatView: View {
 
     private var placeholder: String {
         if agent.isRunning {
-            return agent.canSteer ? "Steer the current turn…" : "Draft a follow-up…"
+            return agent.canSteer ? "Steer the current turn…" : "Queue a follow-up…"
         }
         return model.chatBlocker ?? (model.harness == .sai
             ? "Ask \(model.agent.config.name) to do something on \(model.saiMachineName)…"
@@ -436,7 +523,8 @@ struct ChatView: View {
                 if hosted, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
                 }
-                if model.phase != .ready, model.files.isPrepared, !isBusy {
+                if model.phase != .ready, model.files.isPrepared, !isBusy,
+                   !model.hasSavedSandbox, !model.isSavingSandbox {
                     Button("Turn on the computer") { Task { await model.start() } }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent)
@@ -457,18 +545,22 @@ struct ChatView: View {
 
     private func send() {
         guard canSend else { return }
+        let session = agent
         let field = draft
         let original = field.wrappedValue
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        followsLatest = true
-        if agent.isRunning {
-            let session = agent
+        if session.isRunning, session.canSteer {
+            followsLatest = true
             Task {
                 if await session.steer(text), field.wrappedValue == original { field.wrappedValue = "" }
             }
         } else {
-            field.wrappedValue = ""
-            model.send(text)
+            let wasRunning = session.isRunning
+            let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
+            if accepted {
+                if field.wrappedValue == original { field.wrappedValue = "" }
+                if !wasRunning { followsLatest = true }
+            }
         }
     }
 }

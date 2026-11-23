@@ -9,6 +9,8 @@ public struct MemoryWire: Sendable {
 
     private static let reservedPrefix = "<agent-s-memory:"
     private static let identifiablePrefixBytes = "<agent-s-".utf8.count
+    private static let shortenedPrefix = "<agent-memory:"
+    private static let uuidMarkerTail = "00000000-0000-0000-0000-000000000000>".utf8
     private static let maxOperations = 6
     private static let maxPayloadBytes = 16_384
 
@@ -34,6 +36,12 @@ public struct MemoryWire: Sendable {
     private var closing: String { "</agent-s-memory:\(nonce)>" }
 
     public init() {}
+
+    /// Filters a complete piece of assistant text, including a previously saved chat item.
+    public static func visibleText(_ text: String) -> String {
+        let length = cutoff(in: text, final: true).visibleBytes
+        return length == text.utf8.count ? text : String(decoding: text.utf8.prefix(length), as: UTF8.self)
+    }
 
     public var instructions: String {
         """
@@ -62,9 +70,7 @@ public struct MemoryWire: Sendable {
         case let .textSnapshot(id, text):
             return update(id: id, text: text, append: false)
         case let .finished(result, isError, costUSD):
-            let visible = result.map {
-                String(decoding: $0.utf8.prefix(Self.cutoff(in: $0, final: true).visibleBytes), as: UTF8.self)
-            }
+            let visible = result.map(Self.visibleText)
             return [.finished(result: visible, isError: isError, costUSD: costUSD)]
         case .toolCall, .toolResult:
             return endTextSegment() + [event]
@@ -159,23 +165,47 @@ public struct MemoryWire: Sendable {
     }
 
     private static func cutoff(in text: String, final: Bool) -> (visibleBytes: Int, hasTrailer: Bool) {
-        if let marker = text.range(of: reservedPrefix, options: .literal) {
-            return (text[..<marker.lowerBound].utf8.count, true)
+        if let marker = trailerStart(in: text) {
+            return (text[..<marker.index].utf8.count, marker.complete)
         }
-        let prefix = reservedPrefix.utf8
-        let minimum = final ? identifiablePrefixBytes : 1
-        for length in stride(from: prefix.count - 1, through: minimum, by: -1) {
-            if text.utf8.suffix(length).elementsEqual(prefix.prefix(length)) {
-                return (text.utf8.count - length, false)
+        let reserved = partialPrefixLength(in: text, prefix: reservedPrefix, minimum: final ? identifiablePrefixBytes : 1)
+        let shortened = partialPrefixLength(in: text, prefix: shortenedPrefix,
+                                            minimum: final ? shortenedPrefix.utf8.count - 1 : 1)
+        return (text.utf8.count - max(reserved, shortened), false)
+    }
+
+    private static func partialPrefixLength(in text: String, prefix: String, minimum: Int) -> Int {
+        for length in stride(from: prefix.utf8.count - 1, through: minimum, by: -1) {
+            if text.utf8.suffix(length).elementsEqual(prefix.utf8.prefix(length)) { return length }
+        }
+        return 0
+    }
+
+    private static func trailerStart(in text: String) -> (index: String.Index, complete: Bool)? {
+        let canonical = text.range(of: reservedPrefix, options: .literal)?.lowerBound ?? text.endIndex
+        var start = text.startIndex
+        while let marker = text.range(of: shortenedPrefix, options: .literal, range: start..<canonical) {
+            // The shortened spelling is display-only. A full or partial UUID distinguishes it from other text.
+            let tail = text[marker.upperBound...].utf8.prefix(uuidMarkerTail.count)
+            if zip(tail, uuidMarkerTail).allSatisfy({ byte, pattern in
+                pattern == UInt8(ascii: "0") ? isHexDigit(byte) : byte == pattern
+            }) {
+                return (marker.lowerBound, tail.count == uuidMarkerTail.count)
             }
+            start = marker.upperBound
         }
-        return (text.utf8.count, false)
+        return canonical < text.endIndex ? (canonical, true) : nil
+    }
+
+    private static func isHexDigit(_ byte: UInt8) -> Bool {
+        (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+            || (UInt8(ascii: "a")...UInt8(ascii: "f")).contains(byte)
+            || (UInt8(ascii: "A")...UInt8(ascii: "F")).contains(byte)
     }
 
     private func proposal(in text: String) -> [AgentMemoryOperation]? {
-        guard let marker = text.range(of: Self.reservedPrefix, options: .literal),
-              text[marker.lowerBound...].hasPrefix(opening) else { return nil }
-        let trailer = text[marker.lowerBound...].dropFirst(opening.count)
+        guard let marker = Self.trailerStart(in: text), text[marker.index...].hasPrefix(opening) else { return nil }
+        let trailer = text[marker.index...].dropFirst(opening.count)
         guard trailer.utf8.count <= Self.maxPayloadBytes + closing.utf8.count,
               let end = trailer.range(of: closing, options: .literal),
               trailer[end.upperBound...].allSatisfy(\.isWhitespace),

@@ -20,7 +20,7 @@ struct SetupView: View {
                         Text(SystemMemory.format(allocation.bytes)).tag(allocation)
                     }
                 }
-                Text("Applies the next time you start the sandbox.")
+                Text("Applies when you turn on a powered-off sandbox.")
                     .font(.caption).foregroundStyle(.secondary)
                 if case let .preparing(step) = model.phase {
                     VStack(alignment: .leading) {
@@ -41,6 +41,7 @@ struct SetupView: View {
                 KeySetup.sai(model)
                 KeySetup.box(model)
                 KeySetup.openRouter(model)
+                OpenRouterZDRSetting(isOn: $model.openRouterRequiresZDR)
                 Text("Keys stay in this Mac's Keychain and are shared by all your agents. They never enter the computer.")
                     .font(.caption).foregroundStyle(.secondary)
             }
@@ -64,7 +65,7 @@ struct SetupView: View {
             }
 
             Section {
-                Text("Ollama runs models on this Mac. Simular Box agents run their harness in Agent S and use the Box’s tools. For OpenRouter, Agent S adds the key from this Mac’s Keychain when it sends each request.")
+                Text("Ollama runs models on this Mac. Simular Box agents run their harness on this Mac and use the Box’s tools. Agent S adds your OpenRouter key from the Mac’s Keychain to each OpenRouter request.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

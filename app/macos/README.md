@@ -31,11 +31,14 @@ The build script signs the app for local development by default. Run `./scripts/
 from `app/macos/` to run the Swift test suite.
 
 Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
-the Dock to reopen it. Use **Quit Agent S** to stop active work and shut down the VM.
+the Dock to reopen the window, or use **Quit Agent S** to exit the app.
+
+The Computer panel shows pending requests and open work first. Check items under
+**Open work** to run them together in one chat turn or delete them from memory.
 
 ## Choose how an agent runs
 
-Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud**, choose a
+Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud Computer**, choose a
 computer first. Choose the harness and **Provider** when prompted. To change an existing
 agent's configuration, right-click it and choose **Agent Settings…**. Each **Sandbox on This Mac**
 agent keeps the provider selected when it was created. To use a different provider,
@@ -48,10 +51,11 @@ create a new agent.
 | **Sandbox on This Mac** · Linux VM | DeepSeek | Ollama, OpenRouter |
 | **This Mac** · your Mac apps and files | Claude Code | Ollama, OpenRouter, Claude Code account |
 | **This Mac** · your Mac apps and files | Codex | Codex account |
-| **Cloud** · Sai computer | Sai | Sai API, with models available on your Sai account |
-| **Cloud** · Simular Box | Claude Code | Ollama, OpenRouter, Claude Code account |
-| **Cloud** · Simular Box | Codex | Ollama, OpenRouter, Codex account |
-| **Cloud** · Simular Box | DeepSeek | Ollama, OpenRouter |
+| **This Mac** · your Mac apps and files | DeepSeek | Ollama, OpenRouter |
+| **Cloud Computer** · Sai computer | Sai | Sai API, with models available on your Sai account |
+| **Cloud Computer** · Simular Box | Claude Code | Ollama, OpenRouter, Claude Code account |
+| **Cloud Computer** · Simular Box | Codex | Ollama, OpenRouter, Codex account |
+| **Cloud Computer** · Simular Box | DeepSeek | Ollama, OpenRouter |
 
 The display button beside the chat opens the computer panel, where you can watch the
 Linux VM or cloud computer and see the agent's session context.
@@ -73,21 +77,31 @@ VM start. The default is **6 GB**. This setting allocates memory to the VM. Olla
 separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
 
+On Apple silicon, quitting Agent S saves the running sandbox when the Mac and VM
+configuration support it. Reopen Agent S to resume open apps and windows. **Turn off**
+shuts down the sandbox, and settings such as a new memory allocation apply on the next
+full start. The sandbox disk keeps files and sign-ins across either action.
+
 Chromium stays open between tasks while the sandbox is running. To use a subscription,
 select **Use Claude Code account** or **Use Codex account** as the provider. Start the
-sandbox and choose **Sign in** above the composer. Use **Take over** in the Computer
-panel to follow the CLI's sign-in prompts, then choose **Check sign-in** in the chat.
-Codex uses ChatGPT device-code sign-in. [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+sandbox and choose **Sign in** above the composer.
+
+- **Codex** shows a one-time code in Agent S and opens your Mac browser. Enter the code
+  there. Agent S detects when sign-in completes, and Codex stores its credentials in
+  the sandbox. An older Codex version may show the code in the Computer panel.
+  [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+- **Claude Code** opens sign-in in the Computer panel. Use **Take over** to follow its
+  prompts, then choose **Check sign-in** in the chat.
 
 ### This Mac
 
-1. Install the CLI you chose for the agent. [Claude Code setup](https://code.claude.com/docs/en/setup) · [Codex CLI setup](https://learn.chatgpt.com/docs/cli)
+1. Install the CLI you chose for the agent. [Claude Code setup](https://code.claude.com/docs/en/setup) · [Codex CLI setup](https://learn.chatgpt.com/docs/cli) · [DeepSeek Harness setup](#deepseek-harness)
 2. Install simulang with `npm install -g @simular-ai/simulang`.
 3. In **Settings → Mac Permissions**, allow **Accessibility**. Enable **Screen Recording**
    if you want the agent to take screenshots. These permissions apply to Agent S and are
    shared across its agents. Screen Recording may require reopening the app.
 4. For on-device inference, start Ollama on your Mac. Set **Runs** to **This Mac**,
-   select the **Claude Code** harness and the **Ollama** provider, and choose a local model.
+   select **Claude Code** or **DeepSeek** with **Ollama**, and choose a local model.
 5. Send a message and review proposed actions in the chat or in the floating **Agent Activity**
    panel while another app is in front. Read-only observations can run automatically.
    **Approve for this task** approves the remaining actions in the current turn.
@@ -95,7 +109,7 @@ Codex uses ChatGPT device-code sign-in. [Enable device-code sign-in for Codex](h
 
 ### Sai computer
 
-Create a **Cloud → Sai computer** agent. Add your Sai API key in **Settings → Accounts**
+Create a **Cloud Computer → Sai computer** agent. Add your Sai API key in **Settings → Accounts**
 or in the new-agent form, then choose a computer and model from your Sai account.
 Sending a message can wake a sleeping Sai cloud computer. You can also use **Wake computer**
 in the computer panel when Sai makes that action available. For a computer you enrolled,
@@ -104,13 +118,16 @@ make sure its Sai runtime is online.
 
 ### Simular Box
 
-Create a **Cloud → Simular Box** agent. Add your personal Box key in **Settings → Accounts**
+Create a **Cloud Computer → Simular Box** agent. Add your personal Box key in **Settings → Accounts**
 and leave the **Box** field empty for your default Box, or enter the name of a specific Box.
 The selected CLI runs on your Mac and uses the Box's tools.
 [Box access keys](https://box.simular.ai/access)
 
-Install Claude Code or Codex using the links above. For DeepSeek on Box, use Node.js 24.9
-or later and install the version expected by Agent S.
+Install Claude Code or Codex using the links above, or follow the DeepSeek setup below.
+
+### DeepSeek Harness
+
+For **This Mac** and **Simular Box**, use Node.js 24.9 or later and install the version expected by Agent S.
 
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.2-rc.5
@@ -120,16 +137,17 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 
 - **Ollama** runs on the Mac and is needed when you select it as the provider. You can
   check the connection in **Settings → Ollama** and download a model in **Agent Settings…**.
-- **OpenRouter** requires an API key in **Settings → Accounts** and a model in the agent's
-  settings. [OpenRouter keys](https://openrouter.ai/keys)
+- **OpenRouter** requires an API key in **Settings → Accounts**. Search by model or provider
+  in the OpenRouter model settings or enter a model ID. **Request Zero Data Retention (ZDR)**
+  applies to all OpenRouter agents. [OpenRouter keys](https://openrouter.ai/keys)
 - **Claude Code account** and **Codex account** use automatic model selection. After
   creating the agent, choose **Sign in with Claude Code…** or **Sign in with ChatGPT…**.
-  The installed CLI handles sign-in in an Agent S profile.
+  The installed CLI handles sign-in in an app-specific profile.
 
 ## Permissions and data
 
 - Choose **Ollama** and a local model for on-device inference. This works with
-  **Sandbox on This Mac** and with **This Mac** when the harness is **Claude Code**.
+  **Sandbox on This Mac** and with **This Mac** when the harness is **Claude Code** or **DeepSeek**.
 - **Sandbox on This Mac** agents share the guest, browser, and files. The guest can reach the internet,
   shares the clipboard, and can read and write the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
@@ -141,8 +159,8 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
   Mac's Keychain and forwards guest model requests through the app's proxy.
 - **Sai** receives tasks and runs them on the selected computer. **Simular Box**
   receives tool calls and their inputs even when the agent uses Ollama. A hosted
-  model provider can also receive Box tool results used as model context. Sai API
-  requests and Agent S–managed Box sessions identify the app to the service.
+  model provider can also receive Box tool results used as model context. The app
+  identifies itself when connecting to Sai and Simular Box.
 - The app keeps its chat history and agent settings in
   `~/Library/Application Support/Agent S`. Sai, Box, and OpenRouter API keys are
   stored in the macOS Keychain.

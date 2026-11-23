@@ -27,15 +27,10 @@ public enum CloudComputer: String, CaseIterable, Identifiable, Codable, Sendable
 }
 
 public extension Harness {
-    /// The harnesses an agent may use: in the local VM, or the ones that fit
-    /// a cloud agent's computer.
+    /// The harnesses available for the selected computer.
     static func allowed(in mode: PrivacyMode, computer: CloudComputer?) -> [Harness] {
-        switch mode {
-        case .fullyPrivate, .localVM: [.claudeCode, .codex, .deepSeek]
-        // Both harnesses run on the Mac with approval gates for their tools.
-        case .thisMac: [.claudeCode, .codex]
-        case .remote: (computer ?? .box).harnesses
-        }
+        guard mode == .remote else { return allowed(in: mode) }
+        return (computer ?? .box).harnesses
     }
 }
 

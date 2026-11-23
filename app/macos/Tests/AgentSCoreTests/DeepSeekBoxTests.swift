@@ -20,3 +20,30 @@ struct DeepSeekBoxTests {
         #expect(!fresh.contains("--session-id"))
     }
 }
+
+@Suite("DeepSeek Harness on This Mac")
+struct DeepSeekMacTests {
+    @Test func onlyTheApprovalBridgeProvidesMacTools() {
+        let patch = DeepSeekMacProfile.patch
+        for plugin in ["tool-fs", "tool-working-directory", "persistent-bash", "persistent-pwsh",
+                       "terminal-bash", "terminal-pwsh", "pty", "subprocess", "mcp-resources",
+                       "llm-deepseek", "session-log-deepseek"] {
+            #expect(patch.contains("- id: \(plugin)\n  disabled: true"))
+        }
+        #expect(patch.contains("serverName: agent_s"))
+        #expect(patch.contains("transport: streamable-http"))
+        #expect(patch.contains("url: !!js process.env.AGENT_S_MAC_URL"))
+        #expect(patch.contains("Authorization: !!js process.env.AGENT_S_MAC_AUTHORIZATION"))
+        #expect(patch.contains("\n        toolCallTimeoutMs: 1800000\n"))
+        #expect(patch.contains("failOnStartupError: true"))
+        #expect(!patch.contains("AGENT_S_BOX_"))
+    }
+
+    @Test func preservesSessionAndPromptArgumentBoundaries() {
+        let resume = "session-18dc9fe4-1044-4115-8d56-9eef81b45712"
+        let args = DeepSeekMacProfile.arguments(prompt: "--help", resume: resume, patchPath: "/tmp/mac.yml")
+        #expect(args == ["--profile", "sdk-minimal", "--patch", "/tmp/mac.yml", "--json", "--session-id", resume, "--", "--help"])
+        let fresh = DeepSeekMacProfile.arguments(prompt: "Hello", resume: "../../other-agent", patchPath: "/tmp/mac.yml")
+        #expect(!fresh.contains("--session-id"))
+    }
+}

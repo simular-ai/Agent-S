@@ -35,4 +35,14 @@ struct SandboxAccountTests {
             #expect(command.contains("XTerm*selectToClipboard: true"))
         }
     }
+
+    @Test func startsDeviceCodeAppServerWithTheGuestCodexProfile() {
+        let command = SandboxAccount.codexDeviceSignInCommand
+        #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .codexAccount)))
+        #expect(command.contains(#"cli_auth_credentials_store="file""#))
+        #expect(command.contains(#"forced_login_method="chatgpt""#))
+        #expect(command.hasSuffix("app-server --listen stdio://"))
+        #expect(!command.contains("/usr/bin/xterm"))
+        #expect(!command.contains("</dev/null"))
+    }
 }

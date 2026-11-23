@@ -332,10 +332,13 @@ public struct AgentMemory: Equatable, Codable, Sendable {
 
     @discardableResult
     public mutating func forget(id: UUID) -> Bool {
-        guard let index = notes.firstIndex(where: { $0.id == id }) else { return false }
-        notes.remove(at: index)
-        revision = UUID()
-        return true
+        forget(ids: [id])
+    }
+
+    @discardableResult
+    public mutating func forget(ids: Set<UUID>) -> Bool {
+        guard !ids.isEmpty else { return false }
+        return commit(notes.filter { !ids.contains($0.id) })
     }
 
     private mutating func commit(_ candidate: [AgentMemoryNote]) -> Bool {

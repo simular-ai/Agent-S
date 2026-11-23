@@ -113,7 +113,7 @@ public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .linuxVM: "Sandbox on This Mac"
         case .thisMac: "This Mac"
-        case .cloud: "Cloud"
+        case .cloud: "Cloud Computer"
         }
     }
 

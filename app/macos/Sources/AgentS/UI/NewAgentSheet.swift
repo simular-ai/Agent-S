@@ -11,6 +11,7 @@ struct NewAgentSheet: View {
     @State private var provider: ModelProvider = .ollama
     @State private var ollamaModel = AppModel.defaultAgentModel
     @State private var openRouterModel = OpenRouter.suggested[0]
+    @State private var openRouterZDR: Bool?
     @State private var saiMachine = ""
     @State private var saiModel = "auto"
     /// Sai first: it's all in one (agent, model and computer with one key); Simular Box is the
@@ -48,7 +49,7 @@ struct NewAgentSheet: View {
                         .pickerStyle(.segmented)
                         Text(computer == .sai
                              ? "Connect your Sai account to use its agent, model, and computer."
-                             : "Choose the harness and model provider. The harness runs in Agent S and uses only your Box’s tools.")
+                             : "Choose the harness and model provider. The harness runs on your Mac and uses only your Box’s tools.")
                             .font(.caption).foregroundStyle(.secondary)
                         if computer == .box {
                             TextField("Box", text: $boxName, prompt: Text("Default Simular Box"))
@@ -60,6 +61,9 @@ struct NewAgentSheet: View {
                     Section("Harness") {
                         Picker("Harness", selection: $harness) {
                             ForEach(availableHarnesses) { Text($0.displayName).tag($0) }
+                        }
+                        if location != .linuxVM, harness == .deepSeek, DeepSeekTurn.executable == nil {
+                            DeepSeekInstallHelp()
                         }
                     }
                 }
@@ -96,10 +100,14 @@ struct NewAgentSheet: View {
                         } else if selectedProvider == .openRouter {
                             Text("OpenRouter and the selected model provider receive your messages and content the agent reads.")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Picker("Model", selection: $openRouterModel) {
+                            OpenRouterZDRSetting(isOn: Binding(
+                                get: { openRouterZDR ?? model.openRouterRequiresZDR }, set: { openRouterZDR = $0 }
+                            ), appliesOnCreate: true)
+                            OpenRouterModelSearch(selection: $openRouterModel)
+                            Picker("Suggested models", selection: $openRouterModel) {
                                 ForEach(OpenRouter.suggested, id: \.self) { Text($0).tag($0) }
+                                if !OpenRouter.suggested.contains(openRouterModel) { Text(openRouterModel).tag(openRouterModel) }
                             }
-                            TextField("Or any OpenRouter model id", text: $openRouterModel)
                             KeySetup.openRouter(model)
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
@@ -172,6 +180,9 @@ struct NewAgentSheet: View {
     }
 
     private func create() {
+        if selectedProvider == .openRouter, harness != .sai, let openRouterZDR {
+            model.openRouterRequiresZDR = openRouterZDR
+        }
         model.createAgent(AgentConfig(
             name: name.trimmingCharacters(in: .whitespaces), privacy: location.mode(for: selectedProvider), harness: harness,
             provider: selectedProvider,

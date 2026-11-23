@@ -4,27 +4,19 @@ import AgentSCore
 struct AgentMemoryView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @State private var isExpanded = false
     @State private var editor: MemoryEditorRequest?
     @State private var sharing: MemoryShareRequest?
     @State private var actionError: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            if let error = agent.memoryError {
-                Text(error).font(.caption).foregroundStyle(.red)
-            }
-            if agent.memory.notes.isEmpty {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("No memory yet").font(.callout.weight(.medium))
-                    Text("Add a note about work, preferences, decisions, or workflows.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                ForEach(AgentMemoryKind.allCases, id: \.self) { kind in
-                    let notes = agent.memory.notes(in: kind)
-                    if !notes.isEmpty { section(kind, notes: notes) }
+        DisclosureGroup(isExpanded: $isExpanded) {
+            memoryContent.padding(.top, 8)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Memory").font(.headline).accessibilityAddTraits(.isHeader)
+                if let error = agent.memoryError {
+                    Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
         }
@@ -45,13 +37,25 @@ struct AgentMemoryView: View {
         }
     }
 
-    private var header: some View {
-        HStack {
-            Text("Memory").font(.headline).accessibilityAddTraits(.isHeader)
-            Spacer()
+    private var memoryContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
             Button { edit(nil) } label: { Label("Add note", systemImage: "plus") }
                 .buttonStyle(.bordered)
                 .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            if agent.memory.notes.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No memory yet").font(.callout.weight(.medium))
+                    Text("Add a note about work, preferences, decisions, or workflows.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                ForEach(AgentMemoryKind.allCases, id: \.self) { kind in
+                    let notes = agent.memory.notes(in: kind)
+                    if !notes.isEmpty { section(kind, notes: notes) }
+                }
+            }
         }
     }
 
