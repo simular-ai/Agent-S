@@ -939,13 +939,14 @@ final class AppModel: ObservableObject {
     func runOpenWork(ids: Set<UUID>, for session: AgentSession) async -> Bool {
         guard !ids.isEmpty, selectedAgentID == session.id, canRunOpenWork(for: session) else { return false }
         let route = memoryRoute(for: session)
+        let selected = openWork(for: session).filter { ids.contains($0.id) }
+        guard selected.count == ids.count else { return false }
         if route.provider == .ollama {
             guard await Self.verifyOllamaMemoryRoute(route) == route else { return false }
         }
         guard !Task.isCancelled, selectedAgentID == session.id, canRunOpenWork(for: session),
-              memoryRoute(for: session) == route else { return false }
-        let selected = openWork(for: session).filter { ids.contains($0.id) }
-        guard selected.count == ids.count else { return false }
+              memoryRoute(for: session) == route,
+              openWork(for: session).filter({ ids.contains($0.id) }) == selected else { return false }
         let list = selected.map { "- " + $0.text.replacingOccurrences(of: "\n", with: "\n  ") }.joined(separator: "\n")
         return send("Work on the checked items below.\n\n\(list)", to: session, verifiedRoute: route)
     }
