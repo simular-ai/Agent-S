@@ -46,6 +46,11 @@ final class AppModel: ObservableObject {
     /// Ollama >= 0.14 serves the Anthropic Messages API Claude Code speaks.
     static let minimumOllama = "0.14.0"
     private static let computerMemoryKey = "computerMemoryGB"
+    private nonisolated static let openRouterZDRKey = "openRouterRequiresZDR"
+
+    private nonisolated static var storedOpenRouterRequiresZDR: Bool {
+        UserDefaults.standard.object(forKey: openRouterZDRKey) as? Bool ?? true
+    }
 
     @Published private(set) var phase: Phase
     @Published private(set) var downloadProgress: Double?
@@ -62,6 +67,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var pullStatus: String?
     @Published private(set) var openRouterModels: [OpenRouter.Model] = []
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
+    @Published var openRouterRequiresZDR = AppModel.storedOpenRouterRequiresZDR {
+        didSet { UserDefaults.standard.set(openRouterRequiresZDR, forKey: Self.openRouterZDRKey) }
+    }
     // Sai harness (cloud agents): the user's Sai key, computers and models.
     @Published private(set) var hasSaiKey = SaiAPI.hasKey
     @Published private(set) var saiKeyRevision = 0
@@ -69,7 +77,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var saiModels: [SaiAPI.Model] = []
     @Published private(set) var saiStatus: String?
     @Published private var saiScreenStates: [String: SaiAPI.ScreenState] = [:]
-    private let openRouterProxy = OpenRouterProxy()
+    private let openRouterProxy = OpenRouterProxy(requiresZDR: { AppModel.storedOpenRouterRequiresZDR })
     @Published private var accountStatuses: [AccountRoute: AccountStatus] = [:]
     @Published private(set) var sandboxSignInRequest = UUID()
     private var accountChecks: [AccountRoute: UUID] = [:]

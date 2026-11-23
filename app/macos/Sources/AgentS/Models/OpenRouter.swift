@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import AgentSCore
 
 /// OpenRouter, bring-your-own-key. The key lives in the Mac's Keychain and is added to requests by
 /// a proxy on the Mac's loopback; the computer reaches the proxy through the turn's SSH tunnel and
@@ -60,6 +61,11 @@ final class OpenRouterProxy: @unchecked Sendable {
     let token = "agent-s-" + UUID().uuidString
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "ai.simular.agent-s.openrouter-proxy")
+    private let requiresZDR: @Sendable () -> Bool
+
+    init(requiresZDR: @escaping @Sendable () -> Bool) {
+        self.requiresZDR = requiresZDR
+    }
 
     var isRunning: Bool { listener != nil }
 
@@ -145,6 +151,15 @@ final class OpenRouterProxy: @unchecked Sendable {
             respond(connection, status: 404, body: #"{"error":{"message":"Not found"}}"#)
             return
         }
+        let enforceZDR = requiresZDR()
+        let body: Data
+        do {
+            body = try OpenRouterRequestPolicy.body(request.body, method: request.method, path: url.path,
+                                                    requiresZDR: enforceZDR)
+        } catch {
+            respond(connection, status: 400, body: #"{"error":{"message":"This request could not be routed with Agent S’s OpenRouter retention setting."}}"#)
+            return
+        }
         var upstream = URLRequest(url: url)
         upstream.httpMethod = request.method
         upstream.timeoutInterval = 600
@@ -155,7 +170,10 @@ final class OpenRouterProxy: @unchecked Sendable {
         }
         upstream.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         upstream.setValue("Agent S", forHTTPHeaderField: "X-Title")
-        if !request.body.isEmpty { upstream.httpBody = request.body }
+        if !body.isEmpty {
+            if enforceZDR { upstream.setValue("application/json", forHTTPHeaderField: "Content-Type") }
+            upstream.httpBody = body
+        }
 
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: upstream)

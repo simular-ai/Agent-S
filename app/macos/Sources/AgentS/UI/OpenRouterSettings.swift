@@ -32,6 +32,7 @@ struct OpenRouterSettings: View {
                     .buttonStyle(.plain)
                 }
             }
+            OpenRouterZDRSetting(isOn: $model.openRouterRequiresZDR)
         }
         .task { await model.refreshOpenRouterModels() }
     }
@@ -43,4 +44,19 @@ struct OpenRouterSettings: View {
     }
 
     private var hasKey: Bool { model.hasOpenRouterKey }
+}
+
+struct OpenRouterZDRSetting: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Request Zero Data Retention (ZDR)")
+                Text("Applies to all OpenRouter agents. Safety Retention follows your OpenRouter privacy settings.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.switch)
+    }
 }
