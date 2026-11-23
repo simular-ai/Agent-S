@@ -1,23 +1,26 @@
 import SwiftUI
 import AgentSCore
 
-/// The conversation: the user's messages, the agent's answers, and its steps folded to one line each.
+/// The conversation: messages, replies, and expandable runs of tool steps.
 /// The pill on top switches the model; the Computer button opens the screen beside the chat.
 struct ChatView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
-    @State private var draft = ""
+    @State private var drafts: [UUID: String] = [:]
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
 
-    private enum TranscriptAnchor { case working }
+    private enum TranscriptAnchor: Hashable {
+        case row(String)
+        case working
+    }
 
     private struct TranscriptRevision: Equatable {
         let agentID: UUID
         let lastItem: ChatItem?
-        let isRunning: Bool
+        let target: TranscriptAnchor?
     }
 
     private static let nearBottom: CGFloat = 40
@@ -41,7 +44,7 @@ struct ChatView: View {
     }
 
     private var accountSelection: String? {
-        guard model.harness != .sai, model.provider.usesAccount else { return nil }
+        guard model.harness != .sai, model.provider.usesAccount, model.accountComputerReady else { return nil }
         return "\(agent.id)-\(model.provider.rawValue)"
     }
 
@@ -74,14 +77,28 @@ struct ChatView: View {
     }
 
     private var transcript: some View {
-        let revision = TranscriptRevision(agentID: agent.id, lastItem: agent.items.last, isRunning: agent.isRunning)
+        let transcript = ChatTranscript(agent.items)
+        let rows = transcript.rows
+        let activityAtEnd: Bool
+        if let last = rows.last, last.isCurrentTurn, case .activity = last.content {
+            activityAtEnd = true
+        } else {
+            activityAtEnd = false
+        }
+        let showsWorkingRow = agent.isRunning && !activityAtEnd
+        let target: TranscriptAnchor? = showsWorkingRow ? .working : rows.last.map { .row($0.id) }
+        let revision = TranscriptRevision(agentID: agent.id, lastItem: transcript.lastItem, target: target)
         return ScrollViewReader { proxy in
             ScrollView {
                 VStack(spacing: 0) {
                     LazyVStack(alignment: .leading, spacing: 12) {
-                        if agent.items.isEmpty { emptyState }
-                        ForEach(agent.items) { ChatRow(item: $0).id($0.id) }
-                        if agent.isRunning {
+                        if rows.isEmpty { emptyState }
+                        ForEach(rows) { row in
+                            ChatTranscriptRow(row: row, isRunning: agent.isRunning,
+                                              showsWorking: agent.isRunning && activityAtEnd && row.id == rows.last?.id)
+                                .id(TranscriptAnchor.row(row.id))
+                        }
+                        if showsWorkingRow {
                             HStack(spacing: 8) {
                                 ProgressView().controlSize(.small)
                                 Text("Working…").foregroundStyle(.secondary)
@@ -103,7 +120,7 @@ struct ChatView: View {
                 .onGeometryChange(for: CGSize?.self) { geometry in
                     geometry.bounds(of: NamedCoordinateSpace.scrollView(axis: .vertical))?.size
                 } action: { size in
-                    if let size, size.height > 0 { trackViewport(size, proxy: proxy) }
+                    if let size, size.height > 0 { trackViewport(size, proxy: proxy, target: target) }
                 }
             }
             .overlay(alignment: .bottom) {
@@ -112,7 +129,7 @@ struct ChatView: View {
                         CircleButton(systemImage: "arrow.down", help: "Jump to latest message") {
                             followsLatest = true
                             withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
-                                scrollToLatest(proxy)
+                                scrollToLatest(proxy, target: target)
                             }
                         }
                         .accessibilityLabel("Jump to latest message")
@@ -125,25 +142,28 @@ struct ChatView: View {
             .onChange(of: revision.agentID) {
                 followsLatest = true
             }
+            .onChange(of: agent.memorySourceRequest) { _, request in
+                guard let request else { return }
+                followsLatest = false
+                withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 0.88)) {
+                    proxy.scrollTo(TranscriptAnchor.row(request.itemID), anchor: .top)
+                }
+            }
             .task(id: revision) {
                 // Text can stream into the last item without changing the number of rows.
                 await Task.yield()
                 guard !Task.isCancelled, followsLatest, revision.lastItem != nil else { return }
-                scrollToLatest(proxy)
+                scrollToLatest(proxy, target: target)
             }
         }
     }
 
-    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+    private func scrollToLatest(_ proxy: ScrollViewProxy, target: TranscriptAnchor?) {
         // Target a rendered row so an estimate of earlier Markdown heights cannot hide the newest message.
-        if agent.isRunning {
-            proxy.scrollTo(TranscriptAnchor.working, anchor: .bottom)
-        } else if let id = agent.items.last?.id {
-            proxy.scrollTo(id, anchor: .bottom)
-        }
+        if let target { proxy.scrollTo(target, anchor: .bottom) }
     }
 
-    private func trackViewport(_ size: CGSize, proxy: ScrollViewProxy) {
+    private func trackViewport(_ size: CGSize, proxy: ScrollViewProxy, target: TranscriptAnchor?) {
         let previous = transcriptViewport
         transcriptViewport = size
         // Follow window and split-pane resizing without reacting to lazy content estimates.
@@ -151,7 +171,7 @@ struct ChatView: View {
             Task { @MainActor in
                 await Task.yield()
                 guard followsLatest, transcriptViewport == size else { return }
-                scrollToLatest(proxy)
+                scrollToLatest(proxy, target: target)
             }
         }
     }
@@ -301,28 +321,39 @@ struct ChatView: View {
 
     // MARK: Composer
 
+    private var draft: Binding<String> {
+        let id = agent.id
+        return Binding(get: { drafts[id, default: ""] }, set: { drafts[id] = $0 })
+    }
+
+    private var hasDraft: Bool {
+        !draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var canSend: Bool {
-        model.canChat && !agent.isRunning
-            && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let acceptsInput = agent.isRunning ? agent.canSteer && !agent.isSendingSteering : model.canChat
+        return acceptsInput && hasDraft
     }
 
     private var composer: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            TextField(placeholder, text: $draft, axis: .vertical)
+        let stopsTurn = agent.isRunning && !hasDraft
+        let submissionLabel = agent.isRunning ? "Steer the current turn" : "Send"
+        let actionEnabled = stopsTurn || canSend
+        return HStack(alignment: .bottom, spacing: 10) {
+            TextField(placeholder, text: draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(1...6)
                 .onSubmit(send)
-                .disabled(!model.canChat)
+                .disabled(!model.canChat && !agent.isRunning)
                 .padding(.vertical, 9)
-            if agent.isRunning {
-                roundButton("stop.fill", help: "Stop") { agent.stop() }
-            } else {
-                roundButton("arrow.up", help: "Send") { send() }
-                    .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(!canSend)
-                    .opacity(canSend ? 1 : 0.4)
+            roundButton(stopsTurn ? "stop.fill" : "arrow.up", help: stopsTurn ? "Stop" : submissionLabel) {
+                if stopsTurn { agent.stop() }
+                else { send() }
             }
+            .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
+            .disabled(!actionEnabled)
+            .opacity(actionEnabled ? 1 : 0.4)
         }
         .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 24).fill(Theme.card))
@@ -338,11 +369,15 @@ struct ChatView: View {
                 .background(Circle().fill(Theme.accent))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(help)
         .help(help)
     }
 
     private var placeholder: String {
-        model.chatBlocker ?? (model.harness == .sai
+        if agent.isRunning {
+            return agent.canSteer ? "Steer the current turn…" : "Draft a follow-up…"
+        }
+        return model.chatBlocker ?? (model.harness == .sai
             ? "Ask \(model.agent.config.name) to do something on \(model.saiMachineName)…"
             : model.computer == .box ? "Ask \(model.agent.config.name) to do something on your Simular Box…" : "Ask \(model.agent.config.name) to do something on its computer…")
     }
@@ -422,10 +457,19 @@ struct ChatView: View {
 
     private func send() {
         guard canSend else { return }
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        draft = ""
+        let field = draft
+        let original = field.wrappedValue
+        let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
         followsLatest = true
-        model.send(text)
+        if agent.isRunning {
+            let session = agent
+            Task {
+                if await session.steer(text), field.wrappedValue == original { field.wrappedValue = "" }
+            }
+        } else {
+            field.wrappedValue = ""
+            model.send(text)
+        }
     }
 }
 
@@ -457,6 +501,7 @@ private struct TranscriptScrollObserver: NSViewRepresentable {
 
 struct ChatRow: View {
     let item: ChatItem
+    var isToolActive = true
     @State private var open = false
 
     var body: some View {
@@ -464,11 +509,16 @@ struct ChatRow: View {
         case .user:
             HStack {
                 Spacer(minLength: 120)
-                Text(item.text)
-                    .textSelection(.enabled)
-                    .foregroundStyle(Theme.onAccent)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 20).fill(Theme.accent))
+                VStack(alignment: .trailing, spacing: 4) {
+                    if item.isSteering == true {
+                        Text("Steering").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(item.text)
+                        .textSelection(.enabled)
+                        .foregroundStyle(Theme.onAccent)
+                        .padding(.horizontal, 16).padding(.vertical, 10)
+                        .background(RoundedRectangle(cornerRadius: 20).fill(Theme.accent))
+                }
             }
         case .agent:
             ChatMarkdown(markdown: item.text)
@@ -487,13 +537,14 @@ struct ChatRow: View {
 
     private func toolStep(name: String, done: Bool, failed: Bool, output: String) -> some View {
         let title = ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput)
-        let status = failed ? "Failed" : done ? "Completed" : "Running"
+        let status = failed ? "Failed" : done ? "Completed" : isToolActive ? "Running" : "Unfinished"
+        let symbol = failed ? "exclamationmark.circle" : done ? "checkmark.circle" : isToolActive ? "circle.dotted" : "clock"
         let input = item.toolInput ?? (item.text == name || item.text == title ? "" : item.text)
 
         return VStack(alignment: .leading, spacing: 6) {
             Button { open.toggle() } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: failed ? "exclamationmark.circle" : done ? "checkmark.circle" : "circle.dotted")
+                    Image(systemName: symbol)
                         .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
                     Text(title).font(.callout).lineLimit(1)
                     Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)

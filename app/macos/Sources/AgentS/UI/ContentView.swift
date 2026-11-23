@@ -7,6 +7,7 @@ struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     @State private var showComputer = false
     @State private var showSettings = false
+    @State private var takeOverSandbox = false
     /// The computer's screen fills the window: sidebar, chat and context are hidden.
     @State private var maximized = false
 
@@ -19,14 +20,27 @@ struct ContentView: View {
     private var content: some View {
         Group {
             if maximized, showComputer {
-                ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized)
+                ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized,
+                              takeOver: $takeOverSandbox)
             } else {
                 layout
             }
         }
         .background(Theme.canvas)
         .ignoresSafeArea(.container, edges: .top)
-        .onChange(of: showComputer) { _, open in if !open { maximized = false } }
+        .onChange(of: showComputer) { _, open in
+            if !open {
+                maximized = false
+                takeOverSandbox = false
+            }
+        }
+        .onChange(of: model.agent.config.usesLocalComputer) { _, local in
+            if !local { takeOverSandbox = false }
+        }
+        .onChange(of: model.vm.machine == nil) { _, stopped in
+            if stopped { takeOverSandbox = false }
+        }
+        .onChange(of: model.sandboxSignInRequest) { showComputer = true }
         .sheet(isPresented: $showSettings) {
             VStack(spacing: 0) {
                 SetupView()
@@ -53,7 +67,8 @@ struct ContentView: View {
                     .ignoresSafeArea(.container, edges: .top)
                     .frame(minWidth: 380, maxWidth: .infinity)
                 if showComputer {
-                    ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized)
+                    ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized,
+                                  takeOver: $takeOverSandbox)
                         .ignoresSafeArea(.container, edges: .top)
                         .frame(minWidth: 420, idealWidth: Self.panelWidth, maxWidth: .infinity)
                 }

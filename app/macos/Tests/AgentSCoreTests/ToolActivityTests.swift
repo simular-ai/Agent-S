@@ -28,6 +28,35 @@ struct ToolActivityTests {
         """) == "Write a file")
     }
 
+    @Test func labelsGuestAppLaunchesWithoutTheirArguments() {
+        let launch = "/usr/local/bin/ui launch '/home/example/.local/share/applications/Sample Notes.desktop'"
+        #expect(ToolActivity.title(tool: "Bash", summary: "ui launch xterm") == "Launch an app")
+        #expect(ToolActivity.title(tool: "Shell", summary: "Open the sample app", detail: launch) == "Launch an app")
+        #expect(ToolActivity.detail(input: ["command": launch]) == launch)
+        #expect(ToolActivity.title(tool: "Shell", summary: "ui launch") == "Run a terminal command")
+        #expect(ToolActivity.title(tool: "Shell", summary: "ui launch --help") == "Run a terminal command")
+    }
+
+    @Test func describesBrowserActionsThroughWaitsAndOutputFilters() {
+        #expect(ToolActivity.title(tool: "bash", summary: "Inspect",
+                                   detail: "web snapshot | grep -n -E 'heading|button' | head -80") == "Inspect the webpage")
+        #expect(ToolActivity.title(tool: "bash", summary: "Inspect",
+                                   detail: "web snapshot | grep -n -i -B4 -A8 -C 2 'button'") == "Inspect the webpage")
+        #expect(ToolActivity.title(tool: "bash", summary: "Click",
+                                   detail: "web click e12 && sleep 0.5 && web snapshot | grep -n 'button' | head -n 80") ==
+                "Click and inspect the webpage")
+        #expect(ToolActivity.title(tool: "bash", summary: "Continue",
+                                   detail: "web click e12 > /dev/null; web open example.com && sleep 1 && web read | tail -60") ==
+                "Click, open, and read a webpage")
+        #expect(ToolActivity.title(tool: "bash", summary: "Inspect",
+                                   detail: "web snapshot | sed -n '/heading/,$p' | head") == "Inspect the webpage")
+        #expect(ToolActivity.title(tool: "Shell", summary: #"/bin/bash -lc 'cd /tmp && web click e5 && web read | head'"#) ==
+                "Click and read the webpage")
+        #expect(ToolActivity.title(tool: "bash", summary: "Open",
+                                   detail: "web open 'https://example.com/?a=1&b=2' && sleep 1 && web read | tail") ==
+                "Open and read a webpage")
+    }
+
     @Test(arguments: [
         "echo '/a/mac screenshot'",
         "mac screenshot && web open https://example.com",
@@ -39,6 +68,13 @@ struct ToolActivityTests {
         #"mac type 7 "$(other-command)""#,
         "cat > /tmp/example <<EOF\n$(other-command)\nEOF",
         "cat > /tmp/example <<'EOF'\nbody\nEOF\nother-command",
+        "web snapshot; rm /tmp/file",
+        "web read || web open example.com",
+        "web read | head -n 5 /tmp/file",
+        "web read | grep 'heading' /tmp/file",
+        "web read | sed -n '1e echo other-command'",
+        "web read > /tmp/file",
+        "echo 'web click e12' | head",
     ])
     func keepsUnclearShellCommandsGeneric(_ command: String) {
         #expect(ToolActivity.title(tool: "Bash", summary: "Capture the screen", detail: command) == "Run a terminal command")

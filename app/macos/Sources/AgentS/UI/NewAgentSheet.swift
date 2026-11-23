@@ -103,7 +103,7 @@ struct NewAgentSheet: View {
                             KeySetup.openRouter(model)
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
-                            Text("Sign in after creating the agent. \(notice)")
+                            Text("Sign in \(location == .linuxVM ? "inside the sandbox " : "")after creating the agent. \(notice)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }

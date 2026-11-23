@@ -1,13 +1,14 @@
 import Foundation
 
 /// The guest's screen tools, installed by the app on every start (so existing computers get
-/// updates too): `web` for websites and `ui`, a small command the agent uses to open sites, read the focused window as an
+/// updates too): `web` for websites, and `ui` to launch apps, inspect the focused window's
 /// accessibility tree with refs (through simulang), click and type by ref, press keys and take
 /// screenshots. Clicking a named element is far easier for a small local model than guessing
 /// pixel positions from a screenshot.
 public enum GuestTools {
     public static let uiPath = "/usr/local/bin/ui"
     public static let uiScriptPath = "/usr/local/lib/sai/ui.ts"
+    static let desktopLauncherPath = "/usr/local/lib/sai/launch-desktop-app"
 
     /// `/usr/local/bin/ui`: sets up the display and accessibility bus, then runs a verb.
     public static let ui = #"""
@@ -15,11 +16,16 @@ public enum GuestTools {
 # The agent's way to use the screen: open a site, read the focused window as an accessibility
 # tree with refs, click and type by ref, press keys, or take a screenshot.
 #   ui open <url>                  open Chromium (with its accessibility tree switched on)
+#   ui launch <app> [args...]      launch an installed desktop app on the computer
 #   ui tree [--all]                list the focused window's elements, each with [ref=N]
 #   ui click <ref>                 click an element
 #   ui type <ref> <text> [--enter] type into a text field (replacing its text)
 #   ui key <keys...>               press keys, e.g. ui key ctrl+l   ui key Return
 #   ui screenshot                  save a half-size screenshot and print its path
+if [ "${1:-}" = launch ]; then
+  shift
+  exec \#(desktopLauncherPath) "$@"
+fi
 export DISPLAY="${DISPLAY:-:0}"
 
 # Commands come in over SSH, outside the desktop session: borrow its D-Bus, where the
@@ -73,7 +79,7 @@ const machine = Machine.local()
 function snapshot(): AccessibilitySnapshot {
   const window = machine.focusedWindow()
   if (!window) {
-    console.error('Nothing is open on the screen yet. Run ui open <url> first (for example: ui open https://example.com), then ui tree.')
+    console.error('Nothing is open on the screen yet. Start an app with ui launch <app> or open a website with ui open <url>, then run ui tree.')
     process.exit(1)
   }
   return AccessibilitySnapshot.fromWindow(window)
@@ -129,15 +135,139 @@ switch (command) {
     break
   }
   default:
-    console.error(`Unknown command "${command}". Use: ui open <url> | ui tree | ui click <ref> | ui type <ref> <text> [--enter] | ui key <keys> | ui screenshot`)
+    console.error(`Unknown command "${command}". Use: ui open <url> | ui launch <app> [args...] | ui tree | ui click <ref> | ui type <ref> <text> [--enter] | ui key <keys> | ui screenshot`)
     process.exit(2)
 }
 """#
 
+    /// Ask the desktop's user manager to start an app independently of the shell tool.
+    static let desktopLauncher = #"""
+#!/bin/bash
+if [ "$#" -eq 0 ] || [ -z "$1" ]; then
+  echo "Use: ui launch <desktop-id, executable, or absolute .desktop file> [args...]" >&2
+  exit 2
+fi
+app=$1
+shift
+
+find_desktop_file() {
+  local name="${1%.desktop}.desktop" root directory file relative
+  local -a data_dirs
+  IFS=: read -r -a data_dirs <<< "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+  for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${data_dirs[@]}" \
+      "$HOME/.local/share/flatpak/exports/share" /var/lib/flatpak/exports/share; do
+    [[ $root == /* ]] || continue
+    directory="$root/applications"
+    file="$directory/$name"
+    if [[ -f $file && -r $file ]]; then
+      printf '%s\n' "$file"
+      return 0
+    fi
+    # Desktop IDs turn slashes in paths below applications/ into dashes.
+    [[ $name == *-* && -d $directory ]] || continue
+    while IFS= read -r -d '' file; do
+      relative=${file#"$directory/"}
+      if [[ ${relative//\//-} == "$name" && -f $file && -r $file ]]; then
+        printf '%s\n' "$file"
+        return 0
+      fi
+    done < <(find "$directory" -mindepth 2 -name '*.desktop' -print0 2>/dev/null)
+  done
+  return 1
+}
+
+desktop_file=
+case "$app" in
+  /*.desktop)
+    if [[ ! -f $app || ! -r $app ]]; then
+      printf 'Desktop file is unavailable: %s\n' "$app" >&2
+      exit 1
+    fi
+    desktop_file=$app
+    ;;
+  */*) ;;
+  *) desktop_file=$(find_desktop_file "$app") ;;
+esac
+
+if [[ -n $desktop_file ]]; then
+  if ! gio=$(type -P -- gio); then
+    echo "Desktop launching needs gio. Start the computer with the current Agent S build to install it." >&2
+    exit 1
+  fi
+  command=("$gio" launch -- "$desktop_file" "$@")
+else
+  executable=$app
+  if [[ $app != */* ]]; then
+    executable=$(type -P -- "$app")
+  fi
+  if [[ ! -f $executable || ! -x $executable ]]; then
+    printf 'No installed desktop entry or executable found for %s.\n' "$app" >&2
+    exit 1
+  fi
+  command=("$executable" "$@")
+fi
+if [[ ${command[0]} != /* ]]; then command[0]="$PWD/${command[0]}"; fi
+
+uid=$(id -u)
+runtime="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+display=:0
+authority="$HOME/.Xauthority"
+desktop_bus=
+desktop=$(pgrep -u "$uid" -xo openbox)
+if [[ -n $desktop && -r /proc/$desktop/environ ]]; then
+  while IFS= read -r -d '' setting; do
+    case "$setting" in
+      DISPLAY=*) display=${setting#*=} ;;
+      XAUTHORITY=*) authority=${setting#*=} ;;
+      DBUS_SESSION_BUS_ADDRESS=*) desktop_bus=${setting#*=} ;;
+    esac
+  done < "/proc/$desktop/environ"
+fi
+
+# The user manager must use its own bus. The desktop bus is for the app only.
+# A service (rather than a scope) starts outside the harness's cgroup.
+# Gio and other launchers can exit while their child keeps displaying the app.
+options=(--user --quiet --collect --service-type=exec --expand-environment=no
+  --property=ExitType=cgroup --property=StandardInput=null
+  --description="Agent S desktop app" --working-directory="$PWD"
+  --setenv="XDG_RUNTIME_DIR=$runtime" --setenv="DISPLAY=$display" --setenv="XAUTHORITY=$authority")
+if [[ -n $desktop_bus ]]; then options+=(--setenv="DBUS_SESSION_BUS_ADDRESS=$desktop_bus"); fi
+env -u DBUS_SESSION_BUS_ADDRESS XDG_RUNTIME_DIR="$runtime" systemd-run "${options[@]}" -- "${command[@]}" || exit $?
+printf 'Requested launch of %s. Use ui tree or ui screenshot to check the desktop.\n' "$app"
+"""#
+
     public static let webPath = "/usr/local/bin/web"
     public static let webScriptPath = "/usr/local/lib/sai/web.mjs"
+    private static let browserServiceName = "agent-s-browser.service"
+    private static let browserLauncherPath = "/usr/local/lib/sai/start-browser"
     /// Pinned so every computer runs the same browser driver.
     public static let playwrightVersion = "1.65.1"
+
+    /// The user manager starts Chromium outside the harness's per-turn process scope.
+    static let browserService = """
+        [Unit]
+        Description=Agent S Chromium
+        [Service]
+        Type=exec
+        ExecStart=\(browserLauncherPath)
+        """
+
+    static let browserLauncher = #"""
+#!/bin/bash
+# Use the existing guest desktop bus and X display so Chromium is visible and accessible.
+desktop=$(pgrep -u "$(id -u)" -xo openbox)
+if [ -n "$desktop" ]; then
+  while IFS= read -r -d '' setting; do
+    case "$setting" in DISPLAY=*|XAUTHORITY=*|DBUS_SESSION_BUS_ADDRESS=*) export "$setting" ;; esac
+  done < "/proc/$desktop/environ"
+fi
+export DISPLAY="${DISPLAY:-:0}" XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}" ACCESSIBILITY_ENABLED=1
+
+# Chromium runs as the same guest user and continues using its existing profile.
+exec /usr/bin/chromium --no-first-run --start-maximized \
+  --force-renderer-accessibility --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+  about:blank
+"""#
 
     /// `/usr/local/bin/web`: the agent's browser, like box's browser tools. Drives the computer's
     /// Chromium through its debugging port (on the computer's loopback only) with Playwright.
@@ -150,19 +280,33 @@ switch (command) {
 #   web type <ref> <text> [--enter]  fill a text field, optionally press Enter
 #   web read                         the page's visible text
 #   web key <key> | web back | web scroll [down|up] | web tabs
-export DISPLAY="${DISPLAY:-:0}"
+browser_ready() {
+  curl -fs --max-time 0.5 http://127.0.0.1:9222/json/version >/dev/null 2>&1
+}
 
-# Chromium with its debugging port open, on the computer's loopback only.
-if ! curl -s -m 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
-  if [ "$1" != open ]; then
+wait_for_browser() {
+  for _ in {1..30}; do
+    if browser_ready; then return 0; fi
+    sleep 0.25
+  done
+  return 1
+}
+
+if ! browser_ready; then
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  if [ "${1:-}" = open ]; then
+    if ! systemctl --user start \#(browserServiceName); then
+      echo "Couldn't start the browser on the computer." >&2
+      exit 1
+    fi
+  elif ! systemctl --user is-active --quiet \#(browserServiceName); then
     echo "The browser is not open. Run web open <url> first (for example: web open https://example.com)." >&2
     exit 1
   fi
-  pkill -x chromium 2>/dev/null; sleep 0.5
-  ACCESSIBILITY_ENABLED=1 setsid -f chromium --no-first-run --start-maximized \
-    --force-renderer-accessibility --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
-    about:blank >/dev/null 2>&1
-  for _ in $(seq 1 40); do curl -s -m 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1 && break; sleep 0.25; done
+  if ! wait_for_browser; then
+    echo "Couldn't connect to Chromium's browser tools. Check the computer screen and try again." >&2
+    exit 1
+  fi
 fi
 
 args=()
@@ -339,18 +483,32 @@ async function main() {
 main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
 """#
 
-    /// One shell line that writes both files (base64, so no quoting can break them).
-    public static var installCommand: String {
+    /// Refresh the guest scripts and unit definitions without changing the desktop session.
+    public static var installScriptsCommand: String {
         func put(_ content: String, _ path: String, _ mode: String) -> String {
             let data = Data(content.utf8).base64EncodedString()
             return "sudo mkdir -p \((path as NSString).deletingLastPathComponent) && echo \(data) | base64 -d | sudo tee \(path) >/dev/null && sudo chmod \(mode) \(path)"
         }
         return [
             put(ui, uiPath, "755"), put(uiScript, uiScriptPath, "644"),
+            put(desktopLauncher, desktopLauncherPath, "755"),
             put(web, webPath, "755"), put(webScript, webScriptPath, "644"),
-            playwright, deepSeekHarness, clipboard,
+            put(browserLauncher, browserLauncherPath, "755"),
+            put(browserService, "/etc/systemd/user/\(browserServiceName)", "644"),
+            #"XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" systemctl --user daemon-reload"#,
         ].joined(separator: " && ")
     }
+
+    public static var installCommand: String {
+        [installScriptsCommand, desktopLaunchDependencies, playwright, deepSeekHarness, clipboard, terminal]
+            .joined(separator: " && ")
+    }
+
+    private static let desktopLaunchDependencies =
+        "(command -v gio >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q libglib2.0-bin >/dev/null 2>&1)"
+
+    /// The terminal used to sign in to harness accounts from the guest desktop.
+    private static let terminal = "(command -v xterm >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q xterm >/dev/null 2>&1)"
 
     /// DeepSeek Harness, installed once per pinned version.
     static var deepSeekHarness: String {

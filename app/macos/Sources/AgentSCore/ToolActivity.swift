@@ -99,7 +99,7 @@ public enum ToolActivity {
             }
             if isFileRedirect(action) { return "Write a file" }
             let words = action.compactMap(\.value)
-            guard words.count == action.count, !words.isEmpty else { return nil }
+            guard words.count == action.count, !words.isEmpty else { return browserSequenceTitle(action) }
             return simpleCommandTitle(words)
         }
         return writesLiteralHereDocument(command) ? "Write a file" : nil
@@ -130,26 +130,95 @@ public enum ToolActivity {
                 case "screenshot": return "Capture the computer screen"
                 case "tree": return "Inspect the active window"
                 case "open": return "Open a webpage"
+                case "launch":
+                    guard words.count > 2, !words[2].hasPrefix("-"),
+                          words[2].contains(where: { !$0.isWhitespace }) else { return nil }
+                    return "Launch an app"
                 case "click": return "Click an on-screen element"
                 case "type": return "Type in an app"
                 case "key": return "Press keys in an app"
                 default: return nil
                 }
             }
-            if executable == "web" || executable == GuestTools.webPath {
-                switch verb {
-                case "open", "snapshot", "read", "click", "type", "key", "back", "scroll", "tabs":
-                    return computerTitle("browser_\(verb)")
-                default: return nil
-                }
-            }
         }
+        if let browser = browserVerb(words) { return computerTitle("browser_\(browser)") }
         switch executable {
         case "cat", "/bin/cat":
             return words.dropFirst().contains { !$0.hasPrefix("-") && !$0.isEmpty } ? "Read a file" : nil
         case "ls", "/bin/ls": return "List files"
         case "pwd", "/bin/pwd": return "Check the working directory"
         default: return nil
+        }
+    }
+
+    private static func browserVerb(_ words: [String]) -> String? {
+        guard words.count >= 2, words[0] == "web" || words[0] == GuestTools.webPath else { return nil }
+        switch words[1] {
+        case "open", "snapshot", "read", "click", "type", "key", "back", "scroll", "tabs": return words[1]
+        default: return nil
+        }
+    }
+
+    /// Browser steps often pause for a page to settle, then inspect and filter its output.
+    private static func browserSequenceTitle(_ tokens: [ShellToken]) -> String? {
+        let commands = tokens.split(omittingEmptySubsequences: false) { $0 == .then || $0 == .sequence }
+        var actions: [String] = []
+        for command in commands {
+            if !actions.isEmpty, command.count == 2, command.first?.value == "sleep",
+               let duration = command.last?.value.flatMap(Double.init), duration.isFinite, duration >= 0 {
+                continue
+            }
+
+            let pipeline = command.split(separator: .pipe, omittingEmptySubsequences: false)
+            guard var browser = pipeline.first, pipeline.dropFirst().allSatisfy(isOutputFilter) else { return nil }
+            if browser.last?.value == "/dev/null", browser.dropLast().last == .redirect {
+                browser = browser.dropLast(2)
+            }
+            let words = browser.compactMap(\.value)
+            guard words.count == browser.count, let action = browserVerb(words) else { return nil }
+            actions.append(action)
+        }
+
+        guard let first = actions.first, let title = computerTitle("browser_\(first)") else { return nil }
+        if actions.count == 1 { return title }
+        switch actions {
+        case ["click", "snapshot"]: return "Click and inspect the webpage"
+        case ["click", "read"]: return "Click and read the webpage"
+        case ["open", "snapshot"]: return "Open and inspect a webpage"
+        case ["open", "read"]: return "Open and read a webpage"
+        case ["click", "open", "read"]: return "Click, open, and read a webpage"
+        default: return title + " and continue in the browser"
+        }
+    }
+
+    /// Accept filters that only read their input stream. Other shell commands keep the generic label.
+    private static func isOutputFilter(_ tokens: ArraySlice<ShellToken>) -> Bool {
+        let words = tokens.compactMap(\.value)
+        guard words.count == tokens.count, let executable = words.first else { return false }
+        let arguments = words.dropFirst()
+        switch executable {
+        case "head", "tail":
+            if arguments.isEmpty { return true }
+            if arguments.count == 1, let option = arguments.first, option.hasPrefix("-"),
+               let count = Int(option.dropFirst()) { return count >= 0 }
+            return arguments.count == 2 && ["-n", "-c"].contains(words[1]) && Int(words[2]).map { $0 >= 0 } == true
+        case "grep":
+            guard let pattern = arguments.last, !pattern.hasPrefix("-") else { return false }
+            var options = arguments.dropLast()
+            while let option = options.popFirst() {
+                if option.hasPrefix("-"), option.count > 1, option.dropFirst().allSatisfy({ "EFcinovwx".contains($0) }) {
+                    continue
+                }
+                guard ["-A", "-B", "-C"].contains(String(option.prefix(2))) else { return false }
+                let count = option.count == 2 ? options.popFirst() : String(option.dropFirst(2))
+                guard let count, let lines = Int(count), lines >= 0 else { return false }
+            }
+            return true
+        case "sed":
+            guard arguments.count == 2, words[1] == "-n" else { return false }
+            return words[2].range(of: #"\A(?:[0-9]+|/[^/\r\n]+/)(?:,(?:[0-9]+|\$|\+[0-9]+))?p\z"#,
+                                  options: .regularExpression) != nil
+        default: return false
         }
     }
 
@@ -184,6 +253,8 @@ public enum ToolActivity {
     private enum ShellToken: Equatable {
         case word(String, quoted: Bool)
         case then
+        case sequence
+        case pipe
         case redirect
         case append
         case hereDocument
@@ -205,6 +276,12 @@ public enum ToolActivity {
             case "&" where input.hasPrefix("&&"):
                 tokens.append(.then)
                 input = input.dropFirst(2)
+            case ";":
+                tokens.append(.sequence)
+                input = input.dropFirst()
+            case "|" where !input.hasPrefix("||"):
+                tokens.append(.pipe)
+                input = input.dropFirst()
             case ">":
                 let appending = input.hasPrefix(">>")
                 tokens.append(appending ? .append : .redirect)

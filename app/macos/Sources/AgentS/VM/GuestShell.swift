@@ -88,10 +88,12 @@ struct GuestShell {
     }
 
     /// Runs a command and returns its output and the process the caller can stop.
-    func stream(_ command: String, on ip: String, tunnelTo: UInt16? = nil) throws -> (Process, TurnProcessOutput) {
+    func stream(_ command: String, on ip: String, tunnelTo: UInt16? = nil,
+                standardInput: Pipe? = nil) throws -> (Process, TurnProcessOutput) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
         process.arguments = sshArguments(ip: ip, command: command, tunnelTo: tunnelTo)
+        if let standardInput { process.standardInput = standardInput }
         return (process, try TurnProcessOutput(starting: process))
     }
 }

@@ -10,7 +10,7 @@ struct ComputerPanel: View {
     @Binding var showComputer: Bool
     @Binding var showSettings: Bool
     @Binding var maximized: Bool
-    @State private var takeOver = false
+    @Binding var takeOver: Bool
     @State private var showOnePassword = false
 
     var body: some View {
@@ -48,16 +48,21 @@ struct ComputerPanel: View {
             Group {
                 if let machine = model.vm.machine {
                     VMDisplay(machine: machine, takeOver: takeOver)
-                        .aspectRatio(CGFloat(LinuxVM.screen.width) / CGFloat(LinuxVM.screen.height), contentMode: .fit)
+                        .aspectRatio(VMDisplay.aspectRatio(for: machine), contentMode: .fit)
                         .overlay(alignment: .topTrailing) {
                             if !takeOver {
                                 Text("Watching")
                                     .font(.caption).padding(.horizontal, 8).padding(.vertical, 4)
                                     .background(.thinMaterial, in: Capsule())
                                     .padding(10)
+                                    .allowsHitTesting(false)
                             }
                         }
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(takeOver ? Theme.accent : Theme.hairline, lineWidth: takeOver ? 2 : 1))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(takeOver ? Theme.accent : Theme.hairline, lineWidth: takeOver ? 2 : 1)
+                                .allowsHitTesting(false)
+                        }
                         .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 12)
                 } else {
                     off.frame(height: 260)
@@ -154,18 +159,24 @@ struct ComputerPanel: View {
     }
 }
 
-/// Apple's own view of the VM's display. Input passes through only while taking over; otherwise a
-/// transparent layer above it swallows every event.
+/// Apple's view renders and maps input within the same native viewport.
 struct VMDisplay: NSViewRepresentable {
     let machine: VZVirtualMachine
     let takeOver: Bool
 
-    func makeNSView(context: Context) -> NSView {
+    static func aspectRatio(for machine: VZVirtualMachine) -> CGFloat {
+        if let size = machine.graphicsDevices.first?.displays.first?.sizeInPixels,
+           size.width > 0, size.height > 0 {
+            return size.width / size.height
+        }
+        return CGFloat(LinuxVM.screen.width) / CGFloat(LinuxVM.screen.height)
+    }
+
+    func makeNSView(context: Context) -> InputGate {
         let container = InputGate()
-        let display = VZVirtualMachineView()
+        let display = SandboxDisplayView()
         display.virtualMachine = machine
-        display.capturesSystemKeys = true
-        if #available(macOS 14.0, *) { display.automaticallyReconfiguresDisplay = false }
+        display.automaticallyReconfiguresDisplay = false
         display.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(display)
         NSLayoutConstraint.activate([
@@ -175,30 +186,80 @@ struct VMDisplay: NSViewRepresentable {
             display.bottomAnchor.constraint(equalTo: container.bottomAnchor),
         ])
         container.display = display
-        container.passesInput = takeOver
+        display.setTakingOver(takeOver)
         container.wantsLayer = true
         container.layer?.cornerRadius = 12
         container.layer?.masksToBounds = true
         return container
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
-        guard let gate = view as? InputGate else { return }
-        if gate.display?.virtualMachine !== machine { gate.display?.virtualMachine = machine }
-        gate.passesInput = takeOver
-        if takeOver { view.window?.makeFirstResponder(gate.display) }
+    func updateNSView(_ gate: InputGate, context: Context) {
+        guard let display = gate.display else { return }
+        if display.virtualMachine !== machine {
+            display.setTakingOver(false)
+            display.virtualMachine = machine
+        }
+        display.setTakingOver(takeOver)
+    }
+
+    static func dismantleNSView(_ gate: InputGate, coordinator: ()) {
+        gate.display?.setTakingOver(false)
+        gate.display?.virtualMachine = nil
     }
 }
 
-/// Lets events reach the VM view only while taking over.
+/// Hit-testing protects clicks. AppKit can deliver tracked movement to the native view directly.
 final class InputGate: NSView {
-    weak var display: VZVirtualMachineView?
-    var passesInput = false
+    weak var display: SandboxDisplayView?
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        passesInput ? super.hitTest(point) : (frame.contains(point) ? self : nil)
+        display?.isTakingOver == true ? super.hitTest(point) : (frame.contains(point) ? self : nil)
+    }
+}
+
+class SandboxDisplayView: VZVirtualMachineView {
+    private(set) var isTakingOver = false
+
+    func setTakingOver(_ enabled: Bool) {
+        guard isTakingOver != enabled else { return }
+        isTakingOver = enabled
+        capturesSystemKeys = enabled
+        if enabled {
+            window?.makeFirstResponder(self)
+        } else if let window, let responder = window.firstResponder as? NSView, responder.isDescendant(of: self) {
+            window.makeFirstResponder(nil)
+        }
     }
 
-    override var acceptsFirstResponder: Bool { !passesInput }
-    override func keyDown(with event: NSEvent) { if passesInput { super.keyDown(with: event) } }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if isTakingOver { window?.makeFirstResponder(self) }
+    }
+
+    override var acceptsFirstResponder: Bool { isTakingOver && super.acceptsFirstResponder }
+
+    func containsPointerEvent(_ event: NSEvent) -> Bool {
+        guard isTakingOver, let window, event.window === window else { return false }
+        return bounds.intersection(visibleRect).contains(convert(event.locationInWindow, from: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if containsPointerEvent(event) { super.mouseEntered(with: event) }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        if containsPointerEvent(event) { super.mouseMoved(with: event) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if isTakingOver { super.mouseExited(with: event) }
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        if containsPointerEvent(event) {
+            super.scrollWheel(with: event)
+        } else {
+            nextResponder?.scrollWheel(with: event)
+        }
+    }
 }

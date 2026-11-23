@@ -1,54 +1,57 @@
 import SwiftUI
 import AgentSCore
 
-/// Everything the agent is working with in this conversation, under the computer's screen: the
-/// session, what the last turn cost, the instructions it was given, and the full transcript with
-/// every tool's output (which the chat folds away).
+/// The selected agent's memory and session details, below the computer screen.
 struct ContextView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @State private var showSessionDetails = false
     @State private var showInstructions = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("Context").font(.headline)
-
-                section("Session") {
-                    row("Harness", model.harness.displayName)
-                    row("Model", model.harness == .sai
-                        ? "\(model.activeModel) · Sai API" : "\(model.activeModel) · \(model.provider.displayName)")
-                    if model.harness == .sai { row("Computer", model.saiMachineName) }
-                    if model.computer == .box { row("Computer", model.boxName.isEmpty ? "Simular Box (default)" : "Simular Box · \(model.boxName)") }
-                    row("Session", agent.currentSessionID ?? "New (starts with the next message)", mono: true)
-                    if let usage = agent.lastUsage {
-                        row("Last turn", "\(usage.input.formatted()) tokens in · \(usage.output.formatted()) out")
-                    }
+                AgentMemoryView()
+                Divider()
+                DisclosureGroup("Session and instructions", isExpanded: $showSessionDetails) {
+                    sessionDetails.padding(.top, 10)
                 }
-
-                section("Instructions") {
-                    DisclosureGroup(isExpanded: $showInstructions) {
-                        Text(instructions)
-                            .font(.system(.caption, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.top, 6)
-                    } label: {
-                        Text(instructionsLabel)
-                            .font(.callout).foregroundStyle(.secondary)
-                    }
-                }
-
-                section("Conversation · \(agent.items.count) items") {
-                    if agent.items.isEmpty {
-                        Text("Nothing yet.").font(.callout).foregroundStyle(.secondary)
-                    }
-                    ForEach(agent.items) { ContextItem(item: $0) }
-                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    private var sessionDetails: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            section("Session") {
+                row("Harness", model.harness.displayName)
+                row("Model", model.harness == .sai
+                    ? "\(model.activeModel) · Sai API" : "\(model.activeModel) · \(model.provider.displayName)")
+                if model.harness == .sai { row("Computer", model.saiMachineName) }
+                if model.computer == .box { row("Computer", model.boxName.isEmpty ? "Simular Box (default)" : "Simular Box · \(model.boxName)") }
+                row("Session", agent.currentSessionID(for: model.memoryRoute(for: agent)) ?? "New (starts with the next message)", mono: true)
+                if let usage = agent.lastUsage {
+                    row("Last turn", "\(usage.input.formatted()) tokens in · \(usage.output.formatted()) out")
+                }
+            }
+
+            section("Instructions") {
+                DisclosureGroup(isExpanded: $showInstructions) {
+                    Text(instructions)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
+                } label: {
+                    Text(instructionsLabel)
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+            }
+        }
+        .foregroundStyle(.primary)
     }
 
     private var instructions: String {
@@ -93,49 +96,6 @@ struct ContextView: View {
                 .font(mono ? .system(.callout, design: .monospaced) : .callout)
                 .textSelection(.enabled)
                 .lineLimit(2)
-        }
-    }
-}
-
-/// One transcript entry in full: who said it, and for a tool step the command and its output.
-private struct ContextItem: View {
-    let item: ChatItem
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.caption.weight(.semibold)).foregroundStyle(color)
-            Text(item.toolInput ?? item.text).font(.callout).textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if case let .step(_, done, _, output) = item.kind {
-                Text(done ? (output.isEmpty ? "(no output)" : output) : "running…")
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Theme.bubble))
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var label: String {
-        switch item.kind {
-        case .user: "You"
-        case .agent: "Sai"
-        case let .step(name, _, failed, _):
-            ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput) + (failed ? " · failed" : "")
-        case let .notice(isError): isError ? "Error" : "Note"
-        case .approval: "Approval"
-        }
-    }
-
-    private var color: Color {
-        switch item.kind {
-        case let .step(_, _, failed, _): failed ? .red : .secondary
-        case let .notice(isError): isError ? .red : .secondary
-        case .approval: .orange
-        default: .primary
         }
     }
 }

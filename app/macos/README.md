@@ -43,7 +43,9 @@ create a new agent.
 
 | Runs on | Harness | Model provider |
 | --- | --- | --- |
-| **Sandbox on This Mac** · Linux VM | Claude Code, Codex, DeepSeek | Ollama, OpenRouter |
+| **Sandbox on This Mac** · Linux VM | Claude Code | Ollama, OpenRouter, Claude Code account |
+| **Sandbox on This Mac** · Linux VM | Codex | Ollama, OpenRouter, Codex account |
+| **Sandbox on This Mac** · Linux VM | DeepSeek | Ollama, OpenRouter |
 | **This Mac** · your Mac apps and files | Claude Code | Ollama, OpenRouter, Claude Code account |
 | **This Mac** · your Mac apps and files | Codex | Codex account |
 | **Cloud** · Sai computer | Sai | Sai API, with models available on your Sai account |
@@ -70,6 +72,12 @@ In **Settings → Computer → Memory**, choose **2 GB**, **4 GB**, or **6 GB** 
 VM start. The default is **6 GB**. This setting allocates memory to the VM. Ollama runs
 separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
+
+Chromium stays open between tasks while the sandbox is running. To use a subscription,
+select **Use Claude Code account** or **Use Codex account** as the provider. Start the
+sandbox and choose **Sign in** above the composer. Use **Take over** in the Computer
+panel to follow the CLI's sign-in prompts, then choose **Check sign-in** in the chat.
+Codex uses ChatGPT device-code sign-in. [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
 
 ### This Mac
 
@@ -125,7 +133,8 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 - **Sandbox on This Mac** agents share the guest, browser, and files. The guest can reach the internet,
   shares the clipboard, and can read and write the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
-  Harness commands run in the VM with per-tool approval disabled.
+  Harness commands run in the VM with per-tool approval disabled. Sandbox CLI sign-ins
+  live in the guest and are accessible to other agents using that sandbox.
 - **This Mac** uses the Mac's apps, Terminal, and files with approvals for actions.
 - Hosted providers receive prompts and tool results sent to the model, which can include
   web pages, file contents, and screenshots. Agent S stores the OpenRouter key in the

@@ -13,19 +13,21 @@ public struct DeepSeekCommand: Equatable, Sendable {
     public var provider: ModelProvider
     public var apiKey: String
     private let guestPort: UInt16
+    private let allowsSteering: Bool
 
     /// Pinned: dsh is a developer preview with breaking changes between releases.
     public static let version = "0.2.2-rc.5"
     static let patchPath = "/home/sai/.dsh/agent-s.patch.yml"
 
     public init(prompt: String, resume: String?, model: String, provider: ModelProvider = .ollama,
-                apiKey: String? = nil, guestPort: UInt16 = 11434) {
+                apiKey: String? = nil, guestPort: UInt16 = 11434, allowsSteering: Bool = false) {
         self.prompt = prompt
         self.resume = resume
         self.model = model
         self.provider = provider
         self.apiKey = apiKey ?? provider.placeholderKey
         self.guestPort = guestPort
+        self.allowsSteering = allowsSteering
     }
 
     /// The overlay applied on top of dsh's headless profile.
@@ -76,7 +78,8 @@ public struct DeepSeekCommand: Equatable, Sendable {
             + " && printf '%s\\n' \(quote(patch)) > \(patchPath)"
             + " && printf '%s\\n' \(quote(DeepSeekStreamingPlugin.source)) > ~/.dsh/\(DeepSeekStreamingPlugin.filename)"
             + " && DISPLAY=:0 DSH_TELEMETRY_MODE=DISABLED AGENT_S_PROXY_KEY=\(quote(apiKey)) "
-            + dsh.joined(separator: " ") + " </dev/null"
+            + (allowsSteering ? "AGENT_S_STEERING=1 " : "")
+            + dsh.joined(separator: " ") + (allowsSteering ? "" : " </dev/null")
     }
 
     public func quote(_ value: String) -> String {
@@ -197,6 +200,12 @@ public struct DeepSeekStream {
               let type = object["type"] as? String
         else { return [] }
         switch type {
+        case "agent_s_steer_ready":
+            return [.steeringReady]
+        case "agent_s_steer_result":
+            guard let id = object["id"] as? String, !id.isEmpty,
+                  let accepted = object["accepted"] as? Bool else { return [] }
+            return [.steeringResult(id: id, accepted: accepted)]
         case "agent_s_text_stream":
             guard let id = object["id"] as? String, !id.isEmpty else { return [] }
             liveAttempt = id
