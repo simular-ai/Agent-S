@@ -68,7 +68,7 @@
 
 ## 🚀 Quick Start
 
-- **[Desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build [Simular for Mac](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
+- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build [Agent S for Mac](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
   - **Sandbox on This Mac** runs tools in a Linux VM. Choose Ollama for on-device inference with a local model or OpenRouter for hosted inference.
   - **This Mac** works in your apps, Terminal, and files with approvals for actions. Choose Claude Code or DeepSeek with a local Ollama model for on-device inference.
   - **Cloud Computer** works on a Sai computer or Simular Box.

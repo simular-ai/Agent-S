@@ -2,8 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key><string>Simular</string>
-	<key>CFBundleDisplayName</key><string>Simular</string>
+	<key>CFBundleName</key><string>Agent S</string>
+	<key>CFBundleDisplayName</key><string>Agent S</string>
 	<key>CFBundleIdentifier</key><string>ai.simular.agent-s</string>
 	<key>CFBundleExecutable</key><string>AgentS</string>
 	<key>CFBundlePackageType</key><string>APPL</string>

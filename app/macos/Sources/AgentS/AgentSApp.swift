@@ -9,7 +9,7 @@ struct AgentSApp: App {
     private static let mainWindowID = "main"
 
     var body: some Scene {
-        WindowGroup("Simular", id: Self.mainWindowID) {
+        WindowGroup("Agent S", id: Self.mainWindowID) {
             ContentView()
                 .environmentObject(model)
                 .frame(minHeight: 560)
@@ -29,7 +29,7 @@ struct AgentSApp: App {
     }
 }
 
-/// Lets Simular finish saving the sandbox before macOS terminates the app.
+/// Lets Agent S finish saving the sandbox before macOS terminates the app.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
     private var terminationPending = false
@@ -40,8 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard GuestFiles.legacyAppRunning else { return }
         let alert = NSAlert()
         alert.messageText = "Quit Saige first"
-        alert.informativeText = "Quit Saige, then reopen Simular to continue using your existing agents and sandbox."
-        alert.addButton(withTitle: "Quit Simular")
+        alert.informativeText = "Quit Saige, then reopen Agent S to continue using your existing agents and sandbox."
+        alert.addButton(withTitle: "Quit Agent S")
         alert.runModal()
         NSApp.terminate(nil)
     }

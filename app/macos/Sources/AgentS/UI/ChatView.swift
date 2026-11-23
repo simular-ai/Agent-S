@@ -790,7 +790,7 @@ struct MacAccessRows: View {
                 }
             }
             if !model.macAccessibility || !model.macScreenRecording {
-                Text("All This Mac agents share these permissions. After updating them in System Settings, return to Simular. Screen Recording may require reopening the app.")
+                Text("All This Mac agents share these permissions. After updating them in System Settings, return to Agent S. Screen Recording may require reopening the app.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button("Check permissions") { model.refreshMacAccess() }
                     .controlSize(.small)

@@ -553,7 +553,7 @@ final class AgentSession: ObservableObject, Identifiable {
             }
             return (command.arguments(settingsPath: settingsPath, mcpConfigPath: mcpConfig?.path), environment)
         }, toolsAllowed: { tools in tools.allSatisfy { allowedTools.contains($0) } },
-           toolsRule: "This Mac agents may only use Simular's approved tools")
+           toolsRule: "This Mac agents may only use Agent S's approved tools")
     }
 
     private var claudeMacTool: HarnessMacCommand?
@@ -1105,7 +1105,7 @@ final class AgentSession: ObservableObject, Identifiable {
             if sandboxTurn, status == 255 {
                 message = reason.contains("remote port forwarding failed")
                     ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
-                    : "The sandbox connection ended before Simular could confirm the turn finished. Check the result before sending again."
+                    : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."
             } else if harness == .deepSeek, reason.contains("already owned by an active write handle") {
                 message = "DeepSeek still has this conversation open. Wait for the previous turn to finish before sending again."
             } else {

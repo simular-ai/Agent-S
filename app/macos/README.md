@@ -1,37 +1,37 @@
-# Simular for Mac
+# Agent S for Mac
 
-Simular is a native macOS app for computer-use agents. Choose a Linux VM on your Mac,
+Agent S is a native macOS app for computer-use agents. Choose a Linux VM on your Mac,
 let an agent work in your Mac apps with approvals, or connect to a Sai computer or
 Simular Box. Each agent has its own conversation and can pick up where it left off.
 
 
-![Simular showing a demo conversation, the Sai computer, and session context](screenshots/agent-s-cloud.png)
+![Agent S showing a demo conversation, the Sai computer, and session context](screenshots/agent-s-cloud.png)
 
 *Demo conversation with the cloud computer and session context beside the chat. The computer panel shows an illustrative desktop.*
 
 <details>
 <summary>See an approval on This Mac</summary>
 
-![Simular asking for approval to open Notes on this Mac](screenshots/agent-s-mac-approvals.png)
+![Agent S asking for approval to open Notes on this Mac](screenshots/agent-s-mac-approvals.png)
 
 </details>
 
 ## Build and run
 
-Simular requires an Apple Silicon Mac with macOS 14 or later. To build from source, install
+Agent S requires an Apple Silicon Mac with macOS 14 or later. To build from source, install
 Xcode with Swift 6.2 or later. Build and open the app from the repository root.
 
 ```sh
 cd app/macos
 ./scripts/bundle.sh
-open build/Simular.app
+open "build/Agent S.app"
 ```
 
 The build script signs the app for local development by default. Run `./scripts/test.sh`
 from `app/macos/` to run the Swift test suite.
 
-Closing the last window keeps Simular, active turns, and the VM running. Click Simular in
-the Dock to reopen the window, or use **Quit Simular** to exit the app.
+Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
+the Dock to reopen the window, or use **Quit Agent S** to exit the app.
 
 The Computer panel shows pending requests and open work first. Check items under
 **Open work** to run them together in one chat turn or delete them from memory.
@@ -77,8 +77,8 @@ VM start. The default is **6 GB**. This setting allocates memory to the VM. Olla
 separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
 
-On Apple silicon, quitting Simular saves the running sandbox when the Mac and VM
-configuration support it. Reopen Simular to resume open apps and windows. **Turn off**
+On Apple silicon, quitting Agent S saves the running sandbox when the Mac and VM
+configuration support it. Reopen Agent S to resume open apps and windows. **Turn off**
 shuts down the sandbox, and settings such as a new memory allocation apply on the next
 full start. The sandbox disk keeps files and sign-ins across either action.
 
@@ -86,8 +86,8 @@ Chromium stays open between tasks while the sandbox is running. To use a subscri
 select **Use Claude Code account** or **Use Codex account** as the provider. Start the
 sandbox and choose **Sign in** above the composer.
 
-- **Codex** shows a one-time code in Simular and opens your Mac browser. Enter the code
-  there. Simular detects when sign-in completes, and Codex stores its credentials in
+- **Codex** shows a one-time code in Agent S and opens your Mac browser. Enter the code
+  there. Agent S detects when sign-in completes, and Codex stores its credentials in
   the sandbox. An older Codex version may show the code in the Computer panel.
   [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
 - **Claude Code** opens sign-in in the Computer panel. Use **Take over** to follow its
@@ -98,7 +98,7 @@ sandbox and choose **Sign in** above the composer.
 1. Install the CLI you chose for the agent. [Claude Code setup](https://code.claude.com/docs/en/setup) · [Codex CLI setup](https://learn.chatgpt.com/docs/cli) · [DeepSeek Harness setup](#deepseek-harness)
 2. Install simulang with `npm install -g @simular-ai/simulang`.
 3. In **Settings → Mac Permissions**, allow **Accessibility**. Enable **Screen Recording**
-   if you want the agent to take screenshots. These permissions apply to Simular and are
+   if you want the agent to take screenshots. These permissions apply to Agent S and are
    shared across its agents. Screen Recording may require reopening the app.
 4. For on-device inference, start Ollama on your Mac. Set **Runs** to **This Mac**,
    select **Claude Code** or **DeepSeek** with **Ollama**, and choose a local model.
@@ -127,7 +127,7 @@ Install Claude Code or Codex using the links above, or follow the DeepSeek setup
 
 ### DeepSeek Harness
 
-For **This Mac** and **Simular Box**, use Node.js 24.9 or later and install the version expected by Simular.
+For **This Mac** and **Simular Box**, use Node.js 24.9 or later and install the version expected by Agent S.
 
 ```sh
 npm install -g @deepseek-ai/dsh@0.2.2-rc.5
@@ -155,7 +155,7 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
   live in the guest and are accessible to other agents using that sandbox.
 - **This Mac** uses the Mac's apps, Terminal, and files with approvals for actions.
 - Hosted providers receive prompts and tool results sent to the model, which can include
-  web pages, file contents, and screenshots. Simular stores the OpenRouter key in the
+  web pages, file contents, and screenshots. Agent S stores the OpenRouter key in the
   Mac's Keychain and forwards guest model requests through the app's proxy.
 - **Sai** receives tasks and runs them on the selected computer. **Simular Box**
   receives tool calls and their inputs even when the agent uses Ollama. A hosted

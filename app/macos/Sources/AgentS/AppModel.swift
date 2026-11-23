@@ -231,7 +231,7 @@ final class AppModel: ObservableObject {
             try FileManager.default.copyItem(at: source, to: target)
             session.config.avatarImage = name
         } catch {
-            NSLog("Simular: couldn't use that picture: %@", "\(error)")
+            NSLog("Agent S: couldn't use that picture: %@", "\(error)")
         }
     }
 
@@ -463,7 +463,7 @@ final class AppModel: ObservableObject {
         guard vm.machine === machine, vm.state == .running else { return }
         phase = .booting("Installing Sai's screen tools…")
         do { try await shell.run(GuestTools.installCommand, on: ip) } catch {
-            NSLog("Simular: installing the screen tools failed: %@", "\(error)")
+            NSLog("Agent S: installing the screen tools failed: %@", "\(error)")
         }
         if vm.machine === machine, vm.state == .running {
             sandboxCanCheckpoint = true
@@ -506,7 +506,7 @@ final class AppModel: ObservableObject {
             alert.alertStyle = .warning
             alert.messageText = "Couldn’t save the sandbox"
             alert.informativeText = "\(error.localizedDescription) Shutting down closes its open apps and windows."
-            alert.addButton(withTitle: "Keep Simular Open")
+            alert.addButton(withTitle: "Keep Agent S Open")
             alert.addButton(withTitle: "Shut Down and Quit")
             guard alert.runModal() == .alertSecondButtonReturn else {
                 isSavingSandbox = false
@@ -1042,7 +1042,7 @@ final class AppModel: ObservableObject {
 
     /// Listens for the approval hook; started with the first This Mac turn.
     let approvals = ApprovalServer()
-    /// macOS grants these permissions to Simular. Every This Mac agent shares the result.
+    /// macOS grants these permissions to Agent S. Every This Mac agent shares the result.
     @Published private(set) var macAccessibility = MacAccess.hasAccessibility
     @Published private(set) var macScreenRecording = MacAccess.hasScreenRecording
 
@@ -1053,7 +1053,7 @@ final class AppModel: ObservableObject {
         if macScreenRecording != screenRecording { macScreenRecording = screenRecording }
     }
 
-    /// A This Mac agent's turn. The harness asks Simular for approval before acting on the Mac.
+    /// A This Mac agent's turn. The harness asks Agent S for approval before acting on the Mac.
     private func sendToMac(_ prompt: String, to session: AgentSession, memoryRoute: AgentMemoryRoute,
                            verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)?) -> Bool {
         let config = session.config

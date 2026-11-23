@@ -109,7 +109,7 @@ struct ContextView: View {
     private var instructionsLabel: String {
         if model.computer == .box { return "Simular Box tools" }
         if model.provider == .codexAccount || model.privacy == .thisMac && model.harness == .deepSeek {
-            return "Simular tools and approvals"
+            return "Agent S tools and approvals"
         }
         if model.harness == .codex { return "AGENTS.md, written before each turn" }
         return "System prompt (replaces Claude Code's default)"

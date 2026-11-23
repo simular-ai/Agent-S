@@ -142,7 +142,7 @@ final class OpenRouterProxy: @unchecked Sendable {
             return
         }
         guard let key = OpenRouter.key() else {
-            respond(connection, status: 401, body: #"{"error":{"message":"Add your OpenRouter key in Simular’s Settings."}}"#)
+            respond(connection, status: 401, body: #"{"error":{"message":"Add your OpenRouter key in Agent S’s Settings."}}"#)
             return
         }
         // Only API paths under /v1; nothing else on openrouter.ai is reachable through the proxy.
@@ -157,7 +157,7 @@ final class OpenRouterProxy: @unchecked Sendable {
             body = try OpenRouterRequestPolicy.body(request.body, method: request.method, path: url.path,
                                                     requiresZDR: enforceZDR)
         } catch {
-            respond(connection, status: 400, body: #"{"error":{"message":"This request could not be routed with Simular’s OpenRouter retention setting."}}"#)
+            respond(connection, status: 400, body: #"{"error":{"message":"This request could not be routed with Agent S’s OpenRouter retention setting."}}"#)
             return
         }
         var upstream = URLRequest(url: url)
