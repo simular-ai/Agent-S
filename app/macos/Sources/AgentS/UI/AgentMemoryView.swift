@@ -26,7 +26,7 @@ struct AgentMemoryView: View {
         ), presenting: sharing) { request in
             Button("Share") { change { try request.agent.shareMemoryNote(id: request.id, with: request.route) } }
         } message: { request in
-            Text("Agent S can include this note in future turns using \(request.route.displayName).")
+            Text("Simular can include this note in future turns using \(request.route.displayName).")
         }
         .alert("Couldn’t update memory", isPresented: Binding(
             get: { actionError != nil }, set: { if !$0 { actionError = nil } }
@@ -259,14 +259,14 @@ private struct MemoryNoteEditor: View {
     private var sharingDescription: String {
         switch sharing {
         case .currentRoute:
-            "Agent S can include this note in future turns using \(request.route.displayName)."
+            "Simular can include this note in future turns using \(request.route.displayName)."
         case .existingRoute:
             request.note?.scope.displayName ?? ""
         case .keepPrivate:
             if let note = request.note, note.scope != .private {
                 "Future turns will keep this note private. Earlier conversation history may still contain it."
             } else {
-                "Agent S keeps private notes out of model requests."
+                "Simular keeps private notes out of model requests."
             }
         }
     }

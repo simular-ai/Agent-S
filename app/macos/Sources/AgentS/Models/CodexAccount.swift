@@ -16,7 +16,7 @@ enum CodexAccount {
 
         var errorDescription: String? {
             switch self {
-            case .unsupported: "This sandbox’s Codex version doesn’t support device sign-in in Agent S."
+            case .unsupported: "This sandbox’s Codex version requires completing sign-in in the Computer panel."
             case .disabled: "Enable device-code sign-in in ChatGPT security settings. In a managed workspace, ask your admin to enable it."
             case .invalidResponse: "Codex returned an invalid device sign-in request. Try again."
             case .expired: "The Codex device code expired. Request a new code to sign in."

@@ -125,6 +125,28 @@ struct AgentMemoryTests {
         #expect(memory.notes.isEmpty)
     }
 
+    @Test func forgetsSelectedNotesAndRejectsProposalsFromTheEarlierRevision() throws {
+        var memory = AgentMemory()
+        try memory.apply([.add(kind: .activeWork, text: "Local work")], expecting: memory.revision, route: local)
+        try memory.apply([.add(kind: .activeWork, text: "Hosted work")], expecting: memory.revision, route: hosted)
+        try memory.saveUserNote(kind: .activeWork, text: "Keep this private")
+        let selection = Set(memory.notes.prefix(2).map(\.id))
+        let sentRevision = memory.revision
+
+        let didForget = memory.forget(ids: selection)
+        #expect(didForget)
+        #expect(memory.revision != sentRevision)
+        #expect(memory.notes.map(\.text) == ["Keep this private"])
+        #expect(throws: AgentMemoryError.staleRevision) {
+            try memory.apply([.add(kind: .activeWork, text: "Local work")], expecting: sentRevision, route: local)
+        }
+
+        let afterDeletion = memory.revision
+        let removedAgain = memory.forget(ids: selection)
+        #expect(!removedAgain)
+        #expect(memory.revision == afterDeletion)
+    }
+
     @Test func boundsEncodedContextAndKeepsPinnedReferences() throws {
         var memory = AgentMemory()
         let timestamp = Date(timeIntervalSince1970: 30)

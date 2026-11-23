@@ -30,7 +30,7 @@ struct GuestCheckpoint {
 
         var errorDescription: String? {
             switch self {
-            case .alreadyOpen: "The sandbox disk is already in use by another copy of Agent S."
+            case .alreadyOpen: "The sandbox disk is already in use by another copy of Simular."
             case .incompatible: "This saved sandbox state cannot be used with the current configuration."
             case .changedBackingFiles: "The sandbox disk or configuration files changed after the sandbox was saved."
             case .notRunning: "The sandbox must finish starting or stopping before it can be saved."

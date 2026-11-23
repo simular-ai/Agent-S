@@ -48,7 +48,7 @@ struct NewAgentSheet: View {
                         .pickerStyle(.segmented)
                         Text(computer == .sai
                              ? "Connect your Sai account to use its agent, model, and computer."
-                             : "Choose the harness and model provider. The harness runs in Agent S and uses only your Box’s tools.")
+                             : "Choose the harness and model provider. The harness runs on your Mac and uses only your Box’s tools.")
                             .font(.caption).foregroundStyle(.secondary)
                         if computer == .box {
                             TextField("Box", text: $boxName, prompt: Text("Default Simular Box"))

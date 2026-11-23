@@ -33,7 +33,7 @@ final class DeepSeekBoxTurn {
         guard var endpoint = URLComponents(string: baseURL), endpoint.scheme == "http",
               endpoint.host == "127.0.0.1", endpoint.port != nil, endpoint.user == nil, endpoint.password == nil,
               endpoint.query == nil, endpoint.fragment == nil, ["", "/", "/v1", "/v1/"].contains(endpoint.path) else {
-            throw Failure("DeepSeek Harness needs the Agent S model endpoint.")
+            throw Failure("DeepSeek Harness needs the Simular model endpoint.")
         }
         endpoint.path = "/v1"
         guard let modelURL = endpoint.url else { throw Failure("The model endpoint is invalid.") }

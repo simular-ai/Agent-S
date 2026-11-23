@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds Agent S.app into ./build, signed with the virtualization entitlement.
+# Builds Simular.app into ./build, signed with the virtualization entitlement.
 # Signed with the local "Agent S Development" certificate when it exists (scripts/make-signing-cert.sh),
 # so the Keychain's "Always Allow" lasts across builds; otherwise ad hoc (macOS asks again after
 # every build). For distribution, sign with a Developer ID and notarize instead (see README).
@@ -9,7 +9,7 @@ CONFIG=${1:-release}
 if [ "$#" -gt 0 ]; then shift; fi
 swift build -c "$CONFIG" "$@"
 BIN=$(swift build -c "$CONFIG" "$@" --show-bin-path)/AgentS
-APP="build/Agent S.app"
+APP="build/Simular.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/AgentS"

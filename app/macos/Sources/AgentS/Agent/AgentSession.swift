@@ -225,7 +225,8 @@ final class AgentSession: ObservableObject, Identifiable {
 
     func saveMemoryNote(id: UUID?, kind: AgentMemoryKind, text: String, route: AgentMemoryRoute?,
                         keepPrivate: Bool = false) throws {
-        try editMemory(invalidatingContinuationFor: id) { noteBook in
+        let ids = id.map { Set([$0]) } ?? []
+        try editMemory(invalidatingContinuationFor: ids) { noteBook in
             let now = Date()
             let edited = try noteBook.saveUserNote(id: id, kind: kind, text: text, route: route, now: now)
             guard keepPrivate, let id else { return edited }
@@ -235,11 +236,11 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     func shareMemoryNote(id: UUID, with route: AgentMemoryRoute) throws {
-        try editMemory(invalidatingContinuationFor: id) { try $0.setScope(.route(route), id: id, now: Date()) }
+        try editMemory(invalidatingContinuationFor: [id]) { try $0.setScope(.route(route), id: id, now: Date()) }
     }
 
     func keepMemoryNotePrivate(id: UUID) throws {
-        try editMemory(invalidatingContinuationFor: id) { try $0.setScope(.private, id: id, now: Date()) }
+        try editMemory(invalidatingContinuationFor: [id]) { try $0.setScope(.private, id: id, now: Date()) }
     }
 
     func setMemoryPinned(_ pinned: Bool, id: UUID) throws {
@@ -251,30 +252,35 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     func forgetMemoryNote(id: UUID) throws {
-        try editMemory(invalidatingContinuationFor: id) { $0.forget(id: id) }
+        try forgetMemoryNotes(ids: [id])
+    }
+
+    func forgetMemoryNotes(ids: Set<UUID>) throws {
+        try editMemory(invalidatingContinuationFor: ids) { $0.forget(ids: ids) }
     }
 
     private struct MemoryUnavailable: LocalizedError {
         var errorDescription: String? { "This agent's memory is unavailable." }
     }
 
-    private func editMemory(invalidatingContinuationFor id: UUID? = nil, _ change: (inout AgentMemory) throws -> Bool) throws {
+    private func editMemory(invalidatingContinuationFor ids: Set<UUID> = [],
+                            _ change: (inout AgentMemory) throws -> Bool) throws {
         guard memoryLoaded, let memoryStore, !GuestFiles.legacyAppRunning else { throw MemoryUnavailable() }
         var updated = memory
         guard try change(&updated) else { return }
+        let invalidatedKeys = Set(memory.notes.compactMap { old -> String? in
+            guard ids.contains(old.id), case let .route(route) = old.scope,
+                  updated.notes.first(where: { $0.id == old.id }).map({ $0.scope == old.scope && $0.text == old.text }) != true else {
+                return nil
+            }
+            return route.continuationKey
+        })
         var continuations = memorySessions
-        let invalidatedRoute: AgentMemoryRoute?
-        if let id, let old = memory.notes.first(where: { $0.id == id }), case let .route(route) = old.scope,
-           updated.notes.first(where: { $0.id == id }).map({ $0.scope == old.scope && $0.text == old.text }) != true {
-            continuations[route.continuationKey] = nil
-            invalidatedRoute = route
-        } else {
-            invalidatedRoute = nil
-        }
+        for key in invalidatedKeys { continuations.removeValue(forKey: key) }
         try memoryStore.save(.init(notes: updated, sessions: continuations))
         memory = updated
         memorySessions = continuations
-        if let invalidatedRoute, isRunning, invalidatedRoute == activeMemoryRoute {
+        if isRunning, let activeMemoryRoute, invalidatedKeys.contains(activeMemoryRoute.continuationKey) {
             activeMemorySessionInvalidated = true
         }
         memoryError = nil
@@ -547,7 +553,7 @@ final class AgentSession: ObservableObject, Identifiable {
             }
             return (command.arguments(settingsPath: settingsPath, mcpConfigPath: mcpConfig?.path), environment)
         }, toolsAllowed: { tools in tools.allSatisfy { allowedTools.contains($0) } },
-           toolsRule: "This Mac agents may only use Agent S's approved tools")
+           toolsRule: "This Mac agents may only use Simular's approved tools")
     }
 
     private var claudeMacTool: HarnessMacCommand?
@@ -1074,7 +1080,7 @@ final class AgentSession: ObservableObject, Identifiable {
             if sandboxTurn, status == 255 {
                 message = reason.contains("remote port forwarding failed")
                     ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
-                    : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."
+                    : "The sandbox connection ended before Simular could confirm the turn finished. Check the result before sending again."
             } else if harness == .deepSeek, reason.contains("already owned by an active write handle") {
                 message = "DeepSeek still has this conversation open. Wait for the previous turn to finish before sending again."
             } else {

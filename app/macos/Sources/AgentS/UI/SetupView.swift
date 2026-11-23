@@ -65,7 +65,7 @@ struct SetupView: View {
             }
 
             Section {
-                Text("Ollama runs models on this Mac. Simular Box agents run their harness in Agent S and use the Box’s tools. For OpenRouter, Agent S adds the key from this Mac’s Keychain when it sends each request.")
+                Text("Ollama runs models on this Mac. Simular Box agents run their harness on this Mac and use the Box’s tools. Simular adds your OpenRouter key from the Mac’s Keychain to each OpenRouter request.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }

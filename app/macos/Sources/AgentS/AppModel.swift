@@ -230,7 +230,7 @@ final class AppModel: ObservableObject {
             try FileManager.default.copyItem(at: source, to: target)
             session.config.avatarImage = name
         } catch {
-            NSLog("Agent S: couldn't use that picture: %@", "\(error)")
+            NSLog("Simular: couldn't use that picture: %@", "\(error)")
         }
     }
 
@@ -337,6 +337,10 @@ final class AppModel: ObservableObject {
         return AgentMemoryRoute(privacy: config.privacy, harness: config.harness, provider: config.provider,
                                 computer: config.computer, boxName: config.boxName, saiMachine: config.saiMachine,
                                 ollamaInference: inference, model: model)
+    }
+
+    func openWork(for session: AgentSession) -> [AgentMemoryNote] {
+        session.memory.notes(for: memoryRoute(for: session)).filter { $0.kind == .activeWork && $0.status == .open }
     }
 
     private func ollamaInference(for name: String) -> AgentMemoryRoute.OllamaInference {
@@ -458,7 +462,7 @@ final class AppModel: ObservableObject {
         guard vm.machine === machine, vm.state == .running else { return }
         phase = .booting("Installing Sai's screen tools…")
         do { try await shell.run(GuestTools.installCommand, on: ip) } catch {
-            NSLog("Agent S: installing the screen tools failed: %@", "\(error)")
+            NSLog("Simular: installing the screen tools failed: %@", "\(error)")
         }
         if vm.machine === machine, vm.state == .running {
             sandboxCanCheckpoint = true
@@ -501,7 +505,7 @@ final class AppModel: ObservableObject {
             alert.alertStyle = .warning
             alert.messageText = "Couldn’t save the sandbox"
             alert.informativeText = "\(error.localizedDescription) Shutting down closes its open apps and windows."
-            alert.addButton(withTitle: "Keep Agent S Open")
+            alert.addButton(withTitle: "Keep Simular Open")
             alert.addButton(withTitle: "Shut Down and Quit")
             guard alert.runModal() == .alertSecondButtonReturn else {
                 isSavingSandbox = false
@@ -928,6 +932,24 @@ final class AppModel: ObservableObject {
             && chatBlocker(for: session) == nil
     }
 
+    func canRunOpenWork(for session: AgentSession) -> Bool {
+        canDispatch(to: session) && memoryRoute(for: session).allowsAutomaticRecall
+    }
+
+    func runOpenWork(ids: Set<UUID>, for session: AgentSession) async -> Bool {
+        guard !ids.isEmpty, selectedAgentID == session.id, canRunOpenWork(for: session) else { return false }
+        let route = memoryRoute(for: session)
+        if route.provider == .ollama {
+            guard await Self.verifyOllamaMemoryRoute(route) == route else { return false }
+        }
+        guard !Task.isCancelled, selectedAgentID == session.id, canRunOpenWork(for: session),
+              memoryRoute(for: session) == route else { return false }
+        let selected = openWork(for: session).filter { ids.contains($0.id) }
+        guard selected.count == ids.count else { return false }
+        let list = selected.map { "- " + $0.text.replacingOccurrences(of: "\n", with: "\n  ") }.joined(separator: "\n")
+        return send("Work on the checked items below.\n\n\(list)", to: session, verifiedRoute: route)
+    }
+
     @discardableResult
     func send(_ prompt: String, to session: AgentSession, verifiedRoute: AgentMemoryRoute? = nil) -> Bool {
         guard agents.contains(where: { $0 === session }), !session.isRunning, !session.isSendingSteering else { return false }
@@ -1008,7 +1030,7 @@ final class AppModel: ObservableObject {
 
     /// Listens for the approval hook; started with the first This Mac turn.
     let approvals = ApprovalServer()
-    /// macOS grants these permissions to Agent S. Every This Mac agent shares the result.
+    /// macOS grants these permissions to Simular. Every This Mac agent shares the result.
     @Published private(set) var macAccessibility = MacAccess.hasAccessibility
     @Published private(set) var macScreenRecording = MacAccess.hasScreenRecording
 
@@ -1019,7 +1041,7 @@ final class AppModel: ObservableObject {
         if macScreenRecording != screenRecording { macScreenRecording = screenRecording }
     }
 
-    /// A This Mac agent's turn. The harness asks Agent S for approval before acting on the Mac.
+    /// A This Mac agent's turn. The harness asks Simular for approval before acting on the Mac.
     private func sendToMac(_ prompt: String, to session: AgentSession, memoryRoute: AgentMemoryRoute,
                            verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)?) -> Bool {
         let config = session.config
