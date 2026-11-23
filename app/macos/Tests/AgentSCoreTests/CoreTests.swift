@@ -132,6 +132,16 @@ struct GuestSetupTests {
         #expect(data.contains("[sai, /mnt/sai, virtiofs"))
         #expect(data.contains("touch /var/lib/sai-ready"))
     }
+
+    @Test func firstBootInstallsSupportedNodeBeforeHarnesses() {
+        let data = GuestSetup.userData(sshPublicKey: "ssh-ed25519 AAAA test")
+        #expect(data.contains("runcmd:\n  - |\n    (\n"))
+        #expect(data.contains("https://deb.nodesource.com/setup_24.x"))
+        #expect(data.contains("env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs &&"))
+        #expect(data.contains(") && (command -v simulang"))
+        #expect(data.contains("\n  - touch \(GuestSetup.readyMarker)"))
+        #expect(!data.contains("sudo npm install"))
+    }
 }
 
 @Suite("Running Claude Code in the guest")
@@ -225,6 +235,22 @@ struct GuestToolsTests {
         // The clipboard agent must start in the desktop session, never from this SSH command.
         #expect(line.contains("pgrep -x spice-vdagent >/dev/null || sudo systemctl restart getty@tty1"))
         #expect(!line.contains("DISPLAY=:0 $(tr"))
+    }
+
+    @Test func existingGuestChecksAndRepairsOnlyTheDeepSeekRuntime() {
+        let ready = GuestTools.deepSeekReadyCommand
+        let install = GuestTools.installDeepSeekCommand
+        #expect(ready.contains("major < 24 || (major === 24 && minor < 9)"))
+        #expect(ready.contains("npm --version"))
+        #expect(ready.contains("dsh_version=$(dsh --version 2>/dev/null) &&"))
+        #expect(ready.contains("= '\(DeepSeekCommand.version)'"))
+        #expect(install.contains("https://deb.nodesource.com/setup_24.x"))
+        #expect(install.contains("sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"))
+        #expect(install.contains("sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version) &&"))
+        #expect(!install.contains("systemctl"))
+        #expect(GuestTools.installCommand.hasPrefix(GuestSetup.ensureNodeCommand(asRoot: false)))
+        #expect(GuestTools.installCommand.contains(GuestSetup.ensureBaseHarnessesCommand(asRoot: false)))
+        #expect(GuestTools.installCommand.contains("sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version)"))
     }
 
     @Test func installsDesktopLauncherInTheScriptsOnlyRefresh() {

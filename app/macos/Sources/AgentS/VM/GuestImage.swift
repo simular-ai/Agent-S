@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import AgentSCore
 
 /// First-time setup of the guest's disk, key and cloud-init seed.
@@ -7,7 +8,10 @@ import AgentSCore
 /// once (~300 MB compressed), unpacked to a raw disk and grown; cloud-init resizes the root
 /// partition to fill it on first boot.
 enum GuestImage {
-    static let imageURL = URL(string: "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-arm64.tar.xz")!
+    private static let imageRelease = "20261123-2671"
+    static let imageURL = URL(string: "https://cloud.debian.org/images/cloud/trixie/\(imageRelease)/debian-13-generic-arm64-\(imageRelease).tar.xz")!
+    // The generic ARM64 archive entry in this release's SHA512SUMS.
+    private static let imageSHA512 = "800e63be2901b32689ea00a4a6eaab0df5b7ef43eb543cf59627b575cd9c279d93d791be96ba9306617d28e1973f9222d3ab490138117ee41eb7432f61e5f55f"
     static let diskSize: UInt64 = 32 * 1024 * 1024 * 1024
 
     struct Failure: LocalizedError {
@@ -80,22 +84,31 @@ enum GuestImage {
         let total = max(response.expectedContentLength, 1)
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("debian-\(UUID().uuidString).tar.xz")
         FileManager.default.createFile(atPath: target.path, contents: nil)
+        var verified = false
+        defer { if !verified { try? FileManager.default.removeItem(at: target) } }
         let handle = try FileHandle(forWritingTo: target)
         defer { try? handle.close() }
         var buffer = Data()
+        var checksum = SHA512()
         var written: Int64 = 0
         buffer.reserveCapacity(1 << 20)
         for try await byte in bytes {
             buffer.append(byte)
             if buffer.count >= 1 << 20 {
                 try handle.write(contentsOf: buffer)
+                checksum.update(data: buffer)
                 written += Int64(buffer.count)
                 buffer.removeAll(keepingCapacity: true)
-                let fraction = Double(written) / Double(total)
+                let fraction = min(Double(written) / Double(total), 1)
                 await progress(fraction)
             }
         }
         try handle.write(contentsOf: buffer)
+        checksum.update(data: buffer)
+        guard checksum.finalize().map({ String(format: "%02x", $0) }).joined() == imageSHA512 else {
+            throw Failure(message: "The Debian download failed the checksum check. Try setting up the computer again.")
+        }
+        verified = true
         await progress(1)
         return target
     }

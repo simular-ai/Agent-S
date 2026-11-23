@@ -500,7 +500,8 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
     }
 
     public static var installCommand: String {
-        [installScriptsCommand, desktopLaunchDependencies, playwright, deepSeekHarness, clipboard, terminal]
+        [GuestSetup.ensureNodeCommand(asRoot: false), GuestSetup.ensureBaseHarnessesCommand(asRoot: false),
+         installScriptsCommand, desktopLaunchDependencies, playwright, clipboard, terminal, installPinnedDeepSeek]
             .joined(separator: " && ")
     }
 
@@ -510,10 +511,23 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
     /// The terminal used to sign in to harness accounts from the guest desktop.
     private static let terminal = "(command -v xterm >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q xterm >/dev/null 2>&1)"
 
-    /// DeepSeek Harness, installed once per pinned version.
-    static var deepSeekHarness: String {
-        "(dsh --version 2>/dev/null | grep -qx '\(DeepSeekCommand.version)'"
-            + " || sudo npm install -g --silent @deepseek-ai/dsh@\(DeepSeekCommand.version) >/dev/null 2>&1)"
+    /// The installed harness is usable only with a supported Node runtime.
+    public static var deepSeekReadyCommand: String {
+        "\(GuestSetup.nodeReadyCommand) && \(deepSeekVersionCheck)"
+    }
+
+    /// Repairs the runtime on an existing guest without restarting its desktop.
+    public static var installDeepSeekCommand: String {
+        "\(GuestSetup.ensureNodeCommand(asRoot: false)) && \(installPinnedDeepSeek)"
+    }
+
+    private static var deepSeekVersionCheck: String {
+        #"(dsh_version=$(dsh --version 2>/dev/null) && [ "$dsh_version" = '\#(DeepSeekCommand.version)' ])"#
+    }
+
+    private static var installPinnedDeepSeek: String {
+        "(\(deepSeekVersionCheck) || (sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version)"
+            + " && \(deepSeekVersionCheck)))"
     }
 
     /// Playwright's library (no bundled browsers) for `web`, installed once per version.

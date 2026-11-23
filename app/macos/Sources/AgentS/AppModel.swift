@@ -58,6 +58,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isSavingSandbox = false
     private var attemptedSandboxRestore = false
     private var sandboxCanCheckpoint = false
+    private var sandboxNeedsFullToolInstall = false
     @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .sixGB {
         didSet { UserDefaults.standard.set(computerMemory.rawValue, forKey: Self.computerMemoryKey) }
     }
@@ -446,29 +447,46 @@ final class AppModel: ObservableObject {
         guard vm.machine === machine, vm.state == .running else { return }
         guestIP = ip
 
-        if resuming {
-            let ready = await shell.isReady(on: ip)
+        let install: (command: String, step: String)?
+        if resuming, !sandboxNeedsFullToolInstall, await shell.isReady(on: ip) {
             guard vm.machine === machine, vm.state == .running else { return }
-            if ready {
-                phase = .ready
+            phase = .booting("Checking the sandbox tools…")
+            let deepSeekReady = (try? await shell.run(GuestTools.deepSeekReadyCommand, on: ip)) != nil
+            install = deepSeekReady ? nil : (GuestTools.installDeepSeekCommand, "Updating DeepSeek Harness in the sandbox…")
+        } else {
+            guard vm.machine === machine, vm.state == .running else { return }
+            phase = .booting("Waiting for the sandbox’s first-time setup…")
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(600))
+            while !(await shell.isReady(on: ip)) {
+                guard vm.machine === machine, vm.state == .running else { return }
+                guard clock.now < deadline else {
+                    phase = .failed("The sandbox’s first-time setup is taking longer than expected. Try again to check its progress.")
+                    return
+                }
+                try? await Task.sleep(for: .seconds(3))
+            }
+            guard vm.machine === machine, vm.state == .running else { return }
+            sandboxNeedsFullToolInstall = true
+            install = (GuestTools.installCommand, "Installing the sandbox tools…")
+        }
+
+        guard vm.machine === machine, vm.state == .running else { return }
+        if let install {
+            phase = .booting(install.step)
+            do {
+                try await shell.run(install.command, on: ip)
+            } catch {
+                guard vm.machine === machine, vm.state == .running else { return }
+                NSLog("Agent S: installing the sandbox tools failed: %@", "\(error)")
+                phase = .failed("Couldn’t install the sandbox tools. Try again to finish setup.")
                 return
             }
         }
-
-        phase = .booting("Installing the desktop, simulang and Claude Code (first start only, a few minutes)…")
-        while !(await shell.isReady(on: ip)) {
-            if vm.machine !== machine || vm.state != .running { return }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-        }
         guard vm.machine === machine, vm.state == .running else { return }
-        phase = .booting("Installing Sai's screen tools…")
-        do { try await shell.run(GuestTools.installCommand, on: ip) } catch {
-            NSLog("Agent S: installing the screen tools failed: %@", "\(error)")
-        }
-        if vm.machine === machine, vm.state == .running {
-            sandboxCanCheckpoint = true
-            phase = .ready
-        }
+        sandboxNeedsFullToolInstall = false
+        sandboxCanCheckpoint = true
+        phase = .ready
     }
 
     func stop() async {
@@ -489,7 +507,7 @@ final class AppModel: ObservableObject {
         agents.filter { $0.config.usesLocalComputer }.forEach { $0.stop() }
 
         do {
-            // Let the host finish closing SSH and guest sign-in before pausing the VM.
+            // Let setup and active guest work finish before pausing the VM.
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(5))
             while sandboxIsBusyForSave {
@@ -520,14 +538,15 @@ final class AppModel: ObservableObject {
     }
 
     private var sandboxIsBusyForSave: Bool {
-        vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn
+        if case .booting = phase { return true }
+        return vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn
             || accountSignIns.keys.contains(where: \.inSandbox)
     }
 
     private enum SandboxSaveFailure: LocalizedError {
         case stillBusy
 
-        var errorDescription: String? { "Sandbox work is still stopping." }
+        var errorDescription: String? { "Sandbox work is still in progress." }
     }
 
     func stopAppWork() {
@@ -1147,11 +1166,13 @@ final class AppModel: ObservableObject {
         switch state {
         case .stopped:
             sandboxCanCheckpoint = false
+            sandboxNeedsFullToolInstall = false
             resetSandboxAccountStatus()
             guestIP = nil
             if case .needsSetup = phase {} else { phase = .stopped }
         case let .failed(message):
             sandboxCanCheckpoint = false
+            sandboxNeedsFullToolInstall = false
             resetSandboxAccountStatus()
             guestIP = nil
             phase = .failed(message)

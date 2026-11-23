@@ -16,11 +16,14 @@ cp "$BIN" "$APP/Contents/MacOS/AgentS"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 cp Resources/ThirdPartyNotices.txt "$APP/Contents/Resources/ThirdPartyNotices.txt"
+cp ../../LICENSE "$APP/Contents/Resources/LICENSE"
 IDENTITY=${SIGN_IDENTITY:-}
 if [ -z "$IDENTITY" ] && security find-certificate -c "Agent S Development" >/dev/null 2>&1; then
   IDENTITY="Agent S Development"
 fi
-codesign --force --sign "${IDENTITY:--}" --options runtime \
+set --
+if [ "${SIGN_TIMESTAMP:-}" = 1 ]; then set -- --timestamp; fi
+codesign --force --sign "${IDENTITY:--}" --options runtime "$@" \
   --entitlements Resources/AgentS.entitlements "$APP"
 codesign --verify --verbose=1 "$APP"
 echo "Built $APP"

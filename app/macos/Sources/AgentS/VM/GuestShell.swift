@@ -72,18 +72,21 @@ struct GuestShell {
             // Secrets travel on stdin, never on a command line the guest's process list shows.
             let stdin = Pipe()
             process.standardInput = input == nil ? FileHandle.nullDevice : stdin
-            process.terminationHandler = { process in
+            do { try process.run() } catch {
+                continuation.resume(throwing: error)
+                return
+            }
+            // Drain while SSH is running so a full pipe cannot prevent it from exiting.
+            DispatchQueue.global(qos: .utility).async {
                 let text = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                process.waitUntilExit()
                 if process.terminationStatus == 0 { continuation.resume(returning: text) }
                 else { continuation.resume(throwing: GuestImage.Failure(message: text)) }
             }
-            do {
-                try process.run()
-                if let input {
-                    stdin.fileHandleForWriting.write(Data(input.utf8))
-                    try? stdin.fileHandleForWriting.close()
-                }
-            } catch { continuation.resume(throwing: error) }
+            if let input {
+                stdin.fileHandleForWriting.write(Data(input.utf8))
+                try? stdin.fileHandleForWriting.close()
+            }
         }
     }
 

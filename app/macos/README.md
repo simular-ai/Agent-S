@@ -180,19 +180,26 @@ direct distribution as a Developer ID–signed, notarized DMG. A Mac App Store b
 would need to meet Apple's sandbox requirements for its automation features.
 [Apple's macOS distribution options](https://developer.apple.com/macos/distribution/)
 
-1. Build with the organization's **Developer ID Application** identity by setting
-   `SIGN_IDENTITY` when running `./scripts/bundle.sh release`. Verify that the app's signature
-   includes the hardened runtime and a secure timestamp.
-2. Put the app in a DMG, sign the DMG, and submit it with `xcrun notarytool submit`
-   using the organization's notary profile. After Apple accepts it, staple and validate
-   the ticket with `xcrun stapler`. Verify Gatekeeper on a clean Mac.
-   [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
-3. Test a fresh install and upgrade, including macOS permissions, VM startup, and Sai
-   and Box sign-in. Pin and verify the guest downloads, and publish a privacy policy
-   that covers the modes shipped in the release.
-4. Verify the account integrations for the intended distribution. OpenAI documents
+1. Install the organization's **Developer ID Application** signing identity and store
+   notarization credentials in a Keychain profile. From `app/macos`, run:
+
+   ```sh
+   xcrun notarytool store-credentials agent-s-notary
+   SIGN_IDENTITY='Developer ID Application: Your Organization (TEAMID)' \
+     NOTARY_KEYCHAIN_PROFILE=agent-s-notary ./scripts/release.sh
+   ```
+
+   The script builds and signs the app and disk image, submits the DMG to Apple, and
+   staples the approved ticket. It writes the versioned DMG and SHA-256 checksum to
+   `build/`. [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+2. Verify Gatekeeper on a clean Apple Silicon Mac. Test a fresh install and upgrade,
+   including macOS permissions, sandbox startup, and Sai and Box sign-in. The app
+   verifies the pinned Debian archive before unpacking. Publish a privacy policy that
+   covers the modes shipped in the release.
+3. Verify the account integrations for the intended distribution. OpenAI documents
    **Sign in with ChatGPT** for commercial or hosted integrations in place of the
    current Codex App Server authentication. Anthropic's terms govern the use of
    Claude Code in a product. [Codex authentication](https://learn.chatgpt.com/docs/app-server#auth-endpoints) · [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
+4. Attach the verified DMG and checksum to a GitHub Release for the tested commit.
 
 [Repository license](../../LICENSE)

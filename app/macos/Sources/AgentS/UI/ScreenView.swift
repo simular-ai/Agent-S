@@ -139,6 +139,9 @@ struct ComputerPanel: View {
         if !model.isSavingSandbox {
             switch model.phase {
             case .stopped, .failed:
+                if case .failed = model.phase, model.vm.state == .running {
+                    Button("Try again") { Task { await model.start() } }
+                }
                 if model.vm.machine != nil {
                     Button("Turn off") { Task { await model.stop() } }
                 } else if model.files.isPrepared, !showsSavedSandbox {
