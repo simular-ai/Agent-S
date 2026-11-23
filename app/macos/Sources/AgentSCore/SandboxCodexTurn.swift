@@ -28,12 +28,15 @@ public struct SandboxCodexTurn: Sendable {
           *) lifecycle_failure 'The Codex turn service has an unexpected owner.' ;;
         esac
 
-        # Check cancellation inside the unit too, in case SSH died during registration.
+        # Use the guest's system manager because streaming needs a D-Bus socket.
+        # The transient service still runs with the SSH user's identity and profile.
         exec 8<&0
-        systemd-run --user --quiet --wait --pipe --collect --expand-environment=no \
+        sudo -n /usr/bin/systemd-run --system --quiet --wait --pipe --collect --expand-environment=no \
+          --uid="$uid" --gid="$gid" --working-directory="$HOME" \
+          --setenv="HOME=$HOME" --setenv="PATH=$PATH" --setenv="XDG_RUNTIME_DIR=$runtime" \
           --service-type=exec --property=KillMode=control-group --property=TimeoutStopSec=10s \
           --property=UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS \
-          --unit="$unit" --description="$description" --setenv=PATH="$PATH" \
+          --unit="$unit" --description="$description" -- \
           /bin/bash -c 'if [ -f "$1" ]; then exit 70; fi; exec /bin/bash -c "$2"' bash \
           "$cancelled" \#(Self.quote(command)) <&8 8<&- 9>&- &
         runner=$!
@@ -64,9 +67,7 @@ public struct SandboxCodexTurn: Sendable {
         #"""
         unit='\#(unit)'
         description='\#(Self.ownerPrefix)\#(turnID.uuidString)'
-        export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
         unset DBUS_SESSION_BUS_ADDRESS
-        cancelled="$XDG_RUNTIME_DIR/$unit.\#(turnID.uuidString).cancelled"
 
         lifecycle_failure() {
           printf '%s %s\n' '\#(Self.lifecycleFailureMarker)' "$1" >&2
@@ -74,7 +75,7 @@ public struct SandboxCodexTurn: Sendable {
         }
         current_owner() {
           local properties
-          properties=$(systemctl --user show --property=LoadState --property=Description "$unit" 2>/dev/null)
+          properties=$(sudo -n /usr/bin/systemctl --system show --property=LoadState --property=Description "$unit" 2>/dev/null)
           case "$properties" in
             *'LoadState=not-found'*) return 0 ;;
             *'LoadState='*) printf '%s\n' "$properties" | sed -n 's/^Description=//p' ;;
@@ -82,7 +83,7 @@ public struct SandboxCodexTurn: Sendable {
           esac
         }
         stop_unit() {
-          if ! systemctl --user stop "$unit"; then
+          if ! sudo -n /usr/bin/systemctl --system stop "$unit"; then
             owner=$(current_owner) && [ -z "$owner" ] || lifecycle_failure 'Could not stop the previous Codex turn.'
           fi
           # A stopped transient unit can remain loaded briefly while its waiter detaches.
@@ -94,7 +95,13 @@ public struct SandboxCodexTurn: Sendable {
           lifecycle_failure 'The previous Codex turn is still closing.'
         }
 
-        exec 9>"$XDG_RUNTIME_DIR/$unit.lock" || lifecycle_failure 'Could not open the Codex turn lock.'
+        uid=$(id -u) && gid=$(id -g) && [ "$uid" -gt 0 ] || lifecycle_failure 'Could not identify the sandbox user.'
+        runtime="${XDG_RUNTIME_DIR:-/run/user/$uid}"
+        state="$HOME/.agent-s/codex-turns"
+        (umask 077 && mkdir -p -- "$state") || lifecycle_failure 'Could not create the Codex turn directory.'
+        umask 077
+        cancelled="$state/$unit.\#(turnID.uuidString).cancelled"
+        exec 9>"$state/$unit.lock" || lifecycle_failure 'Could not open the Codex turn lock.'
         flock -w 15 9 || lifecycle_failure 'Another Codex turn is still starting or stopping.'
         """#
     }
