@@ -66,12 +66,18 @@ struct ContentView: View {
                 ChatView(showComputer: $showComputer)
                     .ignoresSafeArea(.container, edges: .top)
                     .frame(minWidth: 380, maxWidth: .infinity)
-                if showComputer {
-                    ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized,
-                                  takeOver: $takeOverSandbox)
-                        .ignoresSafeArea(.container, edges: .top)
-                        .frame(minWidth: 420, idealWidth: Self.panelWidth, maxWidth: .infinity)
+                // Keep the split pane in place so closing it updates the window's minimum width.
+                // Removing the pane leaves HSplitView reporting the old minimum.
+                ZStack {
+                    if showComputer {
+                        ComputerPanel(showComputer: $showComputer, showSettings: $showSettings, maximized: $maximized,
+                                      takeOver: $takeOverSandbox)
+                    }
                 }
+                .ignoresSafeArea(.container, edges: .top)
+                .frame(minWidth: showComputer ? 420 : 0,
+                       idealWidth: showComputer ? Self.panelWidth : 0,
+                       maxWidth: showComputer ? .infinity : 0)
             }
         }
     }
