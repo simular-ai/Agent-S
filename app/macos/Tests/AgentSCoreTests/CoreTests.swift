@@ -221,23 +221,61 @@ struct GuestToolsTests {
         #expect(line.contains("sudo tee /usr/local/bin/ui >/dev/null && sudo chmod 755 /usr/local/bin/ui"))
         #expect(line.contains("sudo mkdir -p /usr/local/lib/sai"))
         #expect(line.contains("sudo tee /usr/local/lib/sai/ui.ts"))
+        #expect(line.contains("command -v xterm >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q xterm"))
         // The clipboard agent must start in the desktop session, never from this SSH command.
         #expect(line.contains("pgrep -x spice-vdagent >/dev/null || sudo systemctl restart getty@tty1"))
         #expect(!line.contains("DISPLAY=:0 $(tr"))
     }
 
+    @Test func installsDesktopLauncherInTheScriptsOnlyRefresh() {
+        let refresh = GuestTools.installScriptsCommand
+        #expect(GuestTools.ui.contains(#"exec /usr/local/lib/sai/launch-desktop-app "$@""#))
+        #expect(GuestTools.uiScript.contains("ui launch <app>"))
+        #expect(refresh.contains("sudo tee /usr/local/lib/sai/launch-desktop-app"))
+        #expect(refresh.contains("systemctl --user daemon-reload"))
+        #expect(!refresh.contains("apt-get install"))
+        #expect(!refresh.contains("systemctl restart"))
+        #expect(GuestTools.installCommand.contains("command -v gio"))
+        #expect(GuestTools.installCommand.contains("libglib2.0-bin"))
+    }
+
+    @Test func launchesDesktopAppsOutsideTheTurnScope() {
+        let launcher = GuestTools.desktopLauncher
+        #expect(launcher.contains("pgrep -u \"$uid\" -xo openbox"))
+        #expect(launcher.contains("env -u DBUS_SESSION_BUS_ADDRESS"))
+        #expect(launcher.contains("--setenv=\"DBUS_SESSION_BUS_ADDRESS=$desktop_bus\""))
+        #expect(launcher.contains("--service-type=exec"))
+        #expect(launcher.contains("--property=ExitType=cgroup"))
+        #expect(launcher.contains("--expand-environment=no"))
+        #expect(launcher.contains("--collect"))
+        #expect(launcher.contains(#""${options[@]}" -- "${command[@]}""#))
+        #expect(!launcher.contains("--scope"))
+        #expect(!launcher.contains("--wait"))
+        #expect(!launcher.contains("--pipe"))
+    }
+
     @Test func webDrivesChromiumOverLocalDebuggingPort() {
-        #expect(GuestTools.web.contains("--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1"))
+        #expect(GuestTools.browserLauncher.contains("--remote-debugging-port=9222 --remote-debugging-address=127.0.0.1"))
         #expect(GuestTools.webScript.contains("ariaSnapshot({ mode: 'ai' })"))
         #expect(GuestTools.installCommand.contains("playwright-core@1.65.1"))
         #expect(GuestTools.ui.contains("exec web open"))
     }
 
-    @Test func uiOpensChromiumWithAccessibilityAndDetachesIt() {
-        // Codex kills what a command leaves in the background; setsid keeps the browser open.
-        #expect(GuestTools.web.contains("ACCESSIBILITY_ENABLED=1 setsid -f chromium"))
-        #expect(GuestTools.web.contains("--force-renderer-accessibility"))
+    @Test func chromiumRunsInTheGuestUserServiceWithDesktopAccessibility() {
+        #expect(GuestTools.installCommand.contains("sudo tee /etc/systemd/user/agent-s-browser.service"))
+        #expect(GuestTools.installCommand.contains("systemctl --user daemon-reload"))
+        #expect(GuestTools.browserService.contains("ExecStart=/usr/local/lib/sai/start-browser"))
+        #expect(GuestTools.browserLauncher.contains("DBUS_SESSION_BUS_ADDRESS"))
+        #expect(GuestTools.browserLauncher.contains("--force-renderer-accessibility"))
+        #expect(!GuestTools.browserLauncher.contains("--user-data-dir"))
         #expect(GuestTools.uiScript.contains("AccessibilitySnapshot.fromWindow"))
+    }
+
+    @Test func webWaitsForTheBrowserWithoutKillingOrRestartingIt() {
+        #expect(GuestTools.web.contains("systemctl --user start agent-s-browser.service"))
+        #expect(GuestTools.web.contains("if ! wait_for_browser"))
+        #expect(!GuestTools.web.contains("pkill"))
+        #expect(!GuestTools.web.contains("--user restart"))
     }
 }
 
@@ -285,8 +323,9 @@ struct PrivacyModeTests {
         #expect(Box.scopedAgentArguments(arguments, acceptsBox: true, box: nil)?["box"] == nil)
     }
 
-    @Test func hostedAccountsNeverProduceGuestCommands() {
-        for (harness, provider) in [(Harness.claudeCode, ModelProvider.claudeAccount), (.codex, .codexAccount)] {
+    @Test func incompatibleAccountsNeverProduceGuestCommands() {
+        for (harness, provider) in [(Harness.claudeCode, ModelProvider.codexAccount), (.codex, .claudeAccount),
+                                    (.deepSeek, .claudeAccount), (.deepSeek, .codexAccount), (.sai, .codexAccount)] {
             #expect(harness.remoteShell(prompt: "Hello", resume: nil, model: "Automatic",
                                        ollamaURL: "http://127.0.0.1:11434", provider: provider).isEmpty)
         }

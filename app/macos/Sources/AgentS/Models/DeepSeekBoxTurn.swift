@@ -25,7 +25,8 @@ final class DeepSeekBoxTurn {
     private var stopped = false
 
     func run(prompt: String, resume: String?, model: String, baseURL: String, apiKey: String,
-             dataFolder: URL, agentID: UUID, boxName: String?, onEvent: @escaping (ClaudeEvent) -> Void) async throws {
+             dataFolder: URL, agentID: UUID, boxName: String?, standardInput: Pipe? = nil,
+             onEvent: @escaping (ClaudeEvent) -> Void) async throws {
         guard let executable = Self.executable else {
             throw Failure("Install DeepSeek Harness \(DeepSeekCommand.version) on this Mac.")
         }
@@ -77,11 +78,13 @@ final class DeepSeekBoxTurn {
             "AGENT_S_BOX_AUTHORIZATION": bridge.authorization, "AGENT_S_DSH_SESSIONS": sessions.path,
             "DSH_SYSTEM_PROMPT": Self.instructions(boxName: boxName),
         ]) { _, value in value }
+        if standardInput != nil { environment["AGENT_S_STEERING"] = "1" }
 
         let arguments = DeepSeekBoxProfile.arguments(prompt: prompt, resume: resume, patchPath: patch.path)
         var stream = DeepSeekStream()
         var final: ClaudeEvent?
-        let status = try await launch(executable: executable, arguments: arguments, environment: environment, work: work) { line in
+        let status = try await launch(executable: executable, arguments: arguments, environment: environment, work: work,
+                                      standardInput: standardInput) { line in
             guard bridge.listedTools else { return }
             for event in stream.consume(line: line) {
                 if case .finished = event { final = event }
@@ -105,7 +108,7 @@ final class DeepSeekBoxTurn {
     }
 
     private func launch(executable: URL, arguments: [String], environment: [String: String], work: URL,
-                        onLine: (String) -> Void) async throws -> Int32 {
+                        standardInput: Pipe? = nil, onLine: (String) -> Void) async throws -> Int32 {
         try checkRunning()
         let process = Process()
         let output = Pipe()
@@ -115,7 +118,8 @@ final class DeepSeekBoxTurn {
         process.arguments = arguments
         process.environment = environment
         process.currentDirectoryURL = work
-        process.standardInput = FileHandle.nullDevice
+        if let standardInput { process.standardInput = standardInput }
+        else { process.standardInput = FileHandle.nullDevice }
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         output.fileHandleForReading.readabilityHandler = { handle in

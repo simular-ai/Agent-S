@@ -7,7 +7,7 @@ struct MacTurnPanelView: View {
 
     private enum ScrollTarget: Hashable {
         case approval(String)
-        case end
+        case history(String)
     }
 
     var body: some View {
@@ -51,11 +51,14 @@ struct MacTurnPanelView: View {
     }
 
     private var transcript: some View {
-        ScrollViewReader { proxy in
+        let history = recentHistory
+        let latest = history.last?.id
+        return ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 9) {
-                    ForEach(recentHistory) { item in
-                        ChatRow(item: item)
+                    ForEach(history) { row in
+                        ChatTranscriptRow(row: row, isRunning: agent.isRunning)
+                            .id(ScrollTarget.history(row.id))
                     }
                     ForEach(pendingApprovals) { item in
                         ChatRow(item: item)
@@ -63,33 +66,32 @@ struct MacTurnPanelView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(ScrollTarget.approval(item.id))
                     }
-                    Color.clear.frame(height: 1).id(ScrollTarget.end)
                 }
                 .padding(12)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onAppear { scrollToLatest(proxy) }
-            .onChange(of: pendingApprovals.map(\.id)) { _, _ in scrollToLatest(proxy) }
+            .onAppear { scrollToLatest(proxy, historyID: latest) }
+            .onChange(of: pendingApprovals.map(\.id)) { _, _ in scrollToLatest(proxy, historyID: latest) }
             .onChange(of: agent.items.last?.id) { _, _ in
-                if pendingApprovals.isEmpty { scrollToLatest(proxy) }
+                if pendingApprovals.isEmpty { scrollToLatest(proxy, historyID: latest) }
             }
         }
     }
 
     private var pendingApprovals: [ChatItem] { agent.pendingMacApprovals }
 
-    private var recentHistory: ArraySlice<ChatItem> {
-        agent.items.filter { item in
-            if case .approval(_, _, _, nil) = item.kind { return false }
+    private var recentHistory: ArraySlice<ChatTranscript.Row> {
+        ChatTranscript(agent.items).rows.filter { row in
+            if case let .message(item) = row.content, case .approval(_, _, _, nil) = item.kind { return false }
             return true
         }.suffix(40)
     }
 
-    private func scrollToLatest(_ proxy: ScrollViewProxy) {
+    private func scrollToLatest(_ proxy: ScrollViewProxy, historyID: String?) {
         if let approval = pendingApprovals.first {
             proxy.scrollTo(ScrollTarget.approval(approval.id), anchor: .top)
-        } else {
-            proxy.scrollTo(ScrollTarget.end, anchor: .bottom)
+        } else if let historyID {
+            proxy.scrollTo(ScrollTarget.history(historyID), anchor: .bottom)
         }
     }
 }

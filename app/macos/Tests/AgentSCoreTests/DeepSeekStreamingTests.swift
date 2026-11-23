@@ -40,4 +40,26 @@ struct DeepSeekStreamingTests {
         #expect(guest.remoteShell.contains("> ~/.dsh/" + DeepSeekStreamingPlugin.filename))
         #expect(DeepSeekBoxProfile.patch.contains("name: " + path))
     }
+
+    @Test func makesSteeringAnExplicitOptInForGuestCommands() {
+        let ordinary = DeepSeekCommand(prompt: "Hello", resume: nil, model: "gemma4")
+        let steerable = DeepSeekCommand(prompt: "Hello", resume: nil, model: "gemma4", allowsSteering: true)
+        #expect(ordinary.remoteShell.hasSuffix(" </dev/null"))
+        #expect(steerable.remoteShell.hasSuffix(" --json 'Hello'"))
+        #expect(steerable.remoteShell.contains("AGENT_S_STEERING=1 dsh"))
+    }
+
+    @Test func parsesSteeringAcknowledgementsIndependentlyOfTextStreams() {
+        var stream = DeepSeekStream()
+        #expect(stream.consume(line: #"{"type":"agent_s_steer_ready"}"#) == [.steeringReady])
+        #expect(stream.consume(line: #"{"type":"agent_s_text_stream","id":"session:1"}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"agent_s_steer_result","id":"pending","accepted":true}"#) ==
+                [.steeringResult(id: "pending", accepted: true)])
+        #expect(stream.consume(line: #"{"type":"agent_s_steer_result","id":"late","accepted":false}"#) ==
+                [.steeringResult(id: "late", accepted: false)])
+        #expect(stream.consume(line: #"{"type":"agent_s_steer_result","id":"","accepted":true}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"agent_s_steer_result","id":"invalid","accepted":"true"}"#).isEmpty)
+        #expect(stream.consume(line: #"{"type":"agent_s_text_snapshot","id":"session:1","text":"Complete"}"#) ==
+                [.textSnapshot(id: "session:1", text: "Complete")])
+    }
 }

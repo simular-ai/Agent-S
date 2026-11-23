@@ -36,8 +36,9 @@ public enum Harness: String, CaseIterable, Identifiable, Codable, Sendable {
 
     /// The remote shell line for one turn.
     public func remoteShell(prompt: String, resume: String?, model: String, ollamaURL: String,
-                            provider: ModelProvider = .ollama, apiKey: String? = nil) -> String {
-        guard !provider.usesAccount else { return "" } // Account harnesses run on the Mac.
+                            provider: ModelProvider = .ollama, apiKey: String? = nil, allowsSteering: Bool = false) -> String {
+        let mode = AgentLocation.linuxVM.mode(for: provider)
+        guard ModelProvider.allowed(in: mode, harness: self, computer: nil).contains(provider) else { return "" }
         let guestPort = URLComponents(string: ollamaURL)?.port.flatMap { UInt16(exactly: $0) } ?? 11434
         return switch self {
         case .claudeCode:
@@ -48,7 +49,7 @@ public enum Harness: String, CaseIterable, Identifiable, Codable, Sendable {
                          apiKey: apiKey, guestPort: guestPort).remoteShell
         case .deepSeek:
             DeepSeekCommand(prompt: prompt, resume: resume, model: model, provider: provider,
-                            apiKey: apiKey, guestPort: guestPort).remoteShell
+                            apiKey: apiKey, guestPort: guestPort, allowsSteering: allowsSteering).remoteShell
         case .sai:
             "" // not a shell: AgentSession calls the Sai API instead
         }
@@ -110,20 +111,27 @@ public enum AgentInstructions {
         Enter (leave out --enter to just type)
         - \(run("web read"))   the page's visible text, to read or summarize it
         - \(run("web scroll down"))   see more of the page; also web back, web key Enter, web tabs
+        On a follow-up, inspect the current tab with web snapshot before navigating. Leave the browser \
+        and its tabs open unless the user asks you to close them.
 
         Anything outside the browser (other apps, dialogs, the desktop):
+        - \(run("ui launch xterm"))   launch an installed desktop app by its desktop ID or executable. \
+        Always use ui launch to start desktop apps so they stay open when the turn ends or is stopped. \
+        It accepts an absolute executable or .desktop file path if the short name is unavailable.
         - \(run("ui tree"))   the focused window, one element per line with [ref=N]
         - \(run("ui click 12")), \(run("ui type 21 'hello' --enter")), \(run("ui key ctrl+l"))
         - \(run("ui screenshot"))   a small screenshot; \(look) to see it. Only when nothing else \
         shows what you need.
+        On a follow-up, check the current window first and continue in the app if it is already open. \
+        Leave open apps, windows, and sign-in prompts for the next turn unless the user asks you to close them.
 
         Example: to check something on a website, run web open https://example.com, then web \
         snapshot (or web read), then web click a link's ref and web snapshot again. Always call a \
-        tool right away; do not only plan. Every message starts with a [Screen now: ...] note: trust \
-        it over what you saw earlier, and look again with web snapshot before answering.
+        tool right away; do not only plan. Use the [Screen now: ...] note as a hint and verify the \
+        current app with ui tree or the current webpage with web snapshot.
 
-        Work step by step: after every action take a new web snapshot, because refs change when the \
-        page changes. If a command prints FAILED or an error, it did not happen: say so, or try \
+        Work step by step: after each action take a new ui tree or web snapshot, because refs change \
+        with the window or page. If a command prints FAILED or an error, it did not happen: say so, or try \
         another way, and never tell the user it worked. Before saying something was sent, posted or \
         saved, check with web snapshot that it really was. Only report what you actually saw; never \
         guess what a page says. When done, \
@@ -136,9 +144,8 @@ public enum AgentInstructions {
     }
 }
 
-/// The command that runs one Codex turn inside the guest, over SSH: `codex exec --json --oss`
-/// against Ollama (reached on the guest's loopback through the SSH tunnel). Codex has no system
-/// prompt flag; it reads AGENTS.md from its working directory, so the turn writes it first.
+/// The command that runs one Codex turn inside the guest, over SSH. Codex reads the instructions
+/// from AGENTS.md in its working directory, so the turn writes them first.
 public struct CodexCommand: Equatable, Sendable {
     public var prompt: String
     public var resume: String?
@@ -167,15 +174,20 @@ public struct CodexCommand: Equatable, Sendable {
         case .openRouter:
             ["-c", quote("model_provider=\"saige\""),
              "-c", quote(#"model_providers.saige={name="OpenRouter via Agent S",base_url="http://127.0.0.1:\#(guestPort)/v1",env_key="AGENT_S_PROXY_KEY",wire_api="responses"}"#)]
-        case .claudeAccount, .codexAccount:
+        case .codexAccount:
+            ["-c", quote("model_provider=\"openai\""), "-c", quote("forced_login_method=\"chatgpt\""),
+             "-c", quote("cli_auth_credentials_store=\"file\"")]
+        case .claudeAccount:
             []
         }
     }
 
     public var remoteShell: String {
-        guard !provider.usesAccount else { return "" }
-        let options = ["--json"] + providerOptions + [
-            "-m", quote(model),
+        guard provider != .claudeAccount else { return "" }
+        let usesAccount = provider == .codexAccount
+        var options = ["--json"] + providerOptions
+        if !usesAccount { options += ["-m", quote(model)] }
+        options += [
             // Codex's web search goes to Ollama's cloud in --oss mode (needs an Ollama account) and
             // tempts the model to answer from search instead of the screen.
             "-c", quote("web_search=\"disabled\""),
@@ -186,9 +198,12 @@ public struct CodexCommand: Equatable, Sendable {
         // Options go before `resume`: `codex exec resume` rejects them after it.
         var codex = ["codex", "exec"] + options
         if let resume { codex += ["resume", quote(resume)] }
+        if usesAccount { codex.append("--") }
         codex.append(quote(prompt))
+        let environment = usesAccount ? SandboxAccount.profileEnvironment(for: provider) + "DISPLAY=:0 "
+            : "DISPLAY=:0 AGENT_S_PROXY_KEY=\(quote(apiKey)) "
         return "cd ~/work && printf '%s\\n' \(quote(AgentInstructions.text(for: .codex))) > AGENTS.md && "
-            + "DISPLAY=:0 AGENT_S_PROXY_KEY=\(quote(apiKey)) " + codex.joined(separator: " ") + " </dev/null"
+            + environment + codex.joined(separator: " ") + " </dev/null"
     }
 
     public func quote(_ value: String) -> String {

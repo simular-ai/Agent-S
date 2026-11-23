@@ -2,7 +2,7 @@ import Foundation
 
 /// The command that runs one Claude Code turn inside the guest, over SSH.
 ///
-/// The guest reaches the host's Ollama endpoint or OpenRouter proxy through the SSH tunnel.
+/// The guest uses its own Claude Code sign-in or reaches Ollama or OpenRouter through the host.
 /// Permissions are bypassed: the guest is a throwaway VM with only the shared folder and the web,
 /// which is the isolation that makes that acceptable.
 public struct ClaudeCommand: Equatable, Sendable {
@@ -41,22 +41,28 @@ public struct ClaudeCommand: Equatable, Sendable {
 
     /// The remote shell line, every value single-quoted for the guest's shell.
     public var remoteShell: String {
-        let env = [
-            "DISPLAY=:0",
-            "ANTHROPIC_BASE_URL=\(quote(ollamaURL))",
-            "ANTHROPIC_AUTH_TOKEN=\(quote(apiKey))",
-            "ANTHROPIC_API_KEY=''",
-            "ANTHROPIC_MODEL=\(quote(model))",
-            "ANTHROPIC_DEFAULT_HAIKU_MODEL=\(quote(model))",
-            "CLAUDE_CODE_MAX_CONTEXT_TOKENS=\(contextTokens)",
-            // Claude Code keeps room for a full answer out of the window. Its default (~32K) uses up
-            // the whole local window, so it compacted every few steps ("autocompact is thrashing").
-            "CLAUDE_CODE_MAX_OUTPUT_TOKENS=\(maxOutputTokens)",
-            "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
-            "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1",
-        ]
-        var args = [
-            "claude", "-p", quote(prompt),
+        guard provider != .codexAccount else { return "" }
+        let usesAccount = provider == .claudeAccount
+        var env = ["DISPLAY=:0"]
+        if usesAccount {
+            env.append("ENABLE_TOOL_SEARCH=false")
+        } else {
+            env += [
+                "ANTHROPIC_BASE_URL=\(quote(ollamaURL))",
+                "ANTHROPIC_AUTH_TOKEN=\(quote(apiKey))",
+                "ANTHROPIC_API_KEY=''",
+                "ANTHROPIC_MODEL=\(quote(model))",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL=\(quote(model))",
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS=\(contextTokens)",
+                // Claude Code keeps room for a full answer out of the window. Its default (~32K)
+                // uses up the whole local window and can force frequent compaction.
+                "CLAUDE_CODE_MAX_OUTPUT_TOKENS=\(maxOutputTokens)",
+                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
+                "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1",
+            ]
+        }
+        var args = usesAccount ? ["claude", "-p"] : ["claude", "-p", quote(prompt)]
+        args += [
             "--output-format", "stream-json", "--verbose", "--include-partial-messages",
             "--permission-mode", "bypassPermissions",
             // A small request: Claude Code's default prompt, its full tool set, skills and MCP add
@@ -67,9 +73,14 @@ public struct ClaudeCommand: Equatable, Sendable {
             "--disable-slash-commands",
             "--strict-mcp-config",
         ]
+        if usesAccount {
+            args += ["--no-chrome", "--setting-sources", quote(""), "--settings", quote(ModelProvider.claudeAccountSettings)]
+        }
         if let resume { args += ["--resume", quote(resume)] }
+        if usesAccount { args += ["--", quote(prompt)] }
         // Codex's AGENTS.md (from a Codex turn) would add stale instructions; this prompt is the whole brief.
-        return "cd ~/work && rm -f AGENTS.md && " + (env + args).joined(separator: " ")
+        return "cd ~/work && rm -f AGENTS.md && " + SandboxAccount.profileEnvironment(for: provider)
+            + (env + args).joined(separator: " ")
     }
 
     /// POSIX single quotes: everything literal, an embedded `'` closed, escaped and reopened.

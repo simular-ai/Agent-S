@@ -135,27 +135,30 @@ private final class CodexConnection {
     private let process = Process()
     private let input = Pipe()
     private let output = Pipe()
-    private let continuation: AsyncStream<String>.Continuation
-    private var lines: AsyncStream<String>.Iterator
-    private var queued: [[String: Any]] = []
+    private let lineContinuation: AsyncStream<String>.Continuation
+    private let eventContinuation: AsyncStream<[String: Any]>.Continuation
+    private var events: AsyncStream<[String: Any]>.Iterator
+    private var pending: [Int: CheckedContinuation<[String: Any], Error>] = [:]
     private var lastID = 0
     private var closed = false
 
     init(executable: URL, profile: URL, home: URL, inference: CodexInference) throws {
-        let stream = AsyncStream<String>.makeStream()
-        continuation = stream.continuation
-        lines = stream.stream.makeAsyncIterator()
+        let lines = AsyncStream<String>.makeStream()
+        let messages = AsyncStream<[String: Any]>.makeStream()
+        lineContinuation = lines.continuation
+        eventContinuation = messages.continuation
+        events = messages.stream.makeAsyncIterator()
         // A server that exits during a write should report EPIPE rather than terminate Agent S.
         guard fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1) == 0 else {
             throw CodexFailure("Couldn’t open the Codex connection.")
         }
-        let reader = LineReader { line in stream.continuation.yield(line) }
+        let reader = LineReader { line in lines.continuation.yield(line) }
         output.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
             if data.isEmpty {
                 handle.readabilityHandler = nil
                 reader.flush()
-                stream.continuation.finish()
+                lines.continuation.finish()
             } else {
                 reader.feed(data)
             }
@@ -182,6 +185,11 @@ private final class CodexConnection {
             close()
             throw error
         }
+        // Keep receiving replies while the turn is waiting for a tool or a Mac approval.
+        Task { @MainActor [weak self] in
+            for await line in lines.stream { self?.receive(line) }
+            self?.close()
+        }
     }
 
     func initialize() async throws {
@@ -193,47 +201,53 @@ private final class CodexConnection {
     }
 
     func request(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
-        let timeout = Task { @MainActor in
-            try await Task.sleep(for: .seconds(20))
-            close()
-        }
-        defer { timeout.cancel() }
         lastID += 1
         let id = lastID
-        try write(["id": id, "method": method, "params": params])
-        while true {
-            let message = try await read()
-            if message["method"] != nil {
-                queued.append(message)
-                continue
+        let timeout = Task { @MainActor [weak self] in
+            try await Task.sleep(for: .seconds(20))
+            self?.resolve(id, with: .failure(CodexFailure("Codex didn’t respond to \(method).")))
+        }
+        defer { timeout.cancel() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { reply in
+                pending[id] = reply
+                do { try write(["id": id, "method": method, "params": params]) }
+                catch { resolve(id, with: .failure(error)) }
             }
-            guard message["id"] as? Int == id else { continue }
-            if let error = message["error"] as? [String: Any], let reason = error["message"] as? String {
-                throw CodexFailure(String(reason.prefix(400)))
-            }
-            guard let result = message["result"] as? [String: Any] else {
-                throw CodexFailure("Codex returned an invalid response.")
-            }
-            return result
+        } onCancel: {
+            Task { @MainActor [weak self] in self?.resolve(id, with: .failure(CancellationError())) }
         }
     }
 
     func next() async throws -> [String: Any] {
-        if !queued.isEmpty { return queued.removeFirst() }
-        return try await read()
+        // A single consumer handles notifications and server tool requests in their original order.
+        var iterator = events
+        let message = await iterator.next()
+        events = iterator
+        try Task.checkCancellation()
+        guard let message else {
+            throw CodexFailure("The Codex connection closed before it finished.")
+        }
+        return message
     }
 
-    private func read() async throws -> [String: Any] {
-        var iterator = lines
-        while let line = await iterator.next() {
-            try Task.checkCancellation()
-            if let message = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] {
-                lines = iterator
-                return message
+    private func receive(_ line: String) {
+        guard !closed, let message = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return }
+        if message["method"] != nil {
+            eventContinuation.yield(message)
+        } else if let id = message["id"] as? Int {
+            if let error = message["error"] as? [String: Any], let reason = error["message"] as? String {
+                resolve(id, with: .failure(CodexFailure(String(reason.prefix(400)))))
+            } else if let result = message["result"] as? [String: Any] {
+                resolve(id, with: .success(result))
+            } else {
+                resolve(id, with: .failure(CodexFailure("Codex returned an invalid response.")))
             }
         }
-        try Task.checkCancellation()
-        throw CodexFailure("The Codex connection closed before it finished.")
+    }
+
+    private func resolve(_ id: Int, with result: Result<[String: Any], Error>) {
+        pending.removeValue(forKey: id)?.resume(with: result)
     }
 
     func write(_ message: [String: Any]) throws {
@@ -244,11 +258,17 @@ private final class CodexConnection {
         try input.fileHandleForWriting.write(contentsOf: data)
     }
 
-    func close() {
+    func close(pendingError: Error = CodexFailure("The Codex connection closed before it finished.")) {
         guard !closed else { return }
         closed = true
         output.fileHandleForReading.readabilityHandler = nil
-        continuation.finish()
+        lineContinuation.finish()
+        eventContinuation.finish()
+        let waiting = pending.values
+        pending.removeAll()
+        for reply in waiting {
+            reply.resume(throwing: pendingError)
+        }
         try? input.fileHandleForWriting.close()
         if process.isRunning { process.terminate() }
     }
@@ -258,6 +278,7 @@ private final class CodexConnection {
 @MainActor
 final class CodexAccountTurn {
     private var connection: CodexConnection?
+    private var steering: (threadID: String, turnID: String, setReady: (Bool) -> Void)?
     private let macCommand = HarnessMacCommand()
     private var stopped = false
 
@@ -274,27 +295,34 @@ final class CodexAccountTurn {
     }
 
     func run(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
-             approve: @escaping (String) async -> Bool, onEvent: @escaping (ClaudeEvent) -> Void) async throws {
+             approve: @escaping (String) async -> Bool, onSteeringReady: @escaping (Bool) -> Void = { _ in },
+             onEvent: @escaping (ClaudeEvent) -> Void) async throws {
         try await run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: agentID,
-                      inference: .account, target: .mac(approve: approve), onEvent: onEvent)
+                      inference: .account, target: .mac(approve: approve), onSteeringReady: onSteeringReady, onEvent: onEvent)
     }
 
     func runOnBox(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
                   model: String, provider: ModelProvider, baseURL: String, apiKey: String,
-                  boxName: String?, onEvent: @escaping (ClaudeEvent) -> Void) async throws {
+                  boxName: String?, onSteeringReady: @escaping (Bool) -> Void = { _ in },
+                  onEvent: @escaping (ClaudeEvent) -> Void) async throws {
         try checkRunning()
         let inference = try CodexInference(provider: provider, baseURL: baseURL, model: model, apiKey: apiKey)
         let tools = try await CodexBoxTools.load(boxName: boxName)
         try await run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: agentID,
-                      inference: inference, target: .box(tools), onEvent: onEvent)
+                      inference: inference, target: .box(tools), onSteeringReady: onSteeringReady, onEvent: onEvent)
     }
 
     private func run(prompt: String, resume: String?, dataFolder: URL, agentID: UUID,
-                     inference: CodexInference, target: Target, onEvent: (ClaudeEvent) -> Void) async throws {
+                     inference: CodexInference, target: Target, onSteeringReady: @escaping (Bool) -> Void,
+                     onEvent: (ClaudeEvent) -> Void) async throws {
         try checkRunning()
         let connection = try CodexAccount.connect(dataFolder: dataFolder, inference: inference)
         self.connection = connection
-        defer { connection.close(); self.connection = nil }
+        defer {
+            clearSteering()
+            connection.close()
+            self.connection = nil
+        }
         try await connection.initialize()
         if case .account = inference, try await CodexAccount.accountPlan(on: connection) == nil {
             throw CodexFailure("Sign in to Codex in Agent Settings.")
@@ -315,6 +343,9 @@ final class CodexAccountTurn {
             throw CodexFailure("Codex didn’t start a turn.")
         }
         onEvent(.started(sessionId: thread.id, model: thread.model))
+        try checkRunning()
+        steering = (thread.id, turnID, onSteeringReady)
+        onSteeringReady(true)
         while true {
             let message = try await connection.next()
             try checkRunning()
@@ -399,9 +430,31 @@ final class CodexAccountTurn {
         return (id, response["model"] as? String)
     }
 
+    func steer(_ prompt: String) async throws {
+        try checkRunning()
+        guard let steering, let connection else {
+            throw CodexFailure("The Codex turn is no longer available for steering.")
+        }
+        let result = try await connection.request("turn/steer", [
+            "threadId": steering.threadID,
+            "expectedTurnId": steering.turnID,
+            "input": [["type": "text", "text": prompt, "text_elements": []]],
+        ])
+        guard result["turnId"] as? String == steering.turnID else {
+            throw CodexFailure("Codex did not acknowledge steering for this turn.")
+        }
+    }
+
+    private func clearSteering() {
+        let setReady = steering?.setReady
+        steering = nil
+        setReady?(false)
+    }
+
     func stop() {
         stopped = true
-        connection?.close()
+        clearSteering()
+        connection?.close(pendingError: CancellationError())
         macCommand.stop()
     }
 

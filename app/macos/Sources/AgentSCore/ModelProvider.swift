@@ -1,7 +1,7 @@
 import Foundation
 
 /// How an agent reaches its model. Account providers let the official harness manage sign-in
-/// and model selection on the Mac.
+/// and model selection in its own profile.
 public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable {
     case ollama
     case openRouter = "openrouter"
@@ -24,11 +24,10 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     /// The available routes depend on both where tools run and which harness controls them.
     public static func allowed(in privacy: PrivacyMode, harness: Harness, computer: CloudComputer?) -> [Self] {
         guard Harness.allowed(in: privacy, computer: computer).contains(harness) else { return [] }
-        if privacy.usesLocalComputer { return privacy.providers }
         switch harness {
-        case .claudeCode: return [.ollama, .openRouter, .claudeAccount]
-        case .codex: return privacy == .thisMac ? [.codexAccount] : [.ollama, .openRouter, .codexAccount]
-        case .deepSeek: return [.ollama, .openRouter]
+        case .claudeCode: return privacy.providers.filter { $0 != .codexAccount }
+        case .codex: return privacy == .thisMac ? [.codexAccount] : privacy.providers.filter { $0 != .claudeAccount }
+        case .deepSeek: return privacy.providers.filter { !$0.usesAccount }
         case .sai: return []
         }
     }
@@ -136,7 +135,7 @@ public enum AgentLocation: String, CaseIterable, Identifiable, Sendable {
 
     public func mode(for provider: ModelProvider) -> PrivacyMode {
         switch self {
-        case .linuxVM: provider == .openRouter ? .localVM : .fullyPrivate
+        case .linuxVM: provider == .ollama ? .fullyPrivate : .localVM
         case .thisMac: .thisMac
         case .cloud: .remote
         }
@@ -166,7 +165,7 @@ public enum PrivacyMode: String, CaseIterable, Identifiable, Codable, Sendable {
     public var providers: [ModelProvider] {
         switch self {
         case .fullyPrivate: [.ollama]
-        case .localVM: [.openRouter]
+        case .localVM: [.openRouter, .claudeAccount, .codexAccount]
         case .thisMac, .remote: ModelProvider.allCases
         }
     }

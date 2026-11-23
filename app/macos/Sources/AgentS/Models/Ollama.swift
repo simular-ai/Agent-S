@@ -27,8 +27,11 @@ struct Ollama {
         return json["version"] as? String
     }
 
-    static func models() async -> [Model] {
-        guard let (data, _) = try? await URLSession.shared.data(from: base.appendingPathComponent("api/tags")) else { return [] }
+    static func models(timeout: TimeInterval = 60) async -> [Model] {
+        var request = URLRequest(url: base.appendingPathComponent("api/tags"))
+        request.timeoutInterval = timeout
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        guard let (data, _) = try? await URLSession.shared.data(for: request) else { return [] }
         return parseModels(data)
     }
 

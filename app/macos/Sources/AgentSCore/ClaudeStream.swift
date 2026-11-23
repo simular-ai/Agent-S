@@ -4,6 +4,8 @@ import Foundation
 public enum ClaudeEvent: Equatable, Sendable {
     /// The session started; `--resume` this id to continue the conversation.
     case started(sessionId: String, model: String?)
+    case steeringReady
+    case steeringResult(id: String, accepted: Bool)
     /// Words for the user.
     case text(String)
     case textDelta(id: String, text: String)

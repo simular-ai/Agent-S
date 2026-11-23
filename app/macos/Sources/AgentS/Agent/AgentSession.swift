@@ -64,17 +64,28 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var kind: Kind
     var text: String
     var toolInput: String? = nil
+    var isSteering: Bool? = nil
+
+    var isBlankAssistantMessage: Bool {
+        kind == .agent && text.allSatisfy(\.isWhitespace)
+    }
 }
 
 /// One agent: its definition, its conversation, and its harness context. A turn is one SSH process
 /// (or one Sai API call), continued with the harness's resume so the agent keeps its context.
-/// Each harness keeps its own session; switching harness mid-chat starts a fresh one for it.
+/// Each computer and inference route keeps its own native continuation.
 @MainActor
 final class AgentSession: ObservableObject, Identifiable {
     @Published var config: AgentConfig { didSet { onChange?() } }
     @Published private(set) var items: [ChatItem] = []
     @Published private(set) var isRunning = false
+    @Published private(set) var canSteer = false
+    @Published private(set) var isSendingSteering = false
+    @Published private(set) var memory = AgentMemory()
+    @Published private(set) var memoryError: String?
+    @Published private(set) var memorySourceRequest: MemorySourceRequest?
     @Published private(set) var sessions: [Harness: String] = [:]
+    @Published private var sandboxSessions: [String: String] = [:]
     private var accountSessions: [ModelProvider: String] = [:]
     private var boxSessions: [String: String] = [:]
     /// Called when something worth saving changed (the definition, or a finished turn).
@@ -90,28 +101,44 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     convenience init(saved: SavedAgent) {
-        let sessions = Dictionary(uniqueKeysWithValues: saved.sessions.compactMap { key, value in
+        let stored = SandboxSessions.migrating(saved.sessions, from: saved.config.privacy)
+        let sessions = Dictionary(uniqueKeysWithValues: stored.compactMap { key, value in
             Harness(rawValue: key).map { ($0, value) }
         })
         // A turn that was running when the app quit isn't running now.
         self.init(config: saved.config.enforcingPrivacy, items: saved.items, sessions: sessions)
+        sandboxSessions = stored.filter { $0.key.hasPrefix(SandboxSessions.prefix) }
         for provider in ModelProvider.allCases where provider.usesAccount {
-            accountSessions[provider] = saved.sessions[provider.rawValue]
+            accountSessions[provider] = stored[provider.rawValue]
         }
-        boxSessions = saved.sessions.filter { $0.key.hasPrefix("box/") }
+        boxSessions = stored.filter { $0.key.hasPrefix("box/") }
     }
 
     var saved: SavedAgent {
         var savedSessions = Dictionary(uniqueKeysWithValues: sessions.map { ($0.key.rawValue, $0.value) })
+        for (key, id) in sandboxSessions { savedSessions[key] = id }
         for (provider, id) in accountSessions { savedSessions[provider.rawValue] = id }
         for (key, id) in boxSessions { savedSessions[key] = id }
         return SavedAgent(config: config, items: items, sessions: savedSessions)
     }
 
     var currentSessionID: String? {
+        if config.usesLocalComputer {
+            return sandboxSessions[SandboxSessions.key(harness: config.harness, provider: config.provider)]
+        }
         if let key = boxSessionKey { return boxSessions[key] }
         if config.harness != .sai, config.provider.usesAccount { return accountSessions[config.provider] }
         return sessions[config.harness]
+    }
+
+    func currentSessionID(for route: AgentMemoryRoute) -> String? {
+        memorySessions[route.continuationKey]
+    }
+
+    private func resumeOnRoute(_ route: AgentMemoryRoute?, legacy: @autoclosure () -> String?) -> String? {
+        // Older continuations were not bound to an exact computer and inference route.
+        guard let route else { return legacy() }
+        return currentSessionID(for: route)
     }
 
     private var boxSessionKey: String? {
@@ -121,7 +148,8 @@ final class AgentSession: ObservableObject, Identifiable {
 
     /// The last thing said, for the sidebar.
     var lastLine: String? {
-        items.last(where: { $0.kind == .agent || $0.kind == .user })?.text.replacingOccurrences(of: "\n", with: " ")
+        let item = items.last { $0.kind == .user || ($0.kind == .agent && !$0.isBlankAssistantMessage) }
+        return item?.text.replacingOccurrences(of: "\n", with: " ")
     }
     /// Tokens the last turn used, and which harness ran it.
     @Published private(set) var lastUsage: (input: Int, output: Int)?
@@ -131,44 +159,255 @@ final class AgentSession: ObservableObject, Identifiable {
     private var turn = UUID().uuidString
     private var process: Process?
     private var activeAccountProvider: ModelProvider?
+    private var submitSteering: ((String) async throws -> Void)?
+    private var deepSeekSteering: DeepSeekSteering?
+    private var memoryStore: AgentMemoryStore?
+    private var memoryLoaded = false
+    private var memoryTurn: MemoryTurn?
+    @Published private var memorySessions: [String: String] = [:]
+    private var activeMemoryRoute: AgentMemoryRoute?
+    private var activeMemorySessionInvalidated = false
+    private var activeSaiSessionID: String?
+
+    struct MemorySourceRequest: Equatable {
+        let itemID: String
+        private let requestID = UUID()
+    }
+
+    private struct MemoryTurn {
+        var wire: MemoryWire
+        let route: AgentMemoryRoute
+        let revision: UUID
+        let source: String
+        var canCommit = true
+    }
+
+    func attachMemory(dataFolder: URL) {
+        let store = AgentMemoryStore(dataFolder: dataFolder, agentID: id)
+        memoryStore = store
+        do {
+            let document = try store.load()
+            memory = document.notes
+            memorySessions = document.sessions
+            memoryLoaded = true
+        } catch {
+            memoryError = "Couldn't read this agent's memory. \(error.localizedDescription)"
+        }
+    }
+
+    func deleteSavedMemory() throws {
+        try memoryStore?.delete()
+        memoryStore = nil
+        memoryLoaded = false
+        memoryTurn?.canCommit = false
+    }
+
+    func revealMemorySource(_ itemID: String) {
+        guard items.contains(where: { $0.id == itemID }) else { return }
+        memorySourceRequest = MemorySourceRequest(itemID: itemID)
+    }
+
+    func saveMemoryNote(id: UUID?, kind: AgentMemoryKind, text: String, route: AgentMemoryRoute?,
+                        keepPrivate: Bool = false) throws {
+        try editMemory(invalidatingContinuationFor: id) { noteBook in
+            let now = Date()
+            let edited = try noteBook.saveUserNote(id: id, kind: kind, text: text, route: route, now: now)
+            guard keepPrivate, let id else { return edited }
+            let scopeChanged = try noteBook.setScope(.private, id: id, now: now)
+            return edited || scopeChanged
+        }
+    }
+
+    func shareMemoryNote(id: UUID, with route: AgentMemoryRoute) throws {
+        try editMemory(invalidatingContinuationFor: id) { try $0.setScope(.route(route), id: id, now: Date()) }
+    }
+
+    func keepMemoryNotePrivate(id: UUID) throws {
+        try editMemory(invalidatingContinuationFor: id) { try $0.setScope(.private, id: id, now: Date()) }
+    }
+
+    func setMemoryPinned(_ pinned: Bool, id: UUID) throws {
+        try editMemory { $0.setPinned(pinned, id: id, now: Date()) }
+    }
+
+    func setMemoryStatus(_ status: AgentMemoryStatus, id: UUID) throws {
+        try editMemory { $0.setStatus(status, id: id, now: Date()) }
+    }
+
+    func forgetMemoryNote(id: UUID) throws {
+        try editMemory(invalidatingContinuationFor: id) { $0.forget(id: id) }
+    }
+
+    private struct MemoryUnavailable: LocalizedError {
+        var errorDescription: String? { "This agent's memory is unavailable." }
+    }
+
+    private func editMemory(invalidatingContinuationFor id: UUID? = nil, _ change: (inout AgentMemory) throws -> Bool) throws {
+        guard memoryLoaded, let memoryStore, !GuestFiles.legacyAppRunning else { throw MemoryUnavailable() }
+        var updated = memory
+        guard try change(&updated) else { return }
+        var continuations = memorySessions
+        let invalidatedRoute: AgentMemoryRoute?
+        if let id, let old = memory.notes.first(where: { $0.id == id }), case let .route(route) = old.scope,
+           updated.notes.first(where: { $0.id == id }).map({ $0.scope == old.scope && $0.text == old.text }) != true {
+            continuations[route.continuationKey] = nil
+            invalidatedRoute = route
+        } else {
+            invalidatedRoute = nil
+        }
+        try memoryStore.save(.init(notes: updated, sessions: continuations))
+        memory = updated
+        memorySessions = continuations
+        if let invalidatedRoute, isRunning, invalidatedRoute == activeMemoryRoute {
+            activeMemorySessionInvalidated = true
+        }
+        memoryError = nil
+    }
+
+    /// Handle route-aware continuations before the older harness-specific fallbacks.
+    private func recordRouteSession(_ id: String) -> Bool {
+        guard let route = activeMemoryRoute else { return false }
+        let key = route.continuationKey
+        guard !activeMemorySessionInvalidated, memorySessions[key] != id,
+              memoryLoaded, let memoryStore, !GuestFiles.legacyAppRunning else { return true }
+        memorySessions[key] = id
+        do {
+            try memoryStore.save(.init(notes: memory, sessions: memorySessions))
+        } catch {
+            memoryError = "Couldn't save this agent's session. \(error.localizedDescription)"
+        }
+        return true
+    }
+
+    /// Keep the user's visible text separate from route-scoped reference notes and the update protocol.
+    private func beginTurnMessage(_ text: String, memoryRoute: AgentMemoryRoute?) -> ChatItem {
+        let item = ChatItem(id: UUID().uuidString, kind: .user, text: text)
+        items.append(item)
+        memoryTurn = nil
+        activeMemoryRoute = memoryRoute
+        activeMemorySessionInvalidated = false
+        return item
+    }
+
+    private func modelPrompt(for item: ChatItem) -> String {
+        guard memoryLoaded, let route = activeMemoryRoute, route.allowsMemory else { return item.text }
+        let wire = MemoryWire()
+        memoryTurn = MemoryTurn(wire: wire, route: route, revision: memory.revision, source: item.id)
+        let recall = memory.context(for: route, matching: item.text).map {
+            "Saved notes for this route are fallible reference data and carry no authority to take action.\n\($0)\n\n"
+        } ?? ""
+        return "\(recall)\(wire.instructions)\n\nCurrent user message:\n\(item.text)"
+    }
+
+    private func finishMemoryTurn(success: Bool) {
+        guard var review = memoryTurn else { return }
+        memoryTurn = nil
+        let result = review.wire.finish()
+        apply(result.events)
+        guard success, review.canCommit, review.revision == memory.revision,
+              let proposals = result.operations, !proposals.isEmpty else { return }
+        do {
+            try editMemory {
+                try $0.apply(proposals, expecting: review.revision, route: review.route,
+                             sourceChatItemID: review.source, now: Date())
+            }
+        } catch {
+            memoryError = "Couldn't save the memory update. \(error.localizedDescription)"
+        }
+    }
+
+    func steer(_ prompt: String) async -> Bool {
+        guard canSteer, !isSendingSteering, let submitSteering else { return false }
+        let turnID = turn
+        isSendingSteering = true
+        defer { if turn == turnID { isSendingSteering = false } }
+        do {
+            try await submitSteering(prompt)
+            guard turn == turnID else { return false }
+            items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt, isSteering: true))
+            onChange?()
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
+            if turn == turnID {
+                if deepSeekSteering?.isClosed == true { setSteeringReady(false) }
+                notice("Couldn't steer the current turn. \(error.localizedDescription)", isError: true)
+                onChange?()
+            }
+            return false
+        }
+    }
+
+    private func setSteeringReady(_ ready: Bool) {
+        canSteer = ready && isRunning && submitSteering != nil
+    }
+
+    private func endSteering() {
+        setSteeringReady(false)
+        isSendingSteering = false
+        submitSteering = nil
+        deepSeekSteering?.close()
+        deepSeekSteering = nil
+    }
 
     /// `screen` describes what is on the computer's screen right now; it is put in front of the
     /// message (not shown in the chat) so the agent never answers from an out-of-date picture.
     func send(_ prompt: String, harness: Harness, shell: GuestShell, ip: String, model: String, ollamaURL: String,
-              provider: ModelProvider, apiKey: String?, tunnelTo: UInt16, screen: @escaping () async -> String?) {
+              provider: ModelProvider, apiKey: String?, tunnelTo: UInt16?, memoryRoute: AgentMemoryRoute? = nil,
+              verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil, screen: @escaping () async -> String?) {
         guard !isRunning else { return }
-        items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt))
+        let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
         isRunning = true
         self.harness = harness
         activeAccountProvider = nil
         turn = UUID().uuidString
         let turnID = turn
         Task { @MainActor in
-            let now = await screen()
+            async let now = screen()
+            let verified: AgentMemoryRoute? = if let memoryRoute, let verifyRoute { await verifyRoute(memoryRoute) } else { memoryRoute }
+            let screen = await now
             guard turn == turnID, isRunning else { return }
-            let message = now.map { "[\($0)]\n\n\(prompt)" } ?? prompt
+            activeMemoryRoute = verified
+            let promptForModel = modelPrompt(for: item)
+            let message = screen.map { "[\($0)]\n\n\(promptForModel)" } ?? promptForModel
             start(message, harness: harness, shell: shell, ip: ip, model: model, ollamaURL: ollamaURL,
                   provider: provider, apiKey: apiKey, tunnelTo: tunnelTo)
         }
     }
 
     private func start(_ prompt: String, harness: Harness, shell: GuestShell, ip: String, model: String, ollamaURL: String,
-                       provider: ModelProvider, apiKey: String?, tunnelTo: UInt16) {
+                       provider: ModelProvider, apiKey: String?, tunnelTo: UInt16?) {
         guard isRunning else { return } // stopped while the screen was being read
-        let command = harness.remoteShell(prompt: prompt, resume: sessions[harness], model: model, ollamaURL: ollamaURL,
-                                          provider: provider, apiKey: apiKey)
+        let sessionKey = SandboxSessions.key(harness: harness, provider: provider)
+        let steering = harness == .deepSeek ? DeepSeekSteering() : nil
+        let resume = resumeOnRoute(activeMemoryRoute, legacy: sandboxSessions[sessionKey])
+        let command = harness.remoteShell(prompt: prompt, resume: resume, model: model, ollamaURL: ollamaURL,
+                                          provider: provider, apiKey: apiKey, allowsSteering: steering != nil)
+        guard !command.isEmpty else {
+            notice("This harness and provider combination is unavailable in the sandbox.", isError: true)
+            finishMemoryTurn(success: false)
+            isRunning = false
+            onChange?()
+            return
+        }
         do {
-            let (process, output) = try shell.stream(command, on: ip, tunnelTo: tunnelTo)
+            let (process, output) = try shell.stream(command, on: ip, tunnelTo: tunnelTo, standardInput: steering?.input)
             self.process = process
-            read(output, harness: harness, turnID: turn, inApp: false)
+            deepSeekSteering = steering
+            submitSteering = steering.map { $0.send }
+            read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey)
         } catch {
             notice("Couldn't reach the computer: \(error.localizedDescription)", isError: true)
+            finishMemoryTurn(success: false)
             isRunning = false
             onChange?()
         }
     }
 
     func stop() {
+        memoryTurn?.canCommit = false
+        endSteering()
         // The guest turn may still be reading the screen before it launches SSH.
         if isRunning, process == nil, appProcess == nil, hostedTask == nil, saiTask == nil {
             turn = UUID().uuidString
@@ -183,7 +422,7 @@ final class AgentSession: ObservableObject, Identifiable {
         denyPendingApprovals()
         if let saiTask {
             saiTask.cancel()
-            if let session = sessions[.sai] { Task { await SaiAPI.abort(session: session) } }
+            if let session = activeSaiSessionID { Task { await SaiAPI.abort(session: session) } }
         }
     }
 
@@ -191,15 +430,19 @@ final class AgentSession: ObservableObject, Identifiable {
 
     /// Runs one turn of Claude Code on the Mac for a box agent: no built-in tools, box's MCP only,
     /// its own config folder; the box key passes through the environment only.
-    func sendOnBox(_ prompt: String, command: BoxClaudeCommand, claude: URL, boxToken: String, dataFolder: URL) {
+    func sendOnBox(_ prompt: String, command: BoxClaudeCommand, claude: URL, boxToken: String, dataFolder: URL,
+                   memoryRoute: AgentMemoryRoute? = nil) {
         guard !isRunning else { return }
         var command = command
         let usesAccount = command.provider == .claudeAccount
-        command.resume = usesAccount ? accountSessions[.claudeAccount] : sessions[.claudeCode]
+        let legacyResume = usesAccount ? accountSessions[.claudeAccount] : sessions[.claudeCode]
         let folder = dataFolder.appendingPathComponent("box-agents/\(config.id.uuidString)", isDirectory: true)
         let mcp = folder.appendingPathComponent("mcp.json")
         runClaudeInApp(prompt, claude: claude, folder: folder, provider: command.provider,
-                       accountProfile: usesAccount ? ClaudeAccount.profile(in: dataFolder) : nil, prepare: { configDir in
+                       accountProfile: usesAccount ? ClaudeAccount.profile(in: dataFolder) : nil,
+                       memoryRoute: memoryRoute, legacyResume: legacyResume, prepare: { configDir, promptForModel, resume in
+            command.prompt = promptForModel
+            command.resume = resume
             try Data(Box.mcpConfig.utf8).write(to: mcp, options: .atomic)
             return (command.arguments(mcpConfigPath: mcp.path),
                     command.environment(home: FileManager.default.homeDirectoryForCurrentUser.path,
@@ -213,11 +456,12 @@ final class AgentSession: ObservableObject, Identifiable {
 
     /// Account turns use the app's Mac tool. Proxy turns keep Claude's existing approval hook.
     func sendOnMac(_ prompt: String, command: MacClaudeCommand, claude: URL, dataFolder: URL, settingsPath: String,
-                   path: String, approvalPort: UInt16, approvalToken: String) {
+                   path: String, approvalPort: UInt16, approvalToken: String, memoryRoute: AgentMemoryRoute? = nil,
+                   verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
         guard !isRunning else { return }
         var command = command
         let usesAccount = command.provider == .claudeAccount
-        command.resume = usesAccount ? accountSessions[.claudeAccount] : sessions[.claudeCode]
+        let legacyResume = usesAccount ? accountSessions[.claudeAccount] : sessions[.claudeCode]
         allowRestOfTurn = false
         let folder = dataFolder.appendingPathComponent("mac-agents/\(config.id.uuidString)", isDirectory: true)
         let mcpConfig = usesAccount ? folder.appendingPathComponent("mac-tools.json") : nil
@@ -225,7 +469,10 @@ final class AgentSession: ObservableObject, Identifiable {
         runClaudeInApp(prompt, claude: claude, folder: folder, provider: command.provider,
                        accountProfile: usesAccount ? ClaudeAccount.profile(in: dataFolder) : nil,
                        workingDirectory: usesAccount ? nil : FileManager.default.homeDirectoryForCurrentUser,
-                       prepare: { configDir in
+                       memoryRoute: memoryRoute, legacyResume: legacyResume, verifyRoute: verifyRoute,
+                       prepare: { configDir, promptForModel, resume in
+            command.prompt = promptForModel
+            command.resume = resume
             var environment = command.environment(home: FileManager.default.homeDirectoryForCurrentUser.path,
                                                   configDir: configDir.path, path: path,
                                                   approvalPort: approvalPort, approvalToken: approvalToken)
@@ -331,19 +578,43 @@ final class AgentSession: ObservableObject, Identifiable {
     /// shouldn't have.
     private func runClaudeInApp(_ prompt: String, claude: URL, folder: URL, provider: ModelProvider,
                                 accountProfile: URL?, workingDirectory: URL? = nil,
-                                prepare: (URL) throws -> ([String], [String: String]),
+                                memoryRoute: AgentMemoryRoute?, legacyResume: String?,
+                                verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil,
+                                prepare: @escaping (URL, String, String?) throws -> ([String], [String: String]),
                                 toolsAllowed: @escaping @Sendable ([String]) -> Bool, toolsRule: String) {
-        items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt))
+        let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
         isRunning = true
         harness = .claudeCode
         activeAccountProvider = provider.usesAccount ? provider : nil
         turn = UUID().uuidString
         let turnID = turn
+        let launch = { [self] in
+            guard turn == turnID, isRunning else { return }
+            let resume = resumeOnRoute(activeMemoryRoute, legacy: legacyResume)
+            startClaudeInApp(modelPrompt(for: item), resume: resume, claude: claude, folder: folder,
+                             accountProfile: accountProfile, workingDirectory: workingDirectory, prepare: prepare,
+                             toolsAllowed: toolsAllowed, toolsRule: toolsRule, turnID: turnID)
+        }
+        if let verifyRoute, let memoryRoute {
+            Task { @MainActor in
+                let verified = await verifyRoute(memoryRoute)
+                guard turn == turnID, isRunning else { return }
+                activeMemoryRoute = verified
+                launch()
+            }
+        } else {
+            launch()
+        }
+    }
+
+    private func startClaudeInApp(_ prompt: String, resume: String?, claude: URL, folder: URL, accountProfile: URL?,
+                                  workingDirectory: URL?, prepare: (URL, String, String?) throws -> ([String], [String: String]),
+                                  toolsAllowed: @escaping @Sendable ([String]) -> Bool, toolsRule: String, turnID: String) {
         let configDir = accountProfile ?? folder.appendingPathComponent("claude", isDirectory: true)
         let work = folder.appendingPathComponent("work", isDirectory: true)
         do {
             for dir in [configDir, work] { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
-            let (arguments, environment) = try prepare(configDir)
+            let (arguments, environment) = try prepare(configDir, prompt, resume)
             let process = Process()
             process.executableURL = claude
             process.arguments = arguments
@@ -367,11 +638,13 @@ final class AgentSession: ObservableObject, Identifiable {
         } catch {
             closeClaudeMacTool()
             notice("Couldn't start Claude Code: \(error.localizedDescription)", isError: true)
+            finishMemoryTurn(success: false)
             isRunning = false
         }
     }
 
-    private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool) {
+    private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool,
+                      sandboxSessionKey: String? = nil) {
         Task { @MainActor [weak self] in
             var claude = ClaudeStream()
             var deepSeek = DeepSeekStream()
@@ -379,12 +652,14 @@ final class AgentSession: ObservableObject, Identifiable {
                 guard let self, self.turn == turnID else { continue }
                 switch line {
                 case let .output(line):
-                    switch harness {
-                    case .claudeCode: self.apply(claude.consume(line: line))
-                    case .deepSeek: self.apply(deepSeek.consume(line: line))
-                    default: self.apply(harness.parse(line: line))
+                    let events = switch harness {
+                    case .claudeCode: claude.consume(line: line)
+                    case .deepSeek: deepSeek.consume(line: line)
+                    default: harness.parse(line: line)
                     }
+                    self.apply(events, sandboxSessionKey: sandboxSessionKey)
                 case let .rejected(message):
+                    self.memoryTurn?.canCommit = false
                     self.notice(message, isError: true)
                 }
             }
@@ -401,7 +676,7 @@ final class AgentSession: ObservableObject, Identifiable {
             let error = inApp ? stderr.split(separator: "\n")
                 .filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
                 .joined(separator: "\n") : stderr
-            self.finish(status: status, stderr: error)
+            self.finish(status: status, stderr: error, sandboxTurn: !inApp)
         }
     }
 
@@ -410,40 +685,51 @@ final class AgentSession: ObservableObject, Identifiable {
     private var stopHostedTurn: (() -> Void)?
     private var hostedTask: Task<Void, Never>?
 
-    func sendWithCodex(_ prompt: String, dataFolder: URL, model: String, baseURL: String = "", apiKey: String = "") {
+    func sendWithCodex(_ prompt: String, dataFolder: URL, model: String, baseURL: String = "", apiKey: String = "",
+                       memoryRoute: AgentMemoryRoute? = nil) {
         let runner = CodexAccountTurn()
         let config = config
         let usesBox = config.computer == .box
-        runHostedTurn(prompt, harness: .codex, stop: runner.stop) { [weak self] resume, onEvent in
+        let readiness: (Bool) -> Void = { [weak self] ready in self?.setSteeringReady(ready) }
+        runHostedTurn(prompt, harness: .codex, stop: runner.stop, steer: runner.steer,
+                      memoryRoute: memoryRoute) { [weak self] promptForModel, resume, onEvent in
             if usesBox {
-                try await runner.runOnBox(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: config.id,
+                try await runner.runOnBox(prompt: promptForModel, resume: resume, dataFolder: dataFolder, agentID: config.id,
                                           model: model, provider: config.provider, baseURL: baseURL, apiKey: apiKey,
-                                          boxName: config.boxName, onEvent: onEvent)
+                                          boxName: config.boxName, onSteeringReady: readiness, onEvent: onEvent)
             } else {
-                try await runner.run(prompt: prompt, resume: resume, dataFolder: dataFolder, agentID: config.id, approve: { command in
+                try await runner.run(prompt: promptForModel, resume: resume, dataFolder: dataFolder, agentID: config.id, approve: { command in
                     guard let self else { return false }
                     return await self.requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool)
-                }, onEvent: onEvent)
+                }, onSteeringReady: readiness, onEvent: onEvent)
             }
         }
     }
 
-    func sendWithDeepSeekOnBox(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String) {
+    func sendWithDeepSeekOnBox(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String,
+                              memoryRoute: AgentMemoryRoute? = nil) {
         let runner = DeepSeekBoxTurn()
         let config = config
-        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop) { resume, onEvent in
-            try await runner.run(prompt: prompt, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
-                                 dataFolder: dataFolder, agentID: config.id, boxName: config.boxName, onEvent: onEvent)
+        let steering = DeepSeekSteering()
+        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, steer: steering.send, deepSeekInput: steering,
+                      memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
+            try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
+                                 dataFolder: dataFolder, agentID: config.id, boxName: config.boxName,
+                                 standardInput: steering.input, onEvent: onEvent)
         }
     }
 
     private func runHostedTurn(_ prompt: String, harness: Harness, stop: @escaping () -> Void,
-                               run: @escaping (String?, @escaping (ClaudeEvent) -> Void) async throws -> Void) {
+                               steer: ((String) async throws -> Void)? = nil, deepSeekInput: DeepSeekSteering? = nil,
+                               memoryRoute: AgentMemoryRoute?,
+                               run: @escaping (String, String?, @escaping (ClaudeEvent) -> Void) async throws -> Void) {
         guard !isRunning else { return }
-        let resume = currentSessionID
+        let legacyResume = memoryRoute == nil ? currentSessionID : nil
         let context = boxSessionKey
         stopHostedTurn = stop
-        items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt))
+        submitSteering = steer
+        deepSeekSteering = deepSeekInput
+        let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
         isRunning = true
         self.harness = harness
         activeAccountProvider = context == nil && config.provider.usesAccount ? config.provider : nil
@@ -453,6 +739,7 @@ final class AgentSession: ObservableObject, Identifiable {
         hostedTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
+                self.endSteering()
                 self.stopHostedTurn = nil
                 self.hostedTask = nil
                 self.denyPendingApprovals()
@@ -460,13 +747,17 @@ final class AgentSession: ObservableObject, Identifiable {
                 self.onChange?()
             }
             do {
-                try await run(resume, { event in
+                try Task.checkCancellation()
+                let resume = self.resumeOnRoute(memoryRoute, legacy: legacyResume)
+                try await run(self.modelPrompt(for: item), resume, { event in
                     guard self.turn == turnID else { return }
-                    if let context, case let .started(id, _) = event { self.boxSessions[context] = id }
+                    if memoryRoute == nil, let context, case let .started(id, _) = event { self.boxSessions[context] = id }
                     else { self.apply([event]) }
                 })
+                if self.turn == turnID { self.finishMemoryTurn(success: !Task.isCancelled) }
             } catch {
                 guard self.turn == turnID else { return }
+                self.finishMemoryTurn(success: false)
                 if Task.isCancelled { self.notice("Stopped.", isError: false) }
                 else { self.notice("\(harness.displayName) stopped: \(error.localizedDescription)", isError: true) }
             }
@@ -480,29 +771,40 @@ final class AgentSession: ObservableObject, Identifiable {
 
     /// Sends one message to Sai on `machine`. Follow-ups continue the same Sai session while the
     /// machine stays the same.
-    func sendToSai(_ prompt: String, machine: String, model: String?) {
+    func sendToSai(_ prompt: String, machine: String, model: String?, memoryRoute: AgentMemoryRoute? = nil) {
         guard !isRunning else { return }
-        items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt))
+        let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
         isRunning = true
         harness = .sai
         activeAccountProvider = nil
         turn = UUID().uuidString
         let turnID = turn
         if saiMachine != machine { sessions[.sai] = nil; saiMachine = machine }
-        let session = sessions[.sai]
         saiTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             do {
-                try await SaiAPI.run(message: prompt, machine: machine, session: session, model: model) { event in
-                    if self?.turn == turnID { self?.applySai(event) }
+                try Task.checkCancellation()
+                let session = self.resumeOnRoute(memoryRoute, legacy: self.sessions[.sai])
+                self.activeSaiSessionID = session
+                try await SaiAPI.run(message: self.modelPrompt(for: item), machine: machine, session: session, model: model) { event in
+                    if self.turn == turnID { self.applySai(event) }
                 }
+                if self.turn == turnID { self.finishMemoryTurn(success: !Task.isCancelled) }
             } catch is CancellationError {
-                if self?.turn == turnID { self?.notice("Stopped.", isError: false) }
+                if self.turn == turnID {
+                    self.finishMemoryTurn(success: false)
+                    self.notice("Stopped.", isError: false)
+                }
             } catch {
-                if self?.turn == turnID, !Task.isCancelled { self?.notice(error.localizedDescription, isError: true) }
+                if self.turn == turnID {
+                    self.finishMemoryTurn(success: false)
+                    if !Task.isCancelled { self.notice(error.localizedDescription, isError: true) }
+                }
             }
-            self?.isRunning = false
-            self?.saiTask = nil
-            self?.onChange?()
+            self.isRunning = false
+            self.saiTask = nil
+            self.activeSaiSessionID = nil
+            self.onChange?()
         }
     }
 
@@ -530,10 +832,13 @@ final class AgentSession: ObservableObject, Identifiable {
         let data = event["data"] as? [String: Any] ?? [:]
         switch event["type"] as? String {
         case "data-session":
-            if let id = data["sessionId"] as? String { sessions[.sai] = id }
+            if let id = data["sessionId"] as? String {
+                activeSaiSessionID = id
+                if !recordRouteSession(id) { sessions[.sai] = id }
+            }
         case "text-delta":
             if let delta = event["delta"] as? String {
-                updateText(id: event["id"] as? String ?? "", text: delta, append: true)
+                apply([.textDelta(id: event["id"] as? String ?? "", text: delta)])
             }
         case "tool-input-start", "tool-input-available":
             guard let callId = event["toolCallId"] as? String else { return }
@@ -546,8 +851,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 if let detail { items[index].toolInput = detail }
             } else {
                 let name = event["toolName"] as? String ?? "tool"
-                items.append(ChatItem(id: id, kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: title ?? name, toolInput: detail))
+                apply([.toolCall(id: callId, name: name, summary: title ?? name, detail: detail)])
             }
         case "data-progress":
             // Progress lines belong to the latest running step.
@@ -581,51 +885,75 @@ final class AgentSession: ObservableObject, Identifiable {
                 }
             }
         case "error":
-            notice(event["errorText"] as? String ?? "Sai stopped with an error.", isError: true)
+            apply([.finished(result: event["errorText"] as? String, isError: true, costUSD: nil)])
         default:
             break
         }
     }
 
-    /// Forgets the conversation: the next message starts a new session.
-    /// A fresh context: forgets the chat and the harness sessions; the next message starts new.
+    /// A fresh chat and native session, with the same saved notes.
     func reset() {
+        if !memorySessions.isEmpty, let memoryStore {
+            do {
+                try memoryStore.save(.init(notes: memory))
+            } catch {
+                noticeFromApp("Couldn't start a new conversation. \(error.localizedDescription)")
+                return
+            }
+        }
+        memorySessions = [:]
         stop()
         if isRunning { turn = UUID().uuidString }
+        memoryTurn = nil
+        memorySourceRequest = nil
         items = []
         sessions = [:]
+        sandboxSessions = [:]
         accountSessions = [:]
         boxSessions = [:]
         lastUsage = nil
         onChange?()
     }
 
-    private func apply(_ events: [ClaudeEvent]) {
+    private func apply(_ events: [ClaudeEvent], sandboxSessionKey: String? = nil) {
         for event in events {
-            switch event {
-            case let .started(id, _):
-                if let activeAccountProvider { accountSessions[activeAccountProvider] = id }
-                else { sessions[harness] = id }
-            case let .text(text):
-                items.append(ChatItem(id: UUID().uuidString, kind: .agent, text: text))
-            case let .textDelta(id, text):
-                updateText(id: id, text: text, append: true)
-            case let .textSnapshot(id, text):
-                updateText(id: id, text: text, append: false)
-            case let .toolCall(id, name, summary, detail):
-                items.append(ChatItem(id: id.isEmpty ? UUID().uuidString : "\(turn)/\(id)",
-                                      kind: .step(name: name, done: false, failed: false, output: ""),
-                                      text: summary, toolInput: detail))
-            case let .toolResult(id, output, isError):
-                if let index = items.lastIndex(where: { $0.id == "\(turn)/\(id)" }),
-                   case let .step(name, _, _, _) = items[index].kind {
-                    items[index].kind = .step(name: name, done: true, failed: isError, output: output)
-                }
-            case let .usage(input, output):
-                lastUsage = (input, output)
-            case let .finished(result, isError, _):
-                if isError { notice(result.map { "The agent stopped: \($0)" } ?? "The agent stopped with an error.", isError: true) }
+            if case .finished(_, true, _) = event { memoryTurn?.canCommit = false }
+            let visible = memoryTurn?.wire.consume(event) ?? [event]
+            for event in visible { applyVisible(event, sandboxSessionKey: sandboxSessionKey) }
+        }
+    }
+
+    private func applyVisible(_ event: ClaudeEvent, sandboxSessionKey: String?) {
+        switch event {
+        case .steeringReady:
+            setSteeringReady(true)
+        case let .steeringResult(id, accepted):
+            deepSeekSteering?.acknowledge(id: id, accepted: accepted)
+        case let .started(id, _):
+            guard !recordRouteSession(id) else { return }
+            if let sandboxSessionKey { sandboxSessions[sandboxSessionKey] = id }
+            else if let activeAccountProvider { accountSessions[activeAccountProvider] = id }
+            else { sessions[harness] = id }
+        case let .text(text):
+            items.append(ChatItem(id: UUID().uuidString, kind: .agent, text: text))
+        case let .textDelta(id, text):
+            updateText(id: id, text: text, append: true)
+        case let .textSnapshot(id, text):
+            updateText(id: id, text: text, append: false)
+        case let .toolCall(id, name, summary, detail):
+            items.append(ChatItem(id: id.isEmpty ? UUID().uuidString : "\(turn)/\(id)",
+                                  kind: .step(name: name, done: false, failed: false, output: ""),
+                                  text: summary, toolInput: detail))
+        case let .toolResult(id, output, isError):
+            if let index = items.lastIndex(where: { $0.id == "\(turn)/\(id)" }),
+               case let .step(name, _, _, _) = items[index].kind {
+                items[index].kind = .step(name: name, done: true, failed: isError, output: output)
             }
+        case let .usage(input, output):
+            lastUsage = (input, output)
+        case let .finished(result, isError, _):
+            setSteeringReady(false)
+            if isError { notice(result.map { "The agent stopped: \($0)" } ?? "The agent stopped with an error.", isError: true) }
         }
     }
 
@@ -644,14 +972,26 @@ final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
-    private func finish(status: Int32, stderr: String) {
+    private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false) {
+        endSteering()
+        finishMemoryTurn(success: status == 0)
         isRunning = false
         defer { onChange?() }
         // 15: stopped by the user (SIGTERM).
         if status == 15 { notice("Stopped.", isError: false); return }
         if status != 0 {
             let reason = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
-            notice(reason.isEmpty ? "The agent exited with status \(status)." : String(reason.prefix(400)), isError: true)
+            let message: String
+            if sandboxTurn, status == 255 {
+                message = reason.contains("remote port forwarding failed")
+                    ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
+                    : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."
+            } else if harness == .deepSeek, reason.contains("already owned by an active write handle") {
+                message = "DeepSeek still has this conversation open. Wait for the previous turn to finish before sending again."
+            } else {
+                message = reason.isEmpty ? "The agent exited with status \(status)." : String(reason.prefix(400))
+            }
+            notice(message, isError: true)
         }
     }
 

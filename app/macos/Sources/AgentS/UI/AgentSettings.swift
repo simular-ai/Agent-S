@@ -60,7 +60,7 @@ struct AgentSettings: View {
                     }
                     if model.harness != .sai, model.provider.usesAccount {
                         LabeledContent("Model", value: "Automatic")
-                        HarnessAccountSetup()
+                        HarnessAccountSetup { dismiss() }
                     }
                 }
 

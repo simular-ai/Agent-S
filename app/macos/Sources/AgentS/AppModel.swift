@@ -30,6 +30,16 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private struct AccountRoute: Hashable {
+        let provider: ModelProvider
+        let inSandbox: Bool
+
+        init(_ config: AgentConfig) {
+            provider = config.provider
+            inSandbox = config.usesLocalComputer
+        }
+    }
+
     /// Claude Code's model: tool calling and a long context matter most.
     static let defaultAgentModel = "gemma4"
     /// Ollama >= 0.14 serves the Anthropic Messages API Claude Code speaks.
@@ -56,9 +66,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var saiStatus: String?
     @Published private var saiScreenStates: [String: SaiAPI.ScreenState] = [:]
     private let openRouterProxy = OpenRouterProxy()
-    @Published private var accountStatuses: [ModelProvider: AccountStatus] = [:]
-    private var accountChecks: [ModelProvider: UUID] = [:]
-    private var accountSignIns: [ModelProvider: Task<Void, Never>] = [:]
+    @Published private var accountStatuses: [AccountRoute: AccountStatus] = [:]
+    @Published private(set) var sandboxSignInRequest = UUID()
+    private var accountChecks: [AccountRoute: UUID] = [:]
+    private var accountSignIns: [AccountRoute: Task<Void, Never>] = [:]
+    private var sandboxAccountGeneration = UUID()
 
     let files = GuestFiles.standard
     let vm: LinuxVM
@@ -89,6 +101,11 @@ final class AppModel: ObservableObject {
             guard !agent.isRunning, Harness.allowed(in: privacy, computer: computer).contains(newValue) else { return }
             update {
                 $0.harness = newValue
+                if $0.usesLocalComputer,
+                   let provider = ModelProvider.fitting($0.provider, at: .linuxVM, harness: newValue, computer: nil) {
+                    $0.provider = provider
+                    $0.privacy = AgentLocation.linuxVM.mode(for: provider)
+                }
                 $0 = $0.enforcingPrivacy
             }
         }
@@ -116,11 +133,14 @@ final class AppModel: ObservableObject {
         get { agent.config.provider }
         set {
             guard !agent.isRunning, availableProviders.contains(newValue) else { return }
-            update { $0.provider = newValue }
+            update {
+                $0.provider = newValue
+                if $0.usesLocalComputer { $0.privacy = AgentLocation.linuxVM.mode(for: newValue) }
+            }
         }
     }
     var availableProviders: [ModelProvider] {
-        ModelProvider.allowed(in: privacy, harness: harness, computer: computer)
+        ModelProvider.allowed(at: privacy.location, harness: harness, computer: computer)
     }
     var agentModel: String {
         get { agent.config.ollamaModel }
@@ -156,7 +176,13 @@ final class AppModel: ObservableObject {
 
     /// Deletes an agent and its context; the last agent stays.
     func delete(_ session: AgentSession) {
-        guard agents.count > 1 else { return }
+        guard agents.count > 1, !GuestFiles.legacyAppRunning else { return }
+        do {
+            try session.deleteSavedMemory()
+        } catch {
+            session.noticeFromApp("Couldn't delete this agent's memory. \(error.localizedDescription)")
+            return
+        }
         session.stop()
         macTurnPanel.remove(session)
         agents.removeAll { $0.id == session.id }
@@ -165,6 +191,12 @@ final class AppModel: ObservableObject {
     }
 
     func select(_ session: AgentSession) { selectedAgentID = session.id }
+
+    func revealChatItem(_ id: String, in session: AgentSession) {
+        guard agents.contains(where: { $0 === session }) else { return }
+        select(session)
+        session.revealMemorySource(id)
+    }
 
     // MARK: Headshots
 
@@ -199,6 +231,7 @@ final class AppModel: ObservableObject {
     }
 
     private func adopt(_ session: AgentSession) {
+        session.attachMemory(dataFolder: files.root)
         session.onChange = { [weak self] in
             self?.objectWillChange.send()
             self?.saveAgents()
@@ -280,6 +313,39 @@ final class AppModel: ObservableObject {
         agents.contains { $0.config.harness != .sai && $0.config.provider == .ollama }
     }
 
+    func memoryRoute(for session: AgentSession) -> AgentMemoryRoute {
+        let config = session.config.enforcingPrivacy
+        let inference = ollamaInference(for: config.ollamaModel)
+        let model = config.harness == .sai ? config.saiModel : (config.provider == .ollama ? config.ollamaModel : config.openRouterModel)
+        return AgentMemoryRoute(privacy: config.privacy, harness: config.harness, provider: config.provider,
+                                computer: config.computer, boxName: config.boxName, saiMachine: config.saiMachine,
+                                ollamaInference: inference, model: model)
+    }
+
+    private func ollamaInference(for name: String) -> AgentMemoryRoute.OllamaInference {
+        let model = ollamaModels.first { $0.matches(name) }
+        if model?.usesRemoteInference == true || Ollama.isCloudReference(name) { return .hosted }
+        return model != nil && ollamaReady ? .local : .unconfirmed
+    }
+
+    private var memoryRouteVerifier: ((AgentMemoryRoute) async -> AgentMemoryRoute)? {
+        guard provider == .ollama else { return nil }
+        return { route in await Self.verifyOllamaMemoryRoute(route) }
+    }
+
+    private nonisolated static func verifyOllamaMemoryRoute(_ route: AgentMemoryRoute) async -> AgentMemoryRoute {
+        guard route.provider == .ollama, let model = route.model else { return route }
+        let matches = await Ollama.models(timeout: 2).filter { $0.matches(model) }
+        let inference: AgentMemoryRoute.OllamaInference
+        if Ollama.isCloudReference(model) || matches.contains(where: \.usesRemoteInference) {
+            inference = .hosted
+        } else {
+            inference = matches.isEmpty ? .unconfirmed : .local
+        }
+        return AgentMemoryRoute(privacy: route.privacy, harness: route.harness, provider: route.provider,
+                                computer: route.computer, boxName: route.target, ollamaInference: inference, model: model)
+    }
+
     /// Use the selected model's metadata so Ollama cloud models are identified as hosted.
     func sidebarInference(for config: AgentConfig) -> (label: String, symbol: String, help: String) {
         if config.harness == .sai { return ("Hosted inference", "cloud", "Sai") }
@@ -287,17 +353,16 @@ final class AppModel: ObservableObject {
         switch config.provider {
         case .openRouter: return ("Hosted inference", "cloud", "OpenRouter · \(config.openRouterModel)")
         case .claudeAccount, .codexAccount:
-            let confirmed = accountStatuses[config.provider] == .connected(.subscription)
+            let confirmed = accountStatuses[AccountRoute(config)] == .connected(.subscription)
             let provider = config.provider == .claudeAccount ? "Claude Code account" : "Codex account"
             return confirmed ? ("Subscription", "creditcard", provider) : ("Account", "person.crop.circle", provider)
         case .ollama:
-            let model = ollamaModels.first { $0.matches(config.ollamaModel) }
             let provider = "Ollama · \(config.ollamaModel)"
-            if model?.usesRemoteInference == true || Ollama.isCloudReference(config.ollamaModel) {
-                return ("Hosted inference", "cloud", provider)
+            switch ollamaInference(for: config.ollamaModel) {
+            case .hosted: return ("Hosted inference", "cloud", provider)
+            case .local: return ("Local inference", "laptopcomputer", provider)
+            case .unconfirmed: return ("Inference location unconfirmed", "questionmark.circle", provider)
             }
-            if model != nil, ollamaReady { return ("Local inference", "laptopcomputer", provider) }
-            return ("Inference location unconfirmed", "questionmark.circle", provider)
         }
     }
 
@@ -567,7 +632,15 @@ final class AppModel: ObservableObject {
 
     // MARK: Harness accounts
 
-    var accountStatus: AccountStatus { accountStatuses[provider] ?? .unchecked }
+    var accountStatus: AccountStatus { accountStatuses[AccountRoute(agent.config)] ?? .unchecked }
+
+    var accountComputerReady: Bool {
+        !privacy.usesLocalComputer || (phase == .ready && guestIP != nil)
+    }
+
+    var sandboxHasActiveTurn: Bool {
+        agents.contains { $0.config.usesLocalComputer && $0.isRunning }
+    }
 
     private var accountName: String { provider == .codexAccount ? "Codex" : "Claude Code" }
 
@@ -575,7 +648,15 @@ final class AppModel: ObservableObject {
         let errorDescription: String?
     }
 
-    private func accountPlan(_ provider: ModelProvider) async throws -> HarnessAccountPlan? {
+    private func accountPlan(_ route: AccountRoute) async throws -> HarnessAccountPlan? {
+        let provider = route.provider
+        if route.inSandbox {
+            guard let ip = guestIP, phase == .ready else {
+                throw AccountFailure(errorDescription: "Turn on the sandbox to check sign-in.")
+            }
+            let output = try await shell.run(SandboxAccount.statusCommand(for: provider), on: ip)
+            return SandboxAccount.plan(for: provider, output: output)
+        }
         if provider == .codexAccount { return try await CodexAccount.accountPlan(dataFolder: files.root) }
         guard let claude = BoxAccount.claude else {
             throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
@@ -584,73 +665,87 @@ final class AppModel: ObservableObject {
     }
 
     func refreshAccountStatus() async {
-        let provider = provider
-        guard availableProviders.contains(provider), provider.usesAccount, accountSignIns[provider] == nil else { return }
+        let route = AccountRoute(agent.config)
+        guard availableProviders.contains(route.provider), route.provider.usesAccount,
+              accountComputerReady, accountSignIns[route] == nil else { return }
         let check = UUID()
-        let previous = accountStatuses[provider] ?? .unchecked
-        accountChecks[provider] = check
-        if !previous.isConnected, previous != .awaitingSignIn { accountStatuses[provider] = .checking }
+        let previous = accountStatuses[route] ?? .unchecked
+        accountChecks[route] = check
+        if !previous.isConnected, previous != .awaitingSignIn { accountStatuses[route] = .checking }
         let status: AccountStatus
         do {
-            let plan = try await accountPlan(provider)
+            let plan = try await accountPlan(route)
             status = plan.map(AccountStatus.connected) ?? (previous == .awaitingSignIn ? .awaitingSignIn : .signedOut)
         } catch {
             status = .failed(error.localizedDescription)
         }
-        guard accountChecks[provider] == check else { return }
-        accountChecks[provider] = nil
-        accountStatuses[provider] = Task.isCancelled ? (previous == .checking ? .unchecked : previous) : status
+        guard accountChecks[route] == check else { return }
+        accountChecks[route] = nil
+        accountStatuses[route] = Task.isCancelled ? (previous == .checking ? .unchecked : previous) : status
     }
 
     func signInToAccount() async {
-        let provider = provider
-        guard availableProviders.contains(provider), provider.usesAccount, accountSignIns[provider] == nil else { return }
-        accountChecks[provider] = nil
-        accountStatuses[provider] = .connecting
+        let route = AccountRoute(agent.config)
+        let provider = route.provider
+        guard availableProviders.contains(provider), provider.usesAccount,
+              accountComputerReady, accountSignIns[route] == nil else { return }
+        if route.inSandbox, sandboxHasActiveTurn { return }
+        let generation = sandboxAccountGeneration
+        accountChecks[route] = nil
+        accountStatuses[route] = .connecting
         let task = Task { @MainActor in
-            defer { accountSignIns[provider] = nil }
+            defer { accountSignIns[route] = nil }
             do {
-                if provider == .codexAccount {
+                if route.inSandbox {
+                    guard let ip = guestIP else { return }
+                    try await shell.run(SandboxAccount.signInCommand(for: provider), on: ip)
+                    try Task.checkCancellation()
+                    guard sandboxAccountGeneration == generation else { return }
+                    accountStatuses[route] = .awaitingSignIn
+                    if AccountRoute(agent.config) == route { sandboxSignInRequest = UUID() }
+                } else if provider == .codexAccount {
                     let plan = try await CodexAccount.signIn(dataFolder: files.root)
                     try Task.checkCancellation()
-                    accountStatuses[provider] = .connected(plan)
+                    accountStatuses[route] = .connected(plan)
                 } else {
                     guard let claude = BoxAccount.claude else {
                         throw AccountFailure(errorDescription: "Install Claude Code on this Mac first.")
                     }
                     try await ClaudeAccount.signIn(claude: claude, profile: ClaudeAccount.profile(in: files.root))
-                    accountStatuses[provider] = .awaitingSignIn
+                    accountStatuses[route] = .awaitingSignIn
                 }
             } catch {
-                accountStatuses[provider] = Task.isCancelled ? .signedOut : .failed(error.localizedDescription)
+                guard !route.inSandbox || sandboxAccountGeneration == generation else { return }
+                accountStatuses[route] = Task.isCancelled ? .signedOut : .failed(error.localizedDescription)
             }
         }
-        accountSignIns[provider] = task
+        accountSignIns[route] = task
         await task.value
     }
 
-    func cancelAccountSignIn() { accountSignIns[provider]?.cancel() }
+    func cancelAccountSignIn() { accountSignIns[AccountRoute(agent.config)]?.cancel() }
 
     func send(_ prompt: String) {
         // The private/cloud boundary is enforced here too, not only by what the settings offer.
         let config = agent.config.enforcingPrivacy
         guard config == agent.config else { agent.config = config; return }
         guard canChat, !agent.isRunning else { return }
+        let route = memoryRoute(for: agent)
         if harness == .sai {
-            agent.sendToSai(prompt, machine: saiMachine, model: saiModel)
+            agent.sendToSai(prompt, machine: saiMachine, model: saiModel, memoryRoute: route)
             return
         }
         if computer == .box {
-            sendToBox(prompt)
+            sendToBox(prompt, memoryRoute: route)
             return
         }
         if privacy == .thisMac {
-            sendToMac(prompt)
+            sendToMac(prompt, memoryRoute: route)
             return
         }
         guard config.usesLocalComputer, let ip = guestIP else { return }
         let shell = shell
-        let port = provider == .openRouter ? OpenRouter.proxyPort : Ollama.port
+        let port: UInt16? = provider.usesAccount ? nil : (provider == .openRouter ? OpenRouter.proxyPort : Ollama.port)
         var apiKey: String?
         if provider == .openRouter {
             do { try openRouterProxy.start() } catch {
@@ -660,24 +755,27 @@ final class AppModel: ObservableObject {
             apiKey = openRouterProxy.token
         }
         agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel,
-                   ollamaURL: "http://127.0.0.1:\(port)", provider: provider, apiKey: apiKey, tunnelTo: port) {
+                   ollamaURL: port.map { "http://127.0.0.1:\($0)" } ?? "", provider: provider, apiKey: apiKey, tunnelTo: port,
+                   memoryRoute: route, verifyRoute: memoryRouteVerifier) {
             await Self.screenNow(shell: shell, ip: ip)
         }
     }
 
     /// Box turns run the selected harness with only the remote Box's tool set.
-    private func sendToBox(_ prompt: String) {
+    private func sendToBox(_ prompt: String, memoryRoute: AgentMemoryRoute) {
         let (baseURL, apiKey) = localModelEndpoint
         switch harness {
         case .claudeCode:
             guard let claude = BoxAccount.claude, let boxToken = BoxAccount.key() else { return }
             let command = BoxClaudeCommand(prompt: prompt, resume: nil, model: activeModel, provider: provider, apiKey: apiKey,
                                            boxName: agent.config.boxName, baseURL: baseURL)
-            agent.sendOnBox(prompt, command: command, claude: claude, boxToken: boxToken, dataFolder: files.root)
+            agent.sendOnBox(prompt, command: command, claude: claude, boxToken: boxToken, dataFolder: files.root, memoryRoute: memoryRoute)
         case .codex:
-            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey)
+            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey,
+                                memoryRoute: memoryRoute)
         case .deepSeek:
-            agent.sendWithDeepSeekOnBox(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey)
+            agent.sendWithDeepSeekOnBox(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey,
+                                memoryRoute: memoryRoute)
         case .sai: break // Sai runs through its own API on a Sai computer.
         }
     }
@@ -719,7 +817,7 @@ final class AppModel: ObservableObject {
     }
 
     /// A This Mac agent's turn. The harness asks Agent S for approval before acting on the Mac.
-    private func sendToMac(_ prompt: String) {
+    private func sendToMac(_ prompt: String, memoryRoute: AgentMemoryRoute) {
         do {
             try MacAccess.install()
             if harness == .claudeCode { try approvals.start() }
@@ -728,7 +826,7 @@ final class AppModel: ObservableObject {
             return
         }
         if provider == .codexAccount {
-            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel)
+            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel, memoryRoute: memoryRoute)
             return
         }
         guard let claude = BoxAccount.claude else { return }
@@ -748,7 +846,8 @@ final class AppModel: ObservableObject {
         let command = MacClaudeCommand(prompt: prompt, resume: nil, model: activeModel, provider: provider, apiKey: apiKey,
                                        baseURL: baseURL, macToolPath: MacAccess.macTool)
         agent.sendOnMac(prompt, command: command, claude: claude, dataFolder: files.root, settingsPath: MacAccess.settings,
-                        path: MacAccess.path, approvalPort: approvals.port, approvalToken: approvals.token)
+                        path: MacAccess.path, approvalPort: approvals.port, approvalToken: approvals.token,
+                        memoryRoute: memoryRoute, verifyRoute: memoryRouteVerifier)
     }
 
     private var localModelEndpoint: (url: String, key: String) {
@@ -765,32 +864,57 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// One line on what the computer's browser shows right now, from Chromium's own tab list (fast).
-    /// Small models otherwise answer follow-ups from what they saw turns ago. The page title is the
-    /// page's own text, so it is cut short, stripped of brackets and quotes, and labelled as such.
+    /// The focused desktop window and any existing browser tab, from one guest query.
     static func screenNow(shell: GuestShell, ip: String) async -> String? {
-        let nothing = "Screen now: no website is open. Use web open <url> to start."
-        guard let json = try? await shell.run("curl -s -m 2 http://127.0.0.1:9222/json/list", on: ip),
-              let tabs = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]],
-              let page = tabs.first(where: { $0["type"] as? String == "page" })
-        else { return nothing }
-        let address = (page["url"] as? String ?? "").prefix(200)
-        let title = String((page["title"] as? String ?? "").prefix(80))
-            .filter { !"[]\"{}<>`".contains($0) && !$0.isNewline }
-        return "Screen now: the browser is at \(address), page title (from the page) \(title). "
-            + "This is current; what you saw earlier in this chat may be out of date. Run web snapshot to see the page."
+        let command = #"""
+        pid=$(DISPLAY=:0 xdotool getactivewindow getwindowpid 2>/dev/null)
+        if [[ $pid =~ ^[0-9]+$ ]]; then
+          ps -p "$pid" -o comm= 2>/dev/null | head -c 80 | base64 -w0
+        fi
+        printf '\n'
+        curl -fs -m 2 http://127.0.0.1:9222/json/list || true
+        """#
+        guard let output = try? await shell.run(command, on: ip), let separator = output.firstIndex(of: "\n") else {
+            return "Screen now: state unavailable. Inspect the desktop with ui tree or the browser with web snapshot."
+        }
+        let process = Data(base64Encoded: String(output[..<separator])).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let json = output[output.index(after: separator)...]
+        let tabs = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [[String: Any]]
+        let foreground = screenLabel(process, limit: 80)
+        let window = foreground.isEmpty ? "No focused app could be identified." : "Focused desktop app process: \(foreground)."
+        guard let page = tabs?.first(where: { $0["type"] as? String == "page" }) else {
+            return "Screen now: \(window) Use ui tree to inspect the desktop or web snapshot if the task uses a browser."
+        }
+        let address = screenLabel(page["url"] as? String ?? "", limit: 200)
+        let pageTitle = screenLabel(page["title"] as? String ?? "", limit: 80)
+        return "Screen now: \(window) Browser tab: \(address), page title: \(pageTitle). "
+            + "Inspect the active app with ui tree or the page with web snapshot."
+    }
+
+    private static func screenLabel(_ value: String, limit: Int) -> String {
+        value.prefix(limit).filter { $0 == " " || (!$0.isWhitespace && !"[]\"{}<>`".contains($0)) }
+            .trimmingCharacters(in: .whitespaces)
     }
 
     private func vmChanged(_ state: LinuxVM.State) {
         switch state {
         case .stopped:
+            resetSandboxAccountStatus()
             guestIP = nil
             if case .needsSetup = phase {} else { phase = .stopped }
         case let .failed(message):
+            resetSandboxAccountStatus()
             guestIP = nil
             phase = .failed(message)
         default:
             break
         }
+    }
+
+    private func resetSandboxAccountStatus() {
+        sandboxAccountGeneration = UUID()
+        accountChecks = accountChecks.filter { !$0.key.inSandbox }
+        accountStatuses = accountStatuses.filter { !$0.key.inSandbox }
+        for (route, task) in accountSignIns where route.inSandbox { task.cancel() }
     }
 }
