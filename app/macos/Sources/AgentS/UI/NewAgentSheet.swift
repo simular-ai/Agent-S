@@ -115,10 +115,6 @@ struct NewAgentSheet: View {
             }
             .formStyle(.grouped)
             Divider()
-            PrivacyLevelBar(level: model.privacyLevel(location: location, computer: cloudComputer,
-                                                     harness: selectedHarness, provider: selectedProvider,
-                                                     ollamaModel: ollamaModel))
-            Divider()
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -145,9 +141,6 @@ struct NewAgentSheet: View {
         .task {
             ollamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
         }
-        .task(id: selectedHarness != .sai && selectedProvider == .ollama) {
-            if selectedHarness != .sai, selectedProvider == .ollama { await model.refreshOllama() }
-        }
         // Sai's computers are looked up (which reads the Sai key) only once a Sai agent is chosen.
         .task(id: harness == .sai && model.hasSaiKey) {
             guard harness == .sai else { return }
@@ -162,19 +155,15 @@ struct NewAgentSheet: View {
 
     private var availableHarnesses: [Harness] { Harness.allowed(in: location.mode(for: .ollama), computer: cloudComputer) }
 
-    private var selectedHarness: Harness {
-        let allowed = availableHarnesses
-        return allowed.contains(harness) ? harness : allowed[0]
-    }
-
-    private var availableProviders: [ModelProvider] { ModelProvider.allowed(at: location, harness: selectedHarness, computer: cloudComputer) }
+    private var availableProviders: [ModelProvider] { ModelProvider.allowed(at: location, harness: harness, computer: cloudComputer) }
 
     private var selectedProvider: ModelProvider {
-        ModelProvider.fitting(provider, at: location, harness: selectedHarness, computer: cloudComputer) ?? provider
+        ModelProvider.fitting(provider, at: location, harness: harness, computer: cloudComputer) ?? provider
     }
 
     private func fitHarnessAndProvider() {
-        harness = selectedHarness
+        let allowed = availableHarnesses
+        if !allowed.contains(harness) { harness = allowed[0] }
         fitProvider()
     }
 
@@ -184,7 +173,7 @@ struct NewAgentSheet: View {
 
     private func create() {
         model.createAgent(AgentConfig(
-            name: name.trimmingCharacters(in: .whitespaces), privacy: location.mode(for: selectedProvider), harness: selectedHarness,
+            name: name.trimmingCharacters(in: .whitespaces), privacy: location.mode(for: selectedProvider), harness: harness,
             provider: selectedProvider,
             ollamaModel: ollamaModel, openRouterModel: openRouterModel,
             saiMachine: saiMachine, saiModel: saiModel,

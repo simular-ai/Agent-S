@@ -343,18 +343,10 @@ final class AppModel: ObservableObject {
         session.memory.notes(for: memoryRoute(for: session)).filter { $0.kind == .activeWork && $0.status == .open }
     }
 
-    func privacyLevel(location: AgentLocation, computer: CloudComputer?, harness: Harness,
-                      provider: ModelProvider, ollamaModel: String) -> AgentPrivacyLevel {
-        AgentPrivacyLevel(location: location, computer: computer,
-                          provider: harness == .sai ? nil : provider,
-                          ollamaInference: ollamaInference(for: ollamaModel),
-                          requestsZDR: openRouterRequiresZDR)
-    }
-
     private func ollamaInference(for name: String) -> AgentMemoryRoute.OllamaInference {
-        let matches = ollamaModels.filter { $0.matches(name) }
-        if Ollama.isCloudReference(name) || matches.contains(where: \.usesRemoteInference) { return .hosted }
-        return !matches.isEmpty && ollamaReady ? .local : .unconfirmed
+        let model = ollamaModels.first { $0.matches(name) }
+        if model?.usesRemoteInference == true || Ollama.isCloudReference(name) { return .hosted }
+        return model != nil && ollamaReady ? .local : .unconfirmed
     }
 
     private func memoryRouteVerifier(for provider: ModelProvider) -> ((AgentMemoryRoute) async -> AgentMemoryRoute)? {

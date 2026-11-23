@@ -73,8 +73,6 @@ struct AgentSettings: View {
             }
             .formStyle(.grouped)
             Divider()
-            PrivacyLevelBar(level: privacyLevel)
-            Divider()
             HStack {
                 Button("New conversation") { model.agent.reset() }
                 Spacer()
@@ -87,12 +85,6 @@ struct AgentSettings: View {
         .task(id: model.usesOllama ? model.selectedAgentID : nil) {
             if model.usesOllama { await model.refreshOllama() }
         }
-    }
-
-    private var privacyLevel: AgentPrivacyLevel {
-        let config = model.agent.config.enforcingPrivacy
-        return model.privacyLevel(location: config.privacy.location, computer: config.computer,
-                                  harness: config.harness, provider: config.provider, ollamaModel: config.ollamaModel)
     }
 
     private func saveName() {
