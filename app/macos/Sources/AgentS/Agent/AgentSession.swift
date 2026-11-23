@@ -81,6 +81,8 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var isRunning = false
     @Published private(set) var canSteer = false
     @Published private(set) var isSendingSteering = false
+    @Published private(set) var queuedFollowUps: [QueuedFollowUp] = []
+    @Published private(set) var followUpsPaused = false
     @Published private(set) var memory = AgentMemory()
     @Published private(set) var memoryError: String?
     @Published private(set) var memorySourceRequest: MemorySourceRequest?
@@ -90,6 +92,7 @@ final class AgentSession: ObservableObject, Identifiable {
     private var boxSessions: [String: String] = [:]
     /// Called when something worth saving changed (the definition, or a finished turn).
     var onChange: (() -> Void)?
+    var onTurnEnded: ((AgentSession, Bool) -> Void)?
     var onMacUIActivity: ((_ session: AgentSession, _ needsApproval: Bool) -> Void)?
 
     nonisolated var id: UUID { MainActor.assumeIsolated { config.id } }
@@ -157,6 +160,7 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Step ids from the harness are only unique within a turn (Codex restarts at item_0), so the
     /// chat prefixes them with the turn.
     private var turn = UUID().uuidString
+    private var turnResult: Bool?
     private var process: Process?
     private var activeAccountProvider: ModelProvider?
     private var submitSteering: ((String) async throws -> Void)?
@@ -168,6 +172,12 @@ final class AgentSession: ObservableObject, Identifiable {
     private var activeMemoryRoute: AgentMemoryRoute?
     private var activeMemorySessionInvalidated = false
     private var activeSaiSessionID: String?
+
+    struct QueuedFollowUp: Identifiable {
+        let id = UUID()
+        let text: String
+        let route: AgentMemoryRoute
+    }
 
     struct MemorySourceRequest: Equatable {
         let itemID: String
@@ -282,6 +292,7 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Keep the user's visible text separate from route-scoped reference notes and the update protocol.
     private func beginTurnMessage(_ text: String, memoryRoute: AgentMemoryRoute?) -> ChatItem {
         let item = ChatItem(id: UUID().uuidString, kind: .user, text: text)
+        turnResult = nil
         items.append(item)
         memoryTurn = nil
         activeMemoryRoute = memoryRoute
@@ -316,11 +327,56 @@ final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
+    @discardableResult
+    func enqueueFollowUp(_ prompt: String, route: AgentMemoryRoute) -> Bool {
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isRunning, !text.isEmpty else { return false }
+        queuedFollowUps.append(QueuedFollowUp(text: text, route: route))
+        return true
+    }
+
+    func removeQueuedFollowUp(_ id: UUID) {
+        queuedFollowUps.removeAll { $0.id == id }
+        if queuedFollowUps.isEmpty { resumeQueuedFollowUps() }
+    }
+
+    func pauseQueuedFollowUps() {
+        if !queuedFollowUps.isEmpty, !followUpsPaused { followUpsPaused = true }
+    }
+
+    func resumeQueuedFollowUps() {
+        if followUpsPaused { followUpsPaused = false }
+    }
+
+    private func notifyReadyFollowUps() {
+        guard turnResult == true, !isRunning, !isSendingSteering,
+              !followUpsPaused, !queuedFollowUps.isEmpty else { return }
+        onTurnEnded?(self, true)
+    }
+
+    private func completeTurn(success: Bool) {
+        let confirmed = success && turnResult != false
+        turnResult = confirmed
+        if !confirmed { pauseQueuedFollowUps() }
+        isRunning = false
+        onChange?()
+        notifyReadyFollowUps()
+    }
+
+    private func noteTurnResult(success: Bool) {
+        if turnResult != false { turnResult = success }
+    }
+
     func steer(_ prompt: String) async -> Bool {
         guard canSteer, !isSendingSteering, let submitSteering else { return false }
         let turnID = turn
         isSendingSteering = true
-        defer { if turn == turnID { isSendingSteering = false } }
+        defer {
+            if turn == turnID {
+                isSendingSteering = false
+                notifyReadyFollowUps()
+            }
+        }
         do {
             try await submitSteering(prompt)
             guard turn == turnID else { return false }
@@ -345,7 +401,7 @@ final class AgentSession: ObservableObject, Identifiable {
 
     private func endSteering() {
         setSteeringReady(false)
-        isSendingSteering = false
+        // The steering task still owns acknowledgement even after the transport closes.
         submitSteering = nil
         deepSeekSteering?.close()
         deepSeekSteering = nil
@@ -387,8 +443,7 @@ final class AgentSession: ObservableObject, Identifiable {
         guard !command.isEmpty else {
             notice("This harness and provider combination is unavailable in the sandbox.", isError: true)
             finishMemoryTurn(success: false)
-            isRunning = false
-            onChange?()
+            completeTurn(success: false)
             return
         }
         do {
@@ -400,12 +455,13 @@ final class AgentSession: ObservableObject, Identifiable {
         } catch {
             notice("Couldn't reach the computer: \(error.localizedDescription)", isError: true)
             finishMemoryTurn(success: false)
-            isRunning = false
-            onChange?()
+            completeTurn(success: false)
         }
     }
 
     func stop() {
+        noteTurnResult(success: false)
+        pauseQueuedFollowUps()
         memoryTurn?.canCommit = false
         endSteering()
         // The guest turn may still be reading the screen before it launches SSH.
@@ -639,7 +695,7 @@ final class AgentSession: ObservableObject, Identifiable {
             closeClaudeMacTool()
             notice("Couldn't start Claude Code: \(error.localizedDescription)", isError: true)
             finishMemoryTurn(success: false)
-            isRunning = false
+            completeTurn(success: false)
         }
     }
 
@@ -659,6 +715,7 @@ final class AgentSession: ObservableObject, Identifiable {
                     }
                     self.apply(events, sandboxSessionKey: sandboxSessionKey)
                 case let .rejected(message):
+                    self.noteTurnResult(success: false)
                     self.memoryTurn?.canCommit = false
                     self.notice(message, isError: true)
                 }
@@ -672,7 +729,10 @@ final class AgentSession: ObservableObject, Identifiable {
             } else {
                 self.process = nil
             }
-            guard self.turn == turnID else { self.isRunning = false; return }
+            guard self.turn == turnID else {
+                self.completeTurn(success: false)
+                return
+            }
             let error = inApp ? stderr.split(separator: "\n")
                 .filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
                 .joined(separator: "\n") : stderr
@@ -738,13 +798,13 @@ final class AgentSession: ObservableObject, Identifiable {
         let turnID = turn
         hostedTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            var completed = false
             defer {
                 self.endSteering()
                 self.stopHostedTurn = nil
                 self.hostedTask = nil
                 self.denyPendingApprovals()
-                self.isRunning = false
-                self.onChange?()
+                self.completeTurn(success: completed)
             }
             do {
                 try Task.checkCancellation()
@@ -754,7 +814,8 @@ final class AgentSession: ObservableObject, Identifiable {
                     if memoryRoute == nil, let context, case let .started(id, _) = event { self.boxSessions[context] = id }
                     else { self.apply([event]) }
                 })
-                if self.turn == turnID { self.finishMemoryTurn(success: !Task.isCancelled) }
+                completed = self.turn == turnID && !Task.isCancelled
+                if self.turn == turnID { self.finishMemoryTurn(success: completed) }
             } catch {
                 guard self.turn == turnID else { return }
                 self.finishMemoryTurn(success: false)
@@ -782,6 +843,7 @@ final class AgentSession: ObservableObject, Identifiable {
         if saiMachine != machine { sessions[.sai] = nil; saiMachine = machine }
         saiTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            var completed = false
             do {
                 try Task.checkCancellation()
                 let session = self.resumeOnRoute(memoryRoute, legacy: self.sessions[.sai])
@@ -789,7 +851,8 @@ final class AgentSession: ObservableObject, Identifiable {
                 try await SaiAPI.run(message: self.modelPrompt(for: item), machine: machine, session: session, model: model) { event in
                     if self.turn == turnID { self.applySai(event) }
                 }
-                if self.turn == turnID { self.finishMemoryTurn(success: !Task.isCancelled) }
+                completed = self.turn == turnID && !Task.isCancelled && self.turnResult == true
+                if self.turn == turnID { self.finishMemoryTurn(success: completed) }
             } catch is CancellationError {
                 if self.turn == turnID {
                     self.finishMemoryTurn(success: false)
@@ -801,10 +864,9 @@ final class AgentSession: ObservableObject, Identifiable {
                     if !Task.isCancelled { self.notice(error.localizedDescription, isError: true) }
                 }
             }
-            self.isRunning = false
             self.saiTask = nil
             self.activeSaiSessionID = nil
-            self.onChange?()
+            self.completeTurn(success: completed)
         }
     }
 
@@ -878,12 +940,16 @@ final class AgentSession: ObservableObject, Identifiable {
                 if input + output > 0 { lastUsage = (input, output) }
             }
         case "finish":
+            let reason = event["finishReason"] as? String
+            noteTurnResult(success: reason != "error" && reason != "abort")
             // Steps still open when the turn ends finished without an error.
             for index in items.indices {
                 if case let .step(name, false, failed, output) = items[index].kind {
                     items[index].kind = .step(name: name, done: true, failed: failed, output: output)
                 }
             }
+        case "abort":
+            noteTurnResult(success: false)
         case "error":
             apply([.finished(result: event["errorText"] as? String, isError: true, costUSD: nil)])
         default:
@@ -904,6 +970,9 @@ final class AgentSession: ObservableObject, Identifiable {
         memorySessions = [:]
         stop()
         if isRunning { turn = UUID().uuidString }
+        isSendingSteering = false
+        queuedFollowUps = []
+        resumeQueuedFollowUps()
         memoryTurn = nil
         memorySourceRequest = nil
         items = []
@@ -952,6 +1021,7 @@ final class AgentSession: ObservableObject, Identifiable {
         case let .usage(input, output):
             lastUsage = (input, output)
         case let .finished(result, isError, _):
+            noteTurnResult(success: !isError)
             setSteeringReady(false)
             if isError { notice(result.map { "The agent stopped: \($0)" } ?? "The agent stopped with an error.", isError: true) }
         }
@@ -974,9 +1044,9 @@ final class AgentSession: ObservableObject, Identifiable {
 
     private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false) {
         endSteering()
-        finishMemoryTurn(success: status == 0)
-        isRunning = false
-        defer { onChange?() }
+        let completed = status == 0 && turnResult == true
+        finishMemoryTurn(success: completed)
+        defer { completeTurn(success: completed) }
         // 15: stopped by the user (SIGTERM).
         if status == 15 { notice("Stopped.", isError: false); return }
         if status != 0 {

@@ -70,6 +70,11 @@ struct ChatView: View {
                     .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
                     .padding(.horizontal, 24).padding(.top, 8)
             }
+            if !agent.queuedFollowUps.isEmpty {
+                queuedFollowUps
+                    .frame(maxWidth: 820)
+                    .padding(.horizontal, 24).padding(.top, 8)
+            }
             composer
                 .frame(maxWidth: 820)
                 .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
@@ -331,13 +336,65 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        let acceptsInput = agent.isRunning ? agent.canSteer && !agent.isSendingSteering : model.canChat
-        return acceptsInput && hasDraft
+        (agent.isRunning || model.canChat) && !agent.isSendingSteering && hasDraft
+    }
+
+    private var queuedFollowUps: some View {
+        let status = if agent.followUpsPaused { "Follow-ups paused" }
+            else if agent.queuedFollowUps.count == 1 { "Queued for the next turn" }
+            else { "Queued follow-ups (\(agent.queuedFollowUps.count))" }
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Label(status, systemImage: agent.followUpsPaused ? "pause.circle" : "clock")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                if agent.followUpsPaused {
+                    Button("Send next") { model.sendQueuedFollowUp(for: agent) }
+                        .buttonStyle(.borderless)
+                        .disabled(!model.canSendQueuedFollowUp(for: agent))
+                        .help("Send the first queued follow-up")
+                }
+            }
+            .font(.caption)
+
+            ViewThatFits(in: .vertical) {
+                queuedFollowUpRows.fixedSize(horizontal: false, vertical: true)
+                ScrollView { queuedFollowUpRows }
+            }
+            .frame(maxHeight: 84)
+        }
+        .padding(.horizontal, 12).padding(.vertical, 8)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bubble))
+    }
+
+    private var queuedFollowUpRows: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(agent.queuedFollowUps, id: \.id) { followUp in
+                HStack(spacing: 8) {
+                    Text(verbatim: followUp.text)
+                        .font(.callout).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .help(followUp.text)
+                    Button { agent.removeQueuedFollowUp(followUp.id) } label: {
+                        Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Remove queued follow-up")
+                    .help("Remove queued follow-up")
+                }
+            }
+        }
     }
 
     private var composer: some View {
         let stopsTurn = agent.isRunning && !hasDraft
-        let submissionLabel = agent.isRunning ? "Steer the current turn" : "Send"
+        let submissionLabel = if agent.isSendingSteering { "Sending steering message" }
+            else if !agent.isRunning { "Send" }
+            else if agent.canSteer { "Steer the current turn" }
+            else { "Queue follow-up" }
+        let actionSymbol = stopsTurn ? "stop.fill" : agent.isSendingSteering ? "hourglass" : "arrow.up"
         let actionEnabled = stopsTurn || canSend
         return HStack(alignment: .bottom, spacing: 10) {
             TextField(placeholder, text: draft, axis: .vertical)
@@ -347,7 +404,7 @@ struct ChatView: View {
                 .onSubmit(send)
                 .disabled(!model.canChat && !agent.isRunning)
                 .padding(.vertical, 9)
-            roundButton(stopsTurn ? "stop.fill" : "arrow.up", help: stopsTurn ? "Stop" : submissionLabel) {
+            roundButton(actionSymbol, help: stopsTurn ? "Stop" : submissionLabel) {
                 if stopsTurn { agent.stop() }
                 else { send() }
             }
@@ -375,7 +432,7 @@ struct ChatView: View {
 
     private var placeholder: String {
         if agent.isRunning {
-            return agent.canSteer ? "Steer the current turn…" : "Draft a follow-up…"
+            return agent.canSteer ? "Steer the current turn…" : "Queue a follow-up…"
         }
         return model.chatBlocker ?? (model.harness == .sai
             ? "Ask \(model.agent.config.name) to do something on \(model.saiMachineName)…"
@@ -457,18 +514,22 @@ struct ChatView: View {
 
     private func send() {
         guard canSend else { return }
+        let session = agent
         let field = draft
         let original = field.wrappedValue
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        followsLatest = true
-        if agent.isRunning {
-            let session = agent
+        if session.isRunning, session.canSteer {
+            followsLatest = true
             Task {
                 if await session.steer(text), field.wrappedValue == original { field.wrappedValue = "" }
             }
         } else {
-            field.wrappedValue = ""
-            model.send(text)
+            let wasRunning = session.isRunning
+            let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
+            if accepted {
+                if field.wrappedValue == original { field.wrappedValue = "" }
+                if !wasRunning { followsLatest = true }
+            }
         }
     }
 }

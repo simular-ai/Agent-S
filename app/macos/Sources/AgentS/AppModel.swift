@@ -239,6 +239,10 @@ final class AppModel: ObservableObject {
         session.onMacUIActivity = { [weak self] session, needsApproval in
             self?.showMacTurnPanel(for: session, presentation: .macUI(needsApproval: needsApproval))
         }
+        session.onTurnEnded = { [weak self] session, succeeded in
+            guard succeeded, !session.followUpsPaused else { return }
+            self?.sendQueuedFollowUp(for: session)
+        }
         agents.append(session)
     }
 
@@ -328,7 +332,7 @@ final class AppModel: ObservableObject {
         return model != nil && ollamaReady ? .local : .unconfirmed
     }
 
-    private var memoryRouteVerifier: ((AgentMemoryRoute) async -> AgentMemoryRoute)? {
+    private func memoryRouteVerifier(for provider: ModelProvider) -> ((AgentMemoryRoute) async -> AgentMemoryRoute)? {
         guard provider == .ollama else { return nil }
         return { route in await Self.verifyOllamaMemoryRoute(route) }
     }
@@ -467,10 +471,12 @@ final class AppModel: ObservableObject {
     // MARK: Model provider
 
     /// The model the next message runs on, for the chosen harness and provider.
-    var activeModel: String {
-        if harness == .sai { return saiModel }
-        if provider.usesAccount { return "Automatic" }
-        return provider == .ollama ? agentModel : openRouterModel
+    var activeModel: String { activeModel(for: agent.config) }
+
+    private func activeModel(for config: AgentConfig) -> String {
+        if config.harness == .sai { return config.saiModel }
+        if config.provider.usesAccount { return "Automatic" }
+        return config.provider == .ollama ? config.ollamaModel : config.openRouterModel
     }
 
     /// Whether the selected computer, harness, and model are ready for a message.
@@ -478,40 +484,50 @@ final class AppModel: ObservableObject {
 
     var usesOllama: Bool { harness != .sai && provider == .ollama }
 
-    var shouldCheckOllamaForChat: Bool { usesOllama && computerChatBlocker == nil }
+    var shouldCheckOllamaForChat: Bool { usesOllama && computerChatBlocker(for: agent) == nil }
 
-    private var modelBlocker: String? {
-        if provider.usesAccount, !accountStatus.isConnected {
-            return accountStatus == .checking ? "Checking sign-in…" : "Connect your \(accountName) account to chat"
+    private func modelBlocker(for config: AgentConfig) -> String? {
+        let provider = config.provider
+        if provider.usesAccount {
+            let status = accountStatus(for: config)
+            if !status.isConnected {
+                let name = provider == .codexAccount ? "Codex" : "Claude Code"
+                return status == .checking ? "Checking sign-in…" : "Connect your \(name) account to chat"
+            }
         }
-        if usesOllama {
+        if provider == .ollama {
             if !ollamaChecked { return "Checking Ollama…" }
-            if !hasAgentModel { return "Download \(agentModel) in Settings first" }
+            if !ollamaModels.contains(where: { $0.matches(config.ollamaModel) }) {
+                return "Download \(config.ollamaModel) in Settings first"
+            }
         }
         if provider == .openRouter {
             if !hasOpenRouterKey { return "Add your OpenRouter key in Settings first" }
-            if openRouterModel.isEmpty { return "Choose an OpenRouter model in Settings first" }
+            if config.openRouterModel.isEmpty { return "Choose an OpenRouter model in Settings first" }
         }
         return nil
     }
 
     /// Why a message can't be sent, for the composer.
-    var chatBlocker: String? {
-        computerChatBlocker ?? (harness == .sai ? nil : modelBlocker)
+    var chatBlocker: String? { chatBlocker(for: agent) }
+
+    private func chatBlocker(for session: AgentSession) -> String? {
+        computerChatBlocker(for: session) ?? (session.config.harness == .sai ? nil : modelBlocker(for: session.config))
     }
 
-    private var computerChatBlocker: String? {
-        if privacy == .thisMac {
-            if harness == .codex {
+    private func computerChatBlocker(for session: AgentSession) -> String? {
+        let config = session.config
+        if config.privacy == .thisMac {
+            if config.harness == .codex {
                 if CodexAccount.executable == nil { return "Install Codex on this Mac to use this agent" }
             } else if BoxAccount.claude == nil { return "Install Claude Code on this Mac to use This Mac agents" }
             if MacAccess.simulang == nil { return "Install simulang first: npm install -g @simular-ai/simulang" }
             if !macAccessibility { return "Allow Accessibility in Settings to use this Mac" }
             return nil
         }
-        if computer == .box {
+        if config.computer == .box {
             if !hasBoxKey { return "Connect Simular Box in Settings" }
-            switch harness {
+            switch config.harness {
             case .claudeCode where BoxAccount.claude == nil: return "Install Claude Code on this Mac"
             case .codex where CodexAccount.executable == nil: return "Install Codex on this Mac"
             case .deepSeek where DeepSeekBoxTurn.executable == nil:
@@ -520,16 +536,16 @@ final class AppModel: ObservableObject {
             }
             return nil
         }
-        if harness == .sai {
+        if config.harness == .sai {
             if !hasSaiKey { return "Add your Sai API key in Settings" }
-            if saiMachine == SaiAPI.localMachine { return "This Mac's computer isn't available to Sai yet: pick a Sai computer" }
-            if saiMachine.isEmpty { return saiMachines.isEmpty ? "Finding your Sai computers…" : "Choose a Sai computer above" }
+            if config.saiMachine == SaiAPI.localMachine { return "This Mac's computer isn't available to Sai yet: pick a Sai computer" }
+            if config.saiMachine.isEmpty { return saiMachines.isEmpty ? "Finding your Sai computers…" : "Choose a Sai computer above" }
             return nil
         }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
         case .ready:
-            if agents.contains(where: { $0 !== agent && $0.config.usesLocalComputer && $0.isRunning }) {
+            if agents.contains(where: { $0 !== session && $0.config.usesLocalComputer && $0.isRunning }) {
                 return "Another agent is using the sandbox"
             }
             return nil
@@ -632,7 +648,11 @@ final class AppModel: ObservableObject {
 
     // MARK: Harness accounts
 
-    var accountStatus: AccountStatus { accountStatuses[AccountRoute(agent.config)] ?? .unchecked }
+    var accountStatus: AccountStatus { accountStatus(for: agent.config) }
+
+    private func accountStatus(for config: AgentConfig) -> AccountStatus {
+        accountStatuses[AccountRoute(config)] ?? .unchecked
+    }
 
     var accountComputerReady: Bool {
         !privacy.usesLocalComputer || (phase == .ready && guestIP != nil)
@@ -641,8 +661,6 @@ final class AppModel: ObservableObject {
     var sandboxHasActiveTurn: Bool {
         agents.contains { $0.config.usesLocalComputer && $0.isRunning }
     }
-
-    private var accountName: String { provider == .codexAccount ? "Codex" : "Claude Code" }
 
     private struct AccountFailure: LocalizedError {
         let errorDescription: String?
@@ -725,59 +743,113 @@ final class AppModel: ObservableObject {
 
     func cancelAccountSignIn() { accountSignIns[AccountRoute(agent.config)]?.cancel() }
 
-    func send(_ prompt: String) {
-        // The private/cloud boundary is enforced here too, not only by what the settings offer.
-        let config = agent.config.enforcingPrivacy
-        guard config == agent.config else { agent.config = config; return }
-        guard canChat, !agent.isRunning else { return }
-        let route = memoryRoute(for: agent)
-        if harness == .sai {
-            agent.sendToSai(prompt, machine: saiMachine, model: saiModel, memoryRoute: route)
+    private var checkingFollowUpRoutes: Set<UUID> = []
+
+    @discardableResult
+    func queueFollowUp(_ prompt: String, for session: AgentSession) -> Bool {
+        guard agents.contains(where: { $0 === session }) else { return false }
+        return session.enqueueFollowUp(prompt, route: memoryRoute(for: session))
+    }
+
+    func canSendQueuedFollowUp(for session: AgentSession) -> Bool {
+        guard let followUp = session.queuedFollowUps.first, !checkingFollowUpRoutes.contains(followUp.id),
+              canDispatch(to: session), session.config == session.config.enforcingPrivacy else { return false }
+        return followUp.route == memoryRoute(for: session)
+    }
+
+    func sendQueuedFollowUp(for session: AgentSession) {
+        guard agents.contains(where: { $0 === session }), let followUp = session.queuedFollowUps.first,
+              !checkingFollowUpRoutes.contains(followUp.id) else { return }
+        guard canSendQueuedFollowUp(for: session) else { session.pauseQueuedFollowUps(); return }
+        session.resumeQueuedFollowUps()
+        guard followUp.route.provider == .ollama else {
+            dispatchFollowUp(followUp, to: session)
             return
         }
-        if computer == .box {
-            sendToBox(prompt, memoryRoute: route)
-            return
-        }
-        if privacy == .thisMac {
-            sendToMac(prompt, memoryRoute: route)
-            return
-        }
-        guard config.usesLocalComputer, let ip = guestIP else { return }
-        let shell = shell
-        let port: UInt16? = provider.usesAccount ? nil : (provider == .openRouter ? OpenRouter.proxyPort : Ollama.port)
-        var apiKey: String?
-        if provider == .openRouter {
-            do { try openRouterProxy.start() } catch {
-                agent.noticeFromApp("Couldn't start the OpenRouter connection: \(error.localizedDescription)")
+
+        // A model tag can change from local to hosted while the follow-up is waiting.
+        checkingFollowUpRoutes.insert(followUp.id)
+        Task { @MainActor [weak self, weak session] in
+            let verified = await Self.verifyOllamaMemoryRoute(followUp.route)
+            guard let self else { return }
+            self.checkingFollowUpRoutes.remove(followUp.id)
+            guard let session, !session.isRunning, !session.followUpsPaused else { return }
+            guard session.queuedFollowUps.first?.id == followUp.id else {
+                self.sendQueuedFollowUp(for: session)
                 return
             }
-            apiKey = openRouterProxy.token
-        }
-        agent.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel,
-                   ollamaURL: port.map { "http://127.0.0.1:\($0)" } ?? "", provider: provider, apiKey: apiKey, tunnelTo: port,
-                   memoryRoute: route, verifyRoute: memoryRouteVerifier) {
-            await Self.screenNow(shell: shell, ip: ip)
+            guard verified == followUp.route, self.canSendQueuedFollowUp(for: session) else {
+                session.pauseQueuedFollowUps()
+                return
+            }
+            self.dispatchFollowUp(followUp, to: session, verifiedRoute: verified)
         }
     }
 
-    /// Box turns run the selected harness with only the remote Box's tool set.
-    private func sendToBox(_ prompt: String, memoryRoute: AgentMemoryRoute) {
-        let (baseURL, apiKey) = localModelEndpoint
-        switch harness {
-        case .claudeCode:
-            guard let claude = BoxAccount.claude, let boxToken = BoxAccount.key() else { return }
-            let command = BoxClaudeCommand(prompt: prompt, resume: nil, model: activeModel, provider: provider, apiKey: apiKey,
-                                           boxName: agent.config.boxName, baseURL: baseURL)
-            agent.sendOnBox(prompt, command: command, claude: claude, boxToken: boxToken, dataFolder: files.root, memoryRoute: memoryRoute)
-        case .codex:
-            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey,
-                                memoryRoute: memoryRoute)
-        case .deepSeek:
-            agent.sendWithDeepSeekOnBox(prompt, dataFolder: files.root, model: activeModel, baseURL: baseURL, apiKey: apiKey,
-                                memoryRoute: memoryRoute)
-        case .sai: break // Sai runs through its own API on a Sai computer.
+    private func dispatchFollowUp(_ followUp: AgentSession.QueuedFollowUp, to session: AgentSession,
+                                  verifiedRoute: AgentMemoryRoute? = nil) {
+        if send(followUp.text, to: session, verifiedRoute: verifiedRoute) { session.removeQueuedFollowUp(followUp.id) }
+        else { session.pauseQueuedFollowUps() }
+    }
+
+    private func canDispatch(to session: AgentSession) -> Bool {
+        agents.contains(where: { $0 === session }) && !session.isRunning && !session.isSendingSteering
+            && chatBlocker(for: session) == nil
+    }
+
+    @discardableResult
+    func send(_ prompt: String, to session: AgentSession, verifiedRoute: AgentMemoryRoute? = nil) -> Bool {
+        guard agents.contains(where: { $0 === session }), !session.isRunning, !session.isSendingSteering else { return false }
+        // The private/cloud boundary is enforced here too, not only by what the settings offer.
+        let config = session.config.enforcingPrivacy
+        guard config == session.config else { session.config = config; return false }
+        guard chatBlocker(for: session) == nil else { return false }
+        let route = memoryRoute(for: session)
+        guard verifiedRoute == nil || verifiedRoute == route else { return false }
+        let verifyRoute = verifiedRoute == nil ? memoryRouteVerifier(for: config.provider) : nil
+        let harness = config.harness
+        if harness == .sai {
+            session.sendToSai(prompt, machine: config.saiMachine, model: config.saiModel, memoryRoute: route)
+            return true
         }
+        if config.computer == .box {
+            return sendToBox(prompt, to: session, memoryRoute: route)
+        }
+        if config.privacy == .thisMac {
+            return sendToMac(prompt, to: session, memoryRoute: route, verifyRoute: verifyRoute)
+        }
+        guard config.usesLocalComputer, let ip = guestIP, let endpoint = localModelEndpoint(for: session) else { return false }
+        let shell = shell
+        let provider = config.provider
+        let port: UInt16? = provider.usesAccount ? nil : (provider == .openRouter ? OpenRouter.proxyPort : Ollama.port)
+        session.send(prompt, harness: harness, shell: shell, ip: ip, model: activeModel(for: config),
+                     ollamaURL: endpoint.url, provider: provider, apiKey: provider == .openRouter ? endpoint.key : nil,
+                     tunnelTo: port, memoryRoute: route, verifyRoute: verifyRoute) {
+            await Self.screenNow(shell: shell, ip: ip)
+        }
+        return true
+    }
+
+    /// Box turns run the selected harness with only the remote Box's tool set.
+    private func sendToBox(_ prompt: String, to session: AgentSession, memoryRoute: AgentMemoryRoute) -> Bool {
+        guard let (baseURL, apiKey) = localModelEndpoint(for: session) else { return false }
+        let config = session.config
+        let model = activeModel(for: config)
+        switch config.harness {
+        case .claudeCode:
+            guard let claude = BoxAccount.claude, let boxToken = BoxAccount.key() else { return false }
+            let command = BoxClaudeCommand(prompt: prompt, resume: nil, model: model, provider: config.provider, apiKey: apiKey,
+                                           boxName: config.boxName, baseURL: baseURL)
+            session.sendOnBox(prompt, command: command, claude: claude, boxToken: boxToken, dataFolder: files.root, memoryRoute: memoryRoute)
+        case .codex:
+            session.sendWithCodex(prompt, dataFolder: files.root, model: model, baseURL: baseURL, apiKey: apiKey,
+                                  memoryRoute: memoryRoute)
+        case .deepSeek:
+            session.sendWithDeepSeekOnBox(prompt, dataFolder: files.root, model: model, baseURL: baseURL, apiKey: apiKey,
+                                         memoryRoute: memoryRoute)
+        case .sai: return false // Sai runs through its own API on a Sai computer.
+        }
+        return true
     }
 
     // MARK: This Mac agents
@@ -817,19 +889,22 @@ final class AppModel: ObservableObject {
     }
 
     /// A This Mac agent's turn. The harness asks Agent S for approval before acting on the Mac.
-    private func sendToMac(_ prompt: String, memoryRoute: AgentMemoryRoute) {
+    private func sendToMac(_ prompt: String, to session: AgentSession, memoryRoute: AgentMemoryRoute,
+                           verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)?) -> Bool {
+        let config = session.config
+        let model = activeModel(for: config)
         do {
             try MacAccess.install()
-            if harness == .claudeCode { try approvals.start() }
+            if config.harness == .claudeCode { try approvals.start() }
         } catch {
-            agent.noticeFromApp("Couldn't get ready to work on this Mac: \(error.localizedDescription)")
-            return
+            session.noticeFromApp("Couldn't get ready to work on this Mac: \(error.localizedDescription)")
+            return false
         }
-        if provider == .codexAccount {
-            agent.sendWithCodex(prompt, dataFolder: files.root, model: activeModel, memoryRoute: memoryRoute)
-            return
+        if config.provider == .codexAccount {
+            session.sendWithCodex(prompt, dataFolder: files.root, model: model, memoryRoute: memoryRoute)
+            return true
         }
-        guard let claude = BoxAccount.claude else { return }
+        guard let claude = BoxAccount.claude, let (baseURL, apiKey) = localModelEndpoint(for: session) else { return false }
         approvals.decide = { [weak self] agentID, tool, input in
             guard let session = self?.agents.first(where: { $0.id.uuidString == agentID }),
                   session.config.privacy == .thisMac, !session.config.provider.usesAccount else { return false }
@@ -842,21 +917,22 @@ final class AppModel: ObservableObject {
             }
             return await session.runClaudeMacCommand(command, turn: turn)
         }
-        let (baseURL, apiKey) = localModelEndpoint
-        let command = MacClaudeCommand(prompt: prompt, resume: nil, model: activeModel, provider: provider, apiKey: apiKey,
+        let command = MacClaudeCommand(prompt: prompt, resume: nil, model: model, provider: config.provider, apiKey: apiKey,
                                        baseURL: baseURL, macToolPath: MacAccess.macTool)
-        agent.sendOnMac(prompt, command: command, claude: claude, dataFolder: files.root, settingsPath: MacAccess.settings,
-                        path: MacAccess.path, approvalPort: approvals.port, approvalToken: approvals.token,
-                        memoryRoute: memoryRoute, verifyRoute: memoryRouteVerifier)
+        session.sendOnMac(prompt, command: command, claude: claude, dataFolder: files.root, settingsPath: MacAccess.settings,
+                          path: MacAccess.path, approvalPort: approvals.port, approvalToken: approvals.token,
+                          memoryRoute: memoryRoute, verifyRoute: verifyRoute)
+        return true
     }
 
-    private var localModelEndpoint: (url: String, key: String) {
-        switch provider {
+    private func localModelEndpoint(for session: AgentSession) -> (url: String, key: String)? {
+        switch session.config.provider {
         case .ollama:
             return ("http://127.0.0.1:\(Ollama.port)", ModelProvider.ollama.placeholderKey)
         case .openRouter:
             do { try openRouterProxy.start() } catch {
-                NSLog("Agent S: couldn't start the OpenRouter proxy: %@", "\(error)")
+                session.noticeFromApp("Couldn't start the OpenRouter connection: \(error.localizedDescription)")
+                return nil
             }
             return ("http://127.0.0.1:\(OpenRouter.proxyPort)", openRouterProxy.token)
         case .claudeAccount, .codexAccount:
