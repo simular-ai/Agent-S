@@ -92,10 +92,11 @@ struct ContextView: View {
         if model.computer == .box {
             switch model.harness {
             case .claudeCode: return Box.instructions(boxName: model.boxName)
-            case .deepSeek: return DeepSeekBoxTurn.instructions(boxName: model.boxName)
+            case .deepSeek: return DeepSeekTurn.instructions(boxName: model.boxName)
             default: return Box.agentInstructions(boxName: model.boxName)
             }
         }
+        if model.privacy == .thisMac, model.harness == .deepSeek { return DeepSeekTurn.macInstructions }
         if model.provider == .codexAccount {
             return CodexAccountTurn.instructions
         }
@@ -107,7 +108,9 @@ struct ContextView: View {
 
     private var instructionsLabel: String {
         if model.computer == .box { return "Simular Box tools" }
-        if model.provider == .codexAccount { return "Simular tools and approvals" }
+        if model.provider == .codexAccount || model.privacy == .thisMac && model.harness == .deepSeek {
+            return "Simular tools and approvals"
+        }
         if model.harness == .codex { return "AGENTS.md, written before each turn" }
         return "System prompt (replaces Claude Code's default)"
     }

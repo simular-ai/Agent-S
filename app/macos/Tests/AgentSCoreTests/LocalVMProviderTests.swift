@@ -5,6 +5,8 @@ import Testing
 struct LocalVMProviderTests {
     @Test func choosesTheComputerSeparatelyFromTheProvider() {
         #expect(AgentLocation.allCases == [.linuxVM, .thisMac, .cloud])
+        #expect(AgentLocation.cloud.displayName == "Cloud Computer")
+        #expect(AgentLocation.cloud.rawValue == "cloud")
         #expect(AgentLocation.linuxVM.mode(for: .ollama) == .fullyPrivate)
         #expect(AgentLocation.linuxVM.mode(for: .openRouter) == .localVM)
         #expect(AgentLocation.linuxVM.mode(for: .claudeAccount) == .localVM)

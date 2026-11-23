@@ -793,13 +793,31 @@ final class AgentSession: ObservableObject, Identifiable {
 
     func sendWithDeepSeekOnBox(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String,
                               memoryRoute: AgentMemoryRoute? = nil) {
-        let runner = DeepSeekBoxTurn()
+        let runner = DeepSeekTurn()
         let config = config
         let steering = DeepSeekSteering()
         runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, steer: steering.send, deepSeekInput: steering,
                       memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
-                                 dataFolder: dataFolder, agentID: config.id, boxName: config.boxName,
+                                 dataFolder: dataFolder, agentID: config.id, target: .box(config.boxName),
+                                 standardInput: steering.input, onEvent: onEvent)
+        }
+    }
+
+    func sendWithDeepSeekOnMac(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String,
+                               memoryRoute: AgentMemoryRoute? = nil,
+                               verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
+        let runner = DeepSeekTurn()
+        let agentID = config.id
+        let steering = DeepSeekSteering()
+        let target = DeepSeekTurn.Target.mac { [weak self] command in
+            guard let self else { return false }
+            return await self.requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool)
+        }
+        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, steer: steering.send, deepSeekInput: steering,
+                      memoryRoute: memoryRoute, verifyRoute: verifyRoute) { promptForModel, resume, onEvent in
+            try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
+                                 dataFolder: dataFolder, agentID: agentID, target: target,
                                  standardInput: steering.input, onEvent: onEvent)
         }
     }
@@ -807,6 +825,7 @@ final class AgentSession: ObservableObject, Identifiable {
     private func runHostedTurn(_ prompt: String, harness: Harness, stop: @escaping () -> Void,
                                steer: ((String) async throws -> Void)? = nil, deepSeekInput: DeepSeekSteering? = nil,
                                memoryRoute: AgentMemoryRoute?,
+                               verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil,
                                run: @escaping (String, String?, @escaping (ClaudeEvent) -> Void) async throws -> Void) {
         guard !isRunning else { return }
         let legacyResume = memoryRoute == nil ? currentSessionID : nil
@@ -833,7 +852,13 @@ final class AgentSession: ObservableObject, Identifiable {
             }
             do {
                 try Task.checkCancellation()
-                let resume = self.resumeOnRoute(memoryRoute, legacy: legacyResume)
+                if let memoryRoute, let verifyRoute {
+                    let verified = await verifyRoute(memoryRoute)
+                    try Task.checkCancellation()
+                    guard self.turn == turnID else { return }
+                    self.activeMemoryRoute = verified
+                }
+                let resume = self.resumeOnRoute(self.activeMemoryRoute, legacy: legacyResume)
                 try await run(self.modelPrompt(for: item), resume, { event in
                     guard self.turn == turnID else { return }
                     if memoryRoute == nil, let context, case let .started(id, _) = event { self.boxSessions[context] = id }

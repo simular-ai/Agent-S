@@ -310,6 +310,15 @@ struct PrivacyModeTests {
         }
     }
 
+    @Test func thisMacSupportsDeepSeekWithOllamaAndOpenRouter() {
+        #expect(Harness.allowed(in: .thisMac) == [.claudeCode, .codex, .deepSeek])
+        #expect(Harness.allowed(in: .thisMac, computer: nil) == [.claudeCode, .codex, .deepSeek])
+        #expect(ModelProvider.allowed(at: .thisMac, harness: .deepSeek, computer: nil) == [.ollama, .openRouter])
+        #expect(ModelProvider.allowed(in: .thisMac, harness: .deepSeek, computer: nil) == [.ollama, .openRouter])
+        #expect(ModelProvider.fitting(.claudeAccount, in: .thisMac, harness: .deepSeek, computer: nil) == .ollama)
+        #expect(ModelProvider.fitting(.codexAccount, in: .thisMac, harness: .deepSeek, computer: nil) == .ollama)
+    }
+
     @Test func boxToolBridgeBindsToolsToTheConfiguredBox() {
         #expect(Box.allowsAgentTool("shell"))
         #expect(Box.allowsAgentTool("browser_navigate"))

@@ -11,6 +11,7 @@ struct ChatView: View {
     @State private var drafts: [UUID: String] = [:]
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
+    @State private var showsOpenRouterSettings = false
 
     private enum TranscriptAnchor: Hashable {
         case row(String)
@@ -40,6 +41,18 @@ struct ChatView: View {
                 if accountSelection != nil, case .awaitingSignIn = model.accountStatus {
                     Task { await model.refreshAccountStatus() }
                 }
+            }
+            .sheet(isPresented: $showsOpenRouterSettings) {
+                VStack(spacing: 0) {
+                    Form { OpenRouterSettings() }.formStyle(.grouped)
+                    Divider()
+                    HStack {
+                        Spacer()
+                        Button("Done") { showsOpenRouterSettings = false }.keyboardShortcut(.defaultAction)
+                    }
+                    .padding(12)
+                }
+                .frame(width: 520, height: 420)
             }
     }
 
@@ -257,7 +270,8 @@ struct ChatView: View {
                                 if name == model.openRouterModel { Label(name, systemImage: "checkmark") } else { Text(name) }
                             }
                         }
-                        Text("Any other model: right-click the agent → Agent Settings")
+                        Button("Search OpenRouter models…") { showsOpenRouterSettings = true }
+                        Toggle("Request Zero Data Retention (ZDR)", isOn: $model.openRouterRequiresZDR)
                     } else if let notice = model.provider.accountDataNotice {
                         Text("Automatic")
                         Text(notice)

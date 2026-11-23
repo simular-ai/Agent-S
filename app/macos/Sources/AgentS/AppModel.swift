@@ -66,6 +66,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var ollamaModels: [Ollama.Model] = []
     @Published private(set) var pullStatus: String?
     @Published private(set) var openRouterModels: [OpenRouter.Model] = []
+    @Published private(set) var isRefreshingOpenRouterModels = false
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
     @Published var openRouterRequiresZDR = AppModel.storedOpenRouterRequiresZDR {
         didSet { UserDefaults.standard.set(openRouterRequiresZDR, forKey: Self.openRouterZDRKey) }
@@ -625,9 +626,15 @@ final class AppModel: ObservableObject {
     private func computerChatBlocker(for session: AgentSession) -> String? {
         let config = session.config
         if config.privacy == .thisMac {
-            if config.harness == .codex {
-                if CodexAccount.executable == nil { return "Install Codex on this Mac to use this agent" }
-            } else if BoxAccount.claude == nil { return "Install Claude Code on this Mac to use This Mac agents" }
+            switch config.harness {
+            case .codex where CodexAccount.executable == nil:
+                return "Install Codex on this Mac to use this agent"
+            case .claudeCode where BoxAccount.claude == nil:
+                return "Install Claude Code on this Mac to use this agent"
+            case .deepSeek where DeepSeekTurn.executable == nil:
+                return "Install DeepSeek Harness on this Mac to use this agent"
+            default: break
+            }
             if MacAccess.simulang == nil { return "Install simulang first: npm install -g @simular-ai/simulang" }
             if !macAccessibility { return "Allow Accessibility in Settings to use this Mac" }
             return nil
@@ -637,7 +644,7 @@ final class AppModel: ObservableObject {
             switch config.harness {
             case .claudeCode where BoxAccount.claude == nil: return "Install Claude Code on this Mac"
             case .codex where CodexAccount.executable == nil: return "Install Codex on this Mac"
-            case .deepSeek where DeepSeekBoxTurn.executable == nil:
+            case .deepSeek where DeepSeekTurn.executable == nil:
                 return "Install DeepSeek Harness on this Mac"
             default: break
             }
@@ -751,7 +758,11 @@ final class AppModel: ObservableObject {
     }
 
     func refreshOpenRouterModels() async {
-        if openRouterModels.isEmpty { openRouterModels = await OpenRouter.models() }
+        guard openRouterModels.isEmpty, !isRefreshingOpenRouterModels else { return }
+        isRefreshingOpenRouterModels = true
+        defer { isRefreshingOpenRouterModels = false }
+        let models = await OpenRouter.models()
+        if !Task.isCancelled { openRouterModels = models }
     }
 
     // MARK: Harness accounts
@@ -1058,7 +1069,13 @@ final class AppModel: ObservableObject {
             session.sendWithCodex(prompt, dataFolder: files.root, model: model, memoryRoute: memoryRoute)
             return true
         }
-        guard let claude = BoxAccount.claude, let (baseURL, apiKey) = localModelEndpoint(for: session) else { return false }
+        guard let (baseURL, apiKey) = localModelEndpoint(for: session) else { return false }
+        if config.harness == .deepSeek {
+            session.sendWithDeepSeekOnMac(prompt, dataFolder: files.root, model: model, baseURL: baseURL, apiKey: apiKey,
+                                         memoryRoute: memoryRoute, verifyRoute: verifyRoute)
+            return true
+        }
+        guard let claude = BoxAccount.claude else { return false }
         approvals.decide = { [weak self] agentID, tool, input in
             guard let session = self?.agents.first(where: { $0.id.uuidString == agentID }),
                   session.config.privacy == .thisMac, !session.config.provider.usesAccount else { return false }

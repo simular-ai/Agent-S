@@ -28,8 +28,7 @@ public enum Harness: String, CaseIterable, Identifiable, Codable, Sendable {
     /// Every harness a privacy mode can use, across its computers.
     public static func allowed(in mode: PrivacyMode) -> [Harness] {
         switch mode {
-        case .fullyPrivate, .localVM: [.claudeCode, .codex, .deepSeek]
-        case .thisMac: [.claudeCode, .codex]
+        case .fullyPrivate, .localVM, .thisMac: [.claudeCode, .codex, .deepSeek]
         case .remote: CloudComputer.box.harnesses + CloudComputer.sai.harnesses
         }
     }

@@ -34,6 +34,9 @@ struct AgentSettings: View {
                     Picker("Harness", selection: $model.harness) {
                         ForEach(Harness.allowed(in: model.privacy, computer: model.computer)) { Text($0.displayName).tag($0) }
                     }
+                    if !model.agent.config.usesLocalComputer, model.harness == .deepSeek, DeepSeekTurn.executable == nil {
+                        DeepSeekInstallHelp()
+                    }
                     if model.harness != .sai, model.availableProviders.count > 1 {
                         Picker("Provider", selection: $model.provider) {
                             ForEach(model.availableProviders) { Text($0.displayName).tag($0) }
@@ -90,5 +93,14 @@ struct AgentSettings: View {
     private func saveName() {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != model.agent.config.name { model.rename(model.agent, to: trimmed) }
+    }
+}
+
+struct DeepSeekInstallHelp: View {
+    var body: some View {
+        Text("Install DeepSeek Harness on this Mac using Node.js 24.9 or later.")
+            .font(.caption).foregroundStyle(.secondary)
+        Text("npm install -g @deepseek-ai/dsh@\(DeepSeekCommand.version)")
+            .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
     }
 }
