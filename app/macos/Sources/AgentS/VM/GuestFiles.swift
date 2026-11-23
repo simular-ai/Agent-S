@@ -36,6 +36,9 @@ struct GuestFiles {
     var machineIdentifier: URL { root.appendingPathComponent("machine-id") }
     var macAddress: URL { root.appendingPathComponent("mac-address") }
     var seed: URL { root.appendingPathComponent("seed.iso") }
+    var checkpoint: URL { root.appendingPathComponent("vm-checkpoint", isDirectory: true) }
+    var checkpointStaging: URL { root.appendingPathComponent(".vm-checkpoint-staging", isDirectory: true) }
+    var diskLock: URL { root.appendingPathComponent(".vm-disk-lock") }
     var sshKey: URL { root.appendingPathComponent("id_ed25519") }
     var sshPublicKey: URL { root.appendingPathComponent("id_ed25519.pub") }
     /// Shared with the guest at /mnt/sai.

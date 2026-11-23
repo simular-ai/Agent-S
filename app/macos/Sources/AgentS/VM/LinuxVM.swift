@@ -26,6 +26,12 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
     private(set) var state: State = .stopped { didSet { onStateChange?(state) } }
     var onStateChange: ((State) -> Void)?
     let files: GuestFiles
+    private var diskOwner: GuestDiskLock?
+    private var runningConfiguration: VZVirtualMachineConfiguration?
+    private var savingCheckpoint = false
+
+    private var checkpoint: GuestCheckpoint { GuestCheckpoint(files: files) }
+    var hasSavedState: Bool { checkpoint.exists }
 
     init(files: GuestFiles) { self.files = files }
 
@@ -39,26 +45,105 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
         return mac
     }
 
-    func start(memory: MemoryAllocation) async {
-        guard machine == nil else { return }
+    /// Returns true when the sandbox resumed saved state. The VM state reports the outcome of a cold boot.
+    @discardableResult
+    func start(memory: MemoryAllocation, restoreSavedState: Bool = true) async -> Bool {
+        guard machine == nil, state != .starting, state != .stopping, !savingCheckpoint else { return false }
         state = .starting
+        var restoring = false
         do {
-            let config = try configuration(memory: memory)
+            let owner = try GuestDiskLock(url: files.diskLock)
+            diskOwner = owner
+            defer { withExtendedLifetime(owner) {} }
+
+            restoring = restoreSavedState && checkpoint.exists
+            let saved = restoring ? try checkpoint.metadata() : nil
+            let allocation: MemoryAllocation
+            if let saved {
+                guard let restored = MemoryAllocation(rawValue: saved.memoryGB) else {
+                    throw GuestCheckpoint.Failure.incompatible
+                }
+                allocation = restored
+            } else {
+                allocation = memory
+            }
+            let config = try configuration(memory: allocation)
             try config.validate()
             let vm = VZVirtualMachine(configuration: config)
             vm.delegate = self
             machine = vm
-            try await vm.start()
+            runningConfiguration = config
+            if let saved {
+                try await restore(vm, configuration: config, saved: saved)
+            } else {
+                try checkpoint.consume()
+                checkpoint.cleanStaging()
+                try await vm.start()
+            }
+            guard machine === vm, vm.state == .running else { return false }
             state = .running
+            return restoring
         } catch {
-            machine = nil
-            state = .failed(error.localizedDescription)
+            detachMachine()
+            state = .failed(restoring ? "Couldn't resume the sandbox. \(error.localizedDescription)" : error.localizedDescription)
+            return false
         }
+    }
+
+    /// Save runtime state for app termination. On success the guest stays paused until the app exits.
+    func saveForQuit() async throws {
+        guard let vm = machine else { return }
+        guard !savingCheckpoint, state == .running, vm.state == .running,
+              let configuration = runningConfiguration, let owner = diskOwner,
+              let memory = MemoryAllocation.allCases.first(where: { $0.bytes == configuration.memorySize }) else {
+            throw GuestCheckpoint.Failure.notRunning
+        }
+
+        #if arch(arm64)
+        try configuration.validateSaveRestoreSupport()
+        savingCheckpoint = true
+        defer {
+            savingCheckpoint = false
+            withExtendedLifetime(owner) {}
+        }
+        do {
+            try await vm.pause()
+            try await checkpoint.save(memoryGB: memory.rawValue) { url in
+                try await vm.saveMachineStateTo(url: url)
+            }
+        } catch {
+            if vm.state == .paused {
+                do { try await vm.resume() }
+                catch { state = .failed("Couldn't resume the sandbox after saving failed. \(error.localizedDescription)") }
+            }
+            throw error
+        }
+        #else
+        throw GuestCheckpoint.Failure.unsupported
+        #endif
+    }
+
+    private func restore(_ vm: VZVirtualMachine, configuration: VZVirtualMachineConfiguration,
+                         saved: GuestCheckpoint.Metadata) async throws {
+        #if arch(arm64)
+        try configuration.validateSaveRestoreSupport()
+        try await vm.restoreMachineStateFrom(url: checkpoint.stateURL)
+        try checkpoint.consume()
+        defer { checkpoint.cleanStaging() }
+        do {
+            try await vm.resume()
+        } catch {
+            if vm.state == .paused { try? checkpoint.retainAfterFailedResume(saved) }
+            throw error
+        }
+        #else
+        throw GuestCheckpoint.Failure.unsupported
+        #endif
     }
 
     /// Asks the guest to shut down; forces it off if it is still up after `timeout` seconds.
     func stop(timeout: TimeInterval = 20) async {
-        guard let vm = machine else { return }
+        guard let vm = machine, !savingCheckpoint, state != .stopping else { return }
         state = .stopping
         if vm.canRequestStop { try? vm.requestStop() }
         let deadline = Date().addingTimeInterval(timeout)
@@ -66,22 +151,32 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
             try? await Task.sleep(nanoseconds: 500_000_000)
         }
         if vm.state != .stopped, vm.canStop { try? await vm.stop() }
+        if machine === vm {
+            detachMachine()
+            state = .stopped
+        }
+    }
+
+    private func detachMachine() {
         machine = nil
-        state = .stopped
+        runningConfiguration = nil
+        diskOwner = nil
     }
 
     // MARK: VZVirtualMachineDelegate
 
     nonisolated func guestDidStop(_ virtualMachine: VZVirtualMachine) {
         Task { @MainActor in
-            self.machine = nil
+            guard self.machine === virtualMachine else { return }
+            self.detachMachine()
             self.state = .stopped
         }
     }
 
     nonisolated func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) {
         Task { @MainActor in
-            self.machine = nil
+            guard self.machine === virtualMachine else { return }
+            self.detachMachine()
             self.state = .failed(error.localizedDescription)
         }
     }

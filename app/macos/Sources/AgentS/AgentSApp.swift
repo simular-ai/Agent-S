@@ -17,6 +17,7 @@ struct AgentSApp: App {
                     delegate.model = model
                     model.openMainWindow = { [openWindow] in openWindow(id: Self.mainWindowID) }
                     model.refreshMacAccess()
+                    model.resumeSavedSandboxOnLaunch()
                 }
                 .onChange(of: model.selectedAgentID) { _, _ in
                     if model.privacy == .thisMac { model.refreshMacAccess() }
@@ -28,9 +29,10 @@ struct AgentSApp: App {
     }
 }
 
-/// Shuts the guest down cleanly when the app quits, so its disk is never left mid-write.
+/// Lets Agent S finish saving the sandbox before macOS terminates the app.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
+    private var terminationPending = false
 
     /// Two copies of the app must not share one computer: if the earlier "Saige" build is
     /// running, ask the user to quit it first.
@@ -50,11 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model else { return .terminateNow }
-        model.stopAppWork()
-        guard model.vm.machine != nil else { return .terminateNow }
+        guard !terminationPending else { return .terminateLater }
+        terminationPending = true
         Task { @MainActor in
-            await model.vm.stop()
-            sender.reply(toApplicationShouldTerminate: true)
+            let shouldQuit = await model.prepareToQuit()
+            terminationPending = false
+            sender.reply(toApplicationShouldTerminate: shouldQuit)
         }
         return .terminateLater
     }

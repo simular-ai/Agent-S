@@ -50,6 +50,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var phase: Phase
     @Published private(set) var downloadProgress: Double?
     @Published private(set) var guestIP: String?
+    @Published private(set) var isSavingSandbox = false
+    private var attemptedSandboxRestore = false
+    private var sandboxCanCheckpoint = false
     @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .sixGB {
         didSet { UserDefaults.standard.set(computerMemory.rawValue, forKey: Self.computerMemoryKey) }
     }
@@ -75,6 +78,7 @@ final class AppModel: ObservableObject {
 
     let files = GuestFiles.standard
     let vm: LinuxVM
+    var hasSavedSandbox: Bool { vm.hasSavedState }
 
     // MARK: Agents
 
@@ -394,33 +398,123 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func start() async {
-        phase = .booting("Starting the computer…")
-        await vm.start(memory: computerMemory)
-        guard vm.state == .running else { return }
+    func resumeSavedSandboxOnLaunch() {
+        guard !attemptedSandboxRestore else { return }
+        attemptedSandboxRestore = true
+        guard hasSavedSandbox, !GuestFiles.legacyAppRunning else { return }
+        Task { await start() }
+    }
 
-        phase = .booting("Waiting for the computer to come online…")
+    func start(restoreSavedState: Bool = true) async {
+        guard !isSavingSandbox else { return }
+        if case .booting = phase { return }
+        if case .preparing = phase { return }
+
+        let resuming: Bool
+        if vm.state == .running {
+            resuming = sandboxCanCheckpoint
+        } else {
+            guard vm.machine == nil else { return }
+            let restoring = restoreSavedState && hasSavedSandbox
+            phase = .booting(restoring ? "Resuming sandbox…" : "Starting the computer…")
+            resuming = await vm.start(memory: computerMemory, restoreSavedState: restoreSavedState)
+            sandboxCanCheckpoint = resuming
+        }
+        guard let machine = vm.machine, vm.state == .running else { return }
+
+        let shell = shell
+        phase = .booting(resuming ? "Reconnecting to the sandbox…" : "Waiting for the computer to come online…")
         guard let ip = await shell.waitUntilReachable() else {
-            phase = .failed("The computer started but never answered on its network.")
+            if vm.machine === machine, vm.state == .running {
+                phase = .failed("The computer started but never answered on its network.")
+            }
             return
         }
+        guard vm.machine === machine, vm.state == .running else { return }
         guestIP = ip
+
+        if resuming {
+            let ready = await shell.isReady(on: ip)
+            guard vm.machine === machine, vm.state == .running else { return }
+            if ready {
+                phase = .ready
+                return
+            }
+        }
 
         phase = .booting("Installing the desktop, simulang and Claude Code (first start only, a few minutes)…")
         while !(await shell.isReady(on: ip)) {
-            if vm.state != .running { return }
+            if vm.machine !== machine || vm.state != .running { return }
             try? await Task.sleep(nanoseconds: 3_000_000_000)
         }
+        guard vm.machine === machine, vm.state == .running else { return }
         phase = .booting("Installing Sai's screen tools…")
         do { try await shell.run(GuestTools.installCommand, on: ip) } catch {
             NSLog("Agent S: installing the screen tools failed: %@", "\(error)")
         }
-        phase = .ready
+        if vm.machine === machine, vm.state == .running {
+            sandboxCanCheckpoint = true
+            phase = .ready
+        }
     }
 
     func stop() async {
+        guard !isSavingSandbox else { return }
+        resetSandboxAccountStatus()
         agents.forEach { $0.stop() }
         await vm.stop()
+    }
+
+    func prepareToQuit() async -> Bool {
+        guard vm.machine != nil else {
+            stopAppWork()
+            return true
+        }
+
+        isSavingSandbox = true
+        for (route, task) in accountSignIns where route.inSandbox { task.cancel() }
+        agents.filter { $0.config.usesLocalComputer }.forEach { $0.stop() }
+
+        do {
+            // Let the host finish closing SSH and guest sign-in before pausing the VM.
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(5))
+            while sandboxIsBusyForSave {
+                guard clock.now < deadline else { throw SandboxSaveFailure.stillBusy }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            if sandboxCanCheckpoint, vm.machine != nil {
+                try await vm.saveForQuit()
+            } else {
+                await vm.stop()
+            }
+        } catch {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Couldn’t save the sandbox"
+            alert.informativeText = "\(error.localizedDescription) Shutting down closes its open apps and windows."
+            alert.addButton(withTitle: "Keep Agent S Open")
+            alert.addButton(withTitle: "Shut Down and Quit")
+            guard alert.runModal() == .alertSecondButtonReturn else {
+                isSavingSandbox = false
+                return false
+            }
+            await vm.stop()
+        }
+
+        stopAppWork()
+        return true
+    }
+
+    private var sandboxIsBusyForSave: Bool {
+        vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn
+            || accountSignIns.keys.contains(where: \.inSandbox)
+    }
+
+    private enum SandboxSaveFailure: LocalizedError {
+        case stillBusy
+
+        var errorDescription: String? { "Sandbox work is still stopping." }
     }
 
     func stopAppWork() {
@@ -464,7 +558,7 @@ final class AppModel: ObservableObject {
     /// Types into whatever is focused in the computer. The text goes over stdin, so it never
     /// appears in a command line, the chat or the agent's context.
     func typeIntoComputer(_ text: String, thenTab: Bool = false) async throws {
-        guard let ip = guestIP else { throw OnePassword.Failure(message: "The computer is off.") }
+        guard let ip = guestIP, !isSavingSandbox else { throw OnePassword.Failure(message: "The computer is unavailable.") }
         try await shell.run("DISPLAY=:0 xdotool type --delay 12 --file -", on: ip, input: text)
         if thenTab { try await shell.run("DISPLAY=:0 xdotool key Tab", on: ip) }
     }
@@ -543,6 +637,7 @@ final class AppModel: ObservableObject {
             if config.saiMachine.isEmpty { return saiMachines.isEmpty ? "Finding your Sai computers…" : "Choose a Sai computer above" }
             return nil
         }
+        if isSavingSandbox { return "Saving the sandbox…" }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
         case .ready:
@@ -656,7 +751,7 @@ final class AppModel: ObservableObject {
     }
 
     var accountComputerReady: Bool {
-        !privacy.usesLocalComputer || (phase == .ready && guestIP != nil)
+        !privacy.usesLocalComputer || (phase == .ready && guestIP != nil && !isSavingSandbox)
     }
 
     var sandboxHasActiveTurn: Bool {
@@ -1003,10 +1098,12 @@ final class AppModel: ObservableObject {
     private func vmChanged(_ state: LinuxVM.State) {
         switch state {
         case .stopped:
+            sandboxCanCheckpoint = false
             resetSandboxAccountStatus()
             guestIP = nil
             if case .needsSetup = phase {} else { phase = .stopped }
         case let .failed(message):
+            sandboxCanCheckpoint = false
             resetSandboxAccountStatus()
             guestIP = nil
             phase = .failed(message)

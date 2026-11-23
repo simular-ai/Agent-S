@@ -73,6 +73,11 @@ VM start. The default is **6 GB**. This setting allocates memory to the VM. Olla
 separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
 
+On Apple silicon, quitting Agent S saves the running sandbox when the Mac and VM
+configuration support it. Reopen Agent S to resume open apps and windows. **Turn off**
+shuts down the sandbox, and settings such as a new memory allocation apply on the next
+full start. The sandbox disk keeps files and sign-ins across either action.
+
 Chromium stays open between tasks while the sandbox is running. To use a subscription,
 select **Use Claude Code account** or **Use Codex account** as the provider. Start the
 sandbox and choose **Sign in** above the composer.

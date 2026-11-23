@@ -291,20 +291,36 @@ struct ChatView: View {
 
     // MARK: Computer state, inline
 
-    /// When this agent needs the local computer and it isn't on: say so above the composer, with
-    /// the one action that unblocks the chat.
+    /// Shows the local computer's status and available controls above the composer.
     private var computerBanner: AnyView? {
         guard model.agent.config.usesLocalComputer else { return nil }
+        if model.isSavingSandbox {
+            return AnyView(bannerRow(symbol: nil, text: "Saving sandbox…") { EmptyView() })
+        }
         switch model.phase {
         case .ready:
             return nil
         case .stopped:
+            if model.hasSavedSandbox {
+                return AnyView(bannerRow(symbol: "pause.circle", text: "Sandbox saved") {
+                    Button("Resume") { Task { await model.start() } }
+                        .buttonStyle(.borderedProminent).tint(Theme.accent)
+                })
+            }
             return AnyView(MemoryBanner())
         case let .booting(step), let .preparing(step):
             return AnyView(bannerRow(symbol: nil, text: step) { EmptyView() })
         case let .failed(message):
-            return AnyView(bannerRow(symbol: "exclamationmark.triangle", text: message) {
-                Button("Try again") { Task { await model.start() } }
+            return AnyView(VStack(alignment: .trailing, spacing: 6) {
+                bannerRow(symbol: "exclamationmark.triangle", text: message) {
+                    if model.vm.machine != nil, model.vm.state != .running {
+                        Button("Turn off") { Task { await model.stop() } }
+                    } else {
+                        let title = model.hasSavedSandbox ? "Resume" : model.vm.state == .running ? "Try again" : "Turn on"
+                        Button(title) { Task { await model.start() } }
+                    }
+                }
+                if model.hasSavedSandbox { DiscardSavedSandboxButton().padding(.trailing, 14) }
             })
         case .needsSetup:
             return AnyView(bannerRow(symbol: "gearshape", text: "Set up the computer in Settings (the gear, bottom left) to chat.") {
@@ -493,7 +509,8 @@ struct ChatView: View {
                 if hosted, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
                 }
-                if model.phase != .ready, model.files.isPrepared, !isBusy {
+                if model.phase != .ready, model.files.isPrepared, !isBusy,
+                   !model.hasSavedSandbox, !model.isSavingSandbox {
                     Button("Turn on the computer") { Task { await model.start() } }
                         .buttonStyle(.borderedProminent)
                         .tint(Theme.accent)
