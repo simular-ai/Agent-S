@@ -35,29 +35,43 @@ enum ClaudeAccount {
 
     @MainActor
     static func signIn(claude: URL, profile: URL) async throws {
-        try Task.checkCancellation()
-        let fileManager = FileManager.default
-        let privateDirectory: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
-        try fileManager.createDirectory(at: profile, withIntermediateDirectories: true, attributes: privateDirectory)
-        try fileManager.setAttributes(privateDirectory, ofItemAtPath: profile.path)
-
-        // Terminal supports the CLI's browser flow and its fallback prompt for a code.
-        let launcher = profile.appendingPathComponent("Sign in to Claude Code.command")
         let variables = environment(profile: profile).sorted { $0.key < $1.key }
             .map { quote("\($0.key)=\($0.value)") }.joined(separator: " ")
-        let script = """
-        #!/bin/sh
-        cd \(quote(profile.path)) || exit 1
-        exec /usr/bin/env -i \(variables) TERM="${TERM:-xterm-256color}" \(quote(claude.path)) auth login
+        let command = #"exec /usr/bin/env -i \#(variables) TERM="${TERM:-xterm-256color}" \#(quote(claude.path)) auth login"#
+        try await openTerminal(command: command, in: profile)
+    }
 
-        """
-        try Data(script.utf8).write(to: launcher, options: .atomic)
-        try fileManager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launcher.path)
+    @MainActor
+    static func signInInSandbox(shell: GuestShell, ip: String, dataFolder: URL) async throws {
+        // Terminal carries the vendor's sign-in directly over SSH. Claude Code owns the guest profile.
+        let arguments = ["-tt"] + shell.sshArguments(ip: ip, command: SandboxAccount.claudeTerminalSignInCommand)
+        let command = "exec /usr/bin/ssh " + arguments.map(quote).joined(separator: " ")
+        let directory = dataFolder.appendingPathComponent("claude-sandbox-sign-in", isDirectory: true)
+        try await openTerminal(command: command, in: directory)
+    }
 
+    @MainActor
+    private static func openTerminal(command: String, in directory: URL) async throws {
+        try Task.checkCancellation()
         let workspace = NSWorkspace.shared
         guard let terminal = workspace.urlForApplication(withBundleIdentifier: "com.apple.Terminal") else {
             throw CocoaError(.fileNoSuchFile)
         }
+
+        let fileManager = FileManager.default
+        let privatePermissions: [FileAttributeKey: Any] = [.posixPermissions: 0o700]
+        try fileManager.createDirectory(at: directory, withIntermediateDirectories: true, attributes: privatePermissions)
+        try fileManager.setAttributes(privatePermissions, ofItemAtPath: directory.path)
+        let launcher = directory.appendingPathComponent("Sign in to Claude Code.command")
+        let script = """
+        #!/bin/sh
+        cd \(quote(directory.path)) || exit 1
+        \(command)
+
+        """
+        try Data(script.utf8).write(to: launcher, options: .atomic)
+        try fileManager.setAttributes(privatePermissions, ofItemAtPath: launcher.path)
+        try Task.checkCancellation()
         _ = try await workspace.open([launcher], withApplicationAt: terminal, configuration: .init())
     }
 

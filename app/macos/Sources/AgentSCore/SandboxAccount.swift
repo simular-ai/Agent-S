@@ -76,30 +76,30 @@ public enum SandboxAccount {
             + "exec \(codex) app-server --listen stdio://"
     }
 
-    /// Open the unmodified CLI's sign-in on the guest desktop and release the SSH connection.
+    /// Runs the vendor login in a Mac Terminal SSH session using the persistent guest profile.
+    public static var claudeTerminalSignInCommand: String {
+        profileEnvironment(for: .claudeAccount) + requireCLI("claude") + #"""
+        unset DISPLAY WAYLAND_DISPLAY CLAUDE_CODE_OAUTH_REFRESH_TOKEN CLAUDE_CODE_OAUTH_SCOPES;
+        export BROWSER=/usr/bin/false;
+        if command -v flock >/dev/null 2>&1; then
+            status=0; flock -n -E 75 "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" claude auth login --claudeai || status=$?;
+            if [ "$status" -eq 75 ]; then printf '%s\n' 'Claude Code sign-in is already open in Terminal.' >&2; fi;
+            exit "$status"
+        fi;
+        exec claude auth login --claudeai
+        """#
+    }
+
+    /// Older Codex versions use the guest desktop terminal for device sign-in.
     public static func signInCommand(for provider: ModelProvider) -> String {
-        let executable: String
-        let login: String
-        let title: String
-        switch provider {
-        case .claudeAccount:
-            executable = "claude"
-            login = "claude auth login --claudeai"
-            title = "Sign in to Claude Code"
-        case .codexAccount:
-            executable = "codex"
-            login = "\(codex) login --device-auth"
-            title = "Sign in to ChatGPT"
-        case .ollama, .openRouter:
-            return ""
-        }
-        return profileEnvironment(for: provider) + requireCLI(executable) + #"""
+        guard provider == .codexAccount else { return "" }
+        return profileEnvironment(for: provider) + requireCLI("codex") + #"""
         if [ ! -x /usr/bin/xterm ]; then printf '%s\n' 'The sandbox sign-in terminal is unavailable.' >&2; exit 1; fi;
         export DISPLAY=:0 XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}";
         if ! /usr/bin/xset q >/dev/null 2>&1; then printf '%s\n' 'The sandbox desktop is unavailable.' >&2; exit 1; fi;
         XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" systemctl --user start agent-s-browser.service >/dev/null 2>&1 || :
         """# + "\n"
-            + "exec /usr/bin/setsid -f /usr/bin/xterm -hold -xrm 'XTerm*selectToClipboard: true' -T '\(title)' -e \(login) </dev/null >/dev/null 2>&1"
+            + "exec /usr/bin/setsid -f /usr/bin/xterm -hold -xrm 'XTerm*selectToClipboard: true' -T 'Sign in to ChatGPT' -e \(codex) login --device-auth </dev/null >/dev/null 2>&1"
     }
 
     private struct Status: Decodable {

@@ -969,6 +969,12 @@ final class AppModel: ObservableObject {
     private func signInToSandbox(_ route: AccountRoute, generation: UUID) async throws {
         try checkSandboxSignIn(generation)
         guard let ip = guestIP else { throw AccountFailure(errorDescription: "Turn on the sandbox to sign in.") }
+        if route.provider == .claudeAccount {
+            try await ClaudeAccount.signInInSandbox(shell: shell, ip: ip, dataFolder: files.root)
+            try checkSandboxSignIn(generation)
+            accountStatuses[route] = .awaitingSignIn
+            return
+        }
         if route.provider == .codexAccount {
             do {
                 let plan = try await CodexAccount.signInInSandbox(shell: shell, ip: ip) { code in

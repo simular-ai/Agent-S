@@ -24,16 +24,25 @@ struct SandboxAccountTests {
         #expect(SandboxAccount.plan(for: .openRouter, output: #"{"signedIn":true}"#) == nil)
     }
 
-    @Test func launchesVendorSignInWithGuestTerminal() {
-        let claude = SandboxAccount.signInCommand(for: .claudeAccount)
-        let codex = SandboxAccount.signInCommand(for: .codexAccount)
-        #expect(claude.contains("claude auth login --claudeai"))
-        #expect(codex.contains("login --device-auth"))
-        for command in [claude, codex] {
-            #expect(command.contains("systemctl --user start agent-s-browser.service"))
-            #expect(command.contains("/usr/bin/setsid -f /usr/bin/xterm"))
-            #expect(command.contains("XTerm*selectToClipboard: true"))
-        }
+    @Test func runsClaudeSignInThroughHostTerminal() {
+        let command = SandboxAccount.claudeTerminalSignInCommand
+        #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .claudeAccount)))
+        #expect(command.contains("unset DISPLAY WAYLAND_DISPLAY"))
+        #expect(command.contains("CLAUDE_CODE_OAUTH_REFRESH_TOKEN CLAUDE_CODE_OAUTH_SCOPES"))
+        #expect(command.contains("export BROWSER=/usr/bin/false"))
+        #expect(command.contains(#"flock -n -E 75 "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" claude auth login --claudeai"#))
+        #expect(command.hasSuffix("exec claude auth login --claudeai"))
+        #expect(!command.contains("/usr/bin/xterm"))
+        #expect(!command.contains("</dev/null"))
+        #expect(SandboxAccount.signInCommand(for: .claudeAccount).isEmpty)
+    }
+
+    @Test func launchesCodexFallbackSignInWithGuestTerminal() {
+        let command = SandboxAccount.signInCommand(for: .codexAccount)
+        #expect(command.contains("login --device-auth"))
+        #expect(command.contains("systemctl --user start agent-s-browser.service"))
+        #expect(command.contains("/usr/bin/setsid -f /usr/bin/xterm"))
+        #expect(command.contains("XTerm*selectToClipboard: true"))
     }
 
     @Test func startsDeviceCodeAppServerWithTheGuestCodexProfile() {

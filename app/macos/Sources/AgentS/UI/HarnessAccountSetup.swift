@@ -9,6 +9,7 @@ struct HarnessAccountSetup: View {
     var onSandboxSignIn: () -> Void = {}
 
     private var inSandbox: Bool { model.privacy.usesLocalComputer }
+    private var usesCodexSandboxSignIn: Bool { inSandbox && model.provider == .codexAccount }
     private var signInTitle: String {
         model.provider == .claudeAccount ? "Sign in with Claude Code…" : "Sign in with ChatGPT…"
     }
@@ -36,16 +37,17 @@ struct HarnessAccountSetup: View {
         case .signedOut:
             signInButton(signInTitle)
         case .connecting:
-            let sandboxCodex = inSandbox && model.provider == .codexAccount
-            ProgressView(sandboxCodex ? "Preparing sign-in…" : inSandbox ? "Opening sign-in…" : "Waiting for sign-in…")
-                .controlSize(.small)
-            if !inSandbox || sandboxCodex { Button("Cancel sign-in") { model.cancelAccountSignIn() } }
+            let title = if model.provider == .claudeAccount { "Opening Terminal…" }
+                else if inSandbox { "Preparing sign-in…" }
+                else { "Waiting for sign-in…" }
+            ProgressView(title).controlSize(.small)
+            if !inSandbox || usesCodexSandboxSignIn { Button("Cancel sign-in") { model.cancelAccountSignIn() } }
         case let .awaitingDeviceCode(code):
             deviceCodeControls(code)
         case .awaitingSignIn:
-            Text(inSandbox
+            Text(usesCodexSandboxSignIn
                  ? "Use Take over in the Computer panel to finish signing in. Then check sign-in here."
-                 : "Finish signing in through Claude Code in Terminal.")
+                 : "Follow Claude Code’s prompts in Terminal and your Mac’s browser, then return here.")
                 .font(.callout)
             HStack {
                 Button("Check sign-in", action: checkSignIn)
@@ -95,11 +97,12 @@ struct HarnessAccountSetup: View {
     private func signIn() {
         let agentID = model.agent.id
         let provider = model.provider
-        let usesSandbox = inSandbox
+        let mayNeedSandboxTerminal = usesCodexSandboxSignIn
         Task {
             guard model.agent.id == agentID, model.provider == provider else { return }
             await model.signInToAccount()
-            if usesSandbox, model.agent.id == agentID, model.provider == provider, case .awaitingSignIn = model.accountStatus {
+            if mayNeedSandboxTerminal, model.agent.id == agentID, model.provider == provider,
+               case .awaitingSignIn = model.accountStatus {
                 onSandboxSignIn()
             }
         }
