@@ -38,6 +38,10 @@ The Computer panel shows pending requests and open work first. Check items under
 
 ## Choose how an agent runs
 
+On first launch, pick a harness and model for **Sandbox on This Mac**, then click
+**Set up agent** to download and start the sandbox. The new chat offers sample tasks.
+Click one to fill the composer, where you can edit it before sending.
+
 Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud Computer**, choose a
 computer first. Choose the harness and **Provider** when prompted. To change an existing
 agent's configuration, right-click it and choose **Agent Settings…**. Each **Sandbox on This Mac**
@@ -62,8 +66,9 @@ Linux VM or cloud computer and see the agent's session context.
 
 ### Sandbox on This Mac
 
-1. Open **Settings → Computer** and click **Set up the computer**. This downloads a
-   Debian 13 ARM64 image and creates a sparse 32 GB disk that grows with use.
+1. If the sandbox hasn’t been set up, click **Set up** in the chat or
+   **Settings → Computer → Set up the computer**. Setup downloads a Debian 13 ARM64
+   image and creates a sparse 32 GB disk that grows with use.
 2. When creating the agent, set **Runs** to **Sandbox on This Mac** and select a **Provider**.
    For **Ollama**, start [Ollama](https://ollama.com/) 0.14 or later on your Mac and
    select or download a local model in **Agent Settings… → Model**. The default is

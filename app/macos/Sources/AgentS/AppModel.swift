@@ -94,8 +94,11 @@ final class AppModel: ObservableObject {
 
     /// The user's agents, private ones (on this Mac) and cloud ones; each with its own context.
     @Published private(set) var agents: [AgentSession] = []
+    @Published private(set) var needsFirstAgentSetup = false
     @Published var selectedAgentID: UUID {
-        didSet { UserDefaults.standard.set(selectedAgentID.uuidString, forKey: "selectedAgent") }
+        didSet {
+            if !needsFirstAgentSetup { UserDefaults.standard.set(selectedAgentID.uuidString, forKey: "selectedAgent") }
+        }
     }
     /// The selected agent, whose chat and settings the window shows.
     var agent: AgentSession { agents.first { $0.id == selectedAgentID } ?? agents[0] }
@@ -176,11 +179,45 @@ final class AppModel: ObservableObject {
 
     /// Adds an agent with a fresh context and selects it; it gets the next headshot color.
     func createAgent(_ config: AgentConfig) {
+        guard !needsFirstAgentSetup else { return }
         var config = config.enforcingPrivacy
         if config.avatarColor == nil { config.avatarColor = agents.count % AgentAvatar.palette.count }
         adopt(AgentSession(config: config))
         selectedAgentID = config.id
         saveAgents()
+    }
+
+    func completeFirstAgentSetup(_ config: AgentConfig) throws {
+        guard needsFirstAgentSetup, agents.count == 1, let starter = agents.first,
+              starter.id == selectedAgentID, !GuestFiles.legacyAppRunning,
+              !FileManager.default.fileExists(atPath: files.root.path) else {
+            throw FirstAgentSetupError.unavailable
+        }
+        guard config.usesLocalComputer else { throw FirstAgentSetupError.invalidLocation }
+
+        var config = config
+        config.privacy = AgentLocation.linuxVM.mode(for: config.provider)
+        config = config.enforcingPrivacy
+        config.id = starter.id
+        if config.avatarColor == nil { config.avatarColor = 0 }
+        var snapshot = starter.saved
+        snapshot.config = config
+        try writeFirstAgent(snapshot)
+        starter.config = config
+        needsFirstAgentSetup = false
+        selectedAgentID = starter.id
+    }
+
+    private enum FirstAgentSetupError: LocalizedError {
+        case unavailable
+        case invalidLocation
+
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: "First-agent setup is unavailable."
+            case .invalidLocation: "Choose a model for the sandbox on this Mac."
+            }
+        }
     }
 
     func rename(_ session: AgentSession, to name: String) {
@@ -266,10 +303,46 @@ final class AppModel: ObservableObject {
     /// Chats can hold page text and tool output: the file is readable by this user only.
     func saveAgents() {
         // While an earlier build runs, this copy only shows "quit it first" and writes nothing.
-        guard !GuestFiles.legacyAppRunning, let data = try? JSONEncoder().encode(agents.map(\.saved)) else { return }
+        guard !needsFirstAgentSetup, !GuestFiles.legacyAppRunning else { return }
         try? files.ensureFolders()
-        try? data.write(to: agentsFile, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: agentsFile.path)
+        try? writeAgents(agents.map(\.saved), to: agentsFile)
+    }
+
+    private func writeAgents(_ snapshot: [SavedAgent], to url: URL) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Publish the first support folder only after its private agent file has been written.
+    private func writeFirstAgent(_ snapshot: SavedAgent) throws {
+        let manager = FileManager.default
+        let parent = files.root.deletingLastPathComponent()
+        let staging = parent.appendingPathComponent(".agent-s-setup-\(UUID().uuidString)", isDirectory: true)
+        try manager.createDirectory(at: parent, withIntermediateDirectories: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: staging) }
+        try GuestFiles(root: staging).ensureFolders()
+        try writeAgents([snapshot], to: staging.appendingPathComponent(agentsFile.lastPathComponent))
+        try manager.moveItem(at: staging, to: files.root)
+    }
+
+    private var isFreshInstallation: Bool {
+        guard !GuestFiles.legacyAppRunning else { return false }
+
+        let folders = [files.root] + GuestFiles.legacy.map { _, name in
+            files.root.deletingLastPathComponent().appendingPathComponent(name, isDirectory: true)
+        }
+        guard !folders.contains(where: { FileManager.default.fileExists(atPath: $0.path) }) else { return false }
+
+        let priorSettings = ["selectedAgent", "agentModel", "openRouterModel", "harness", "harness.private", "harness.cloud",
+                             "provider", "provider.cloud", "saiMachine", "saiModel", Self.computerMemoryKey, Self.openRouterZDRKey]
+        let defaults = UserDefaults.standard
+        guard !priorSettings.contains(where: { defaults.object(forKey: $0) != nil }) else { return false }
+        return !GuestFiles.legacy.contains { bundleID, _ in
+            let prior = defaults.persistentDomain(forName: bundleID) ?? [:]
+            return priorSettings.contains { prior[$0] != nil }
+        }
     }
 
     /// Saved agents, or the first ones from the settings before agents existed.
@@ -309,6 +382,7 @@ final class AppModel: ObservableObject {
         vm = LinuxVM(files: files)
         phase = files.isPrepared ? .stopped : .needsSetup
         selectedAgentID = UUID()
+        needsFirstAgentSetup = isFreshInstallation
         loadAgents()
         let saved = (UserDefaults.standard.string(forKey: "selectedAgent")
             ?? UserDefaults(suiteName: GuestFiles.legacy[0].0)?.string(forKey: "selectedAgent"))
@@ -400,6 +474,10 @@ final class AppModel: ObservableObject {
     // MARK: Actions
 
     func prepare() async {
+        guard !needsFirstAgentSetup, !isSavingSandbox, !files.isPrepared, vm.machine == nil else { return }
+        if case .preparing = phase { return }
+        if case .booting = phase { return }
+        phase = .preparing("Preparing the sandbox…")
         downloadProgress = nil
         do {
             try await GuestImage.prepare(files: files,
@@ -409,6 +487,19 @@ final class AppModel: ObservableObject {
             phase = .stopped
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    func prepareAndStartSandbox() async {
+        guard !needsFirstAgentSetup, !Task.isCancelled else { return }
+        if !files.isPrepared {
+            await prepare()
+            guard phase == .stopped else { return }
+        }
+        guard !Task.isCancelled else { return }
+        switch phase {
+        case .stopped, .failed: await start()
+        default: break
         }
     }
 

@@ -1,11 +1,13 @@
 import SwiftUI
 import AgentSCore
 
-/// The + button: a new agent with its own context, computer, harness, and model.
+/// Agent configuration shared by first launch and the + button.
 struct NewAgentSheet: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var name = "Sai"
+    private let isFirstAgent: Bool
+    @State private var name: String
+    @State private var setupError: String?
     @State private var location: AgentLocation
     @State private var harness: Harness = .claudeCode
     @State private var provider: ModelProvider = .ollama
@@ -19,26 +21,44 @@ struct NewAgentSheet: View {
     @State private var computer: CloudComputer = .sai
     @State private var boxName = ""
 
-    init(initialLocation: AgentLocation = .linuxVM) {
-        _location = State(initialValue: initialLocation)
-        _harness = State(initialValue: initialLocation == .cloud ? .sai : .claudeCode)
+    init(initialLocation: AgentLocation = .linuxVM, isFirstAgent: Bool = false) {
+        self.isFirstAgent = isFirstAgent
+        let location: AgentLocation = isFirstAgent ? .linuxVM : initialLocation
+        _location = State(initialValue: location)
+        _harness = State(initialValue: location == .cloud ? .sai : .claudeCode)
+        _name = State(initialValue: isFirstAgent ? "Agent" : "Sai")
     }
 
     var body: some View {
         VStack(spacing: 0) {
+            if isFirstAgent {
+                VStack(spacing: 8) {
+                    SaiAvatar(size: 40)
+                    Text("Set up your first agent")
+                        .font(.title2.weight(.semibold))
+                    Text("Choose how your agent runs in its own Linux sandbox.")
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 20)
+                .padding(.bottom, 4)
+            }
             Form {
                 Section {
-                    TextField("Name", text: $name)
-                    Picker("Runs", selection: $location) {
-                        ForEach(AgentLocation.allCases) { location in
-                            Label(location.displayName, systemImage: location.symbol).tag(location)
+                    if isFirstAgent {
+                        Label(location.displayName, systemImage: location.symbol)
+                    } else {
+                        TextField("Name", text: $name)
+                        Picker("Runs", selection: $location) {
+                            ForEach(AgentLocation.allCases) { location in
+                                Label(location.displayName, systemImage: location.symbol).tag(location)
+                            }
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    Text(location.summary).font(.caption).foregroundStyle(.secondary)
-                    if location == .thisMac {
-                        Label("Review each action before approving it.", systemImage: "exclamationmark.shield")
-                            .font(.caption).foregroundStyle(.orange)
+                        .pickerStyle(.segmented)
+                        Text(location.summary).font(.caption).foregroundStyle(.secondary)
+                        if location == .thisMac {
+                            Label("Review each action before approving it.", systemImage: "exclamationmark.shield")
+                                .font(.caption).foregroundStyle(.orange)
+                        }
                     }
                 }
                 if location == .cloud {
@@ -93,10 +113,9 @@ struct NewAgentSheet: View {
                             Text("Choose a local Ollama model for private inference on this Mac.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Picker("Model", selection: $ollamaModel) {
-                                ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
-                                if !model.modelChoices.contains(ollamaModel) { Text(ollamaModel).tag(ollamaModel) }
+                                ForEach(ollamaChoices, id: \.self) { Text($0).tag($0) }
                             }
-                            Button("Refresh model list") { Task { await model.refreshOllama() } }
+                            Button("Refresh model list") { Task { await refreshOllamaChoices() } }
                         } else if selectedProvider == .openRouter {
                             Text("OpenRouter and the selected model provider receive your messages and content the agent reads.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -111,28 +130,45 @@ struct NewAgentSheet: View {
                             KeySetup.openRouter(model)
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
-                            Text("Sign in \(location == .linuxVM ? "inside the sandbox " : "")after creating the agent. \(notice)")
+                            Text("Sign in after creating the agent. \(notice)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 }
-                Section {
-                    Text("A new agent starts with its own chat and harness session.")
-                        .font(.caption).foregroundStyle(.secondary)
+                if !isFirstAgent {
+                    Section {
+                        Text("A new agent starts with its own chat and harness session.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                 }
             }
             .formStyle(.grouped)
+            if let setupError {
+                Text(setupError)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], 12)
+            }
             Divider()
             HStack {
+                if isFirstAgent {
+                    Text("Downloads the sandbox and its tools.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
-                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Create") { create() }
+                if !isFirstAgent {
+                    Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                }
+                Button(isFirstAgent ? "Set up agent" : "Create") { create() }
                     .keyboardShortcut(.defaultAction)
                     .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(12)
         }
-        .frame(width: 520, height: 600)
+        .frame(width: 520)
+        .frame(minHeight: isFirstAgent ? nil : 600, idealHeight: 600, maxHeight: isFirstAgent ? 620 : 600)
         .onChange(of: computer) { _, _ in fitHarnessAndProvider() }
         .onChange(of: harness) { _, _ in fitProvider() }
         .onChange(of: model.saiMachines) { _, machines in
@@ -147,7 +183,14 @@ struct NewAgentSheet: View {
             fitHarnessAndProvider()
         }
         .task {
-            ollamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
+            if !isFirstAgent {
+                ollamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
+            }
+        }
+        .task(id: isFirstAgent && selectedProvider == .ollama) {
+            if isFirstAgent, selectedProvider == .ollama {
+                await refreshOllamaChoices()
+            }
         }
         // Sai's computers are looked up (which reads the Sai key) only once a Sai agent is chosen.
         .task(id: harness == .sai && model.hasSaiKey) {
@@ -156,6 +199,24 @@ struct NewAgentSheet: View {
             if saiMachine.isEmpty {
                 saiMachine = model.saiMachines.first(where: \.online)?.id ?? model.saiMachines.first?.id ?? ""
             }
+        }
+    }
+
+    private var localOllamaNames: [String] {
+        model.ollamaModels.filter { !$0.usesRemoteInference && !Ollama.isCloudReference($0.name) }
+            .map { $0.name.hasSuffix(":latest") ? String($0.name.dropLast(7)) : $0.name }
+    }
+
+    private var ollamaChoices: [String] {
+        let choices = isFirstAgent ? localOllamaNames : model.modelChoices
+        return choices.contains(ollamaModel) ? choices : choices + [ollamaModel]
+    }
+
+    private func refreshOllamaChoices() async {
+        await model.refreshOllama()
+        if isFirstAgent, !Task.isCancelled, !localOllamaNames.contains(ollamaModel),
+           let installed = localOllamaNames.first {
+            ollamaModel = installed
         }
     }
 
@@ -180,16 +241,29 @@ struct NewAgentSheet: View {
     }
 
     private func create() {
-        if selectedProvider == .openRouter, harness != .sai, let openRouterZDR {
-            model.openRouterRequiresZDR = openRouterZDR
-        }
-        model.createAgent(AgentConfig(
+        let config = AgentConfig(
             name: name.trimmingCharacters(in: .whitespaces), privacy: location.mode(for: selectedProvider), harness: harness,
             provider: selectedProvider,
             ollamaModel: ollamaModel, openRouterModel: openRouterModel,
             saiMachine: saiMachine, saiModel: saiModel,
             cloudComputer: cloudComputer,
-            boxName: boxName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : boxName.trimmingCharacters(in: .whitespaces)))
-        dismiss()
+            boxName: boxName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : boxName.trimmingCharacters(in: .whitespaces))
+        if isFirstAgent {
+            do {
+                try model.completeFirstAgentSetup(config)
+            } catch {
+                setupError = "Couldn’t save your agent. \(error.localizedDescription)"
+                return
+            }
+        }
+        if selectedProvider == .openRouter, harness != .sai, let openRouterZDR {
+            model.openRouterRequiresZDR = openRouterZDR
+        }
+        if isFirstAgent {
+            Task { await model.prepareAndStartSandbox() }
+        } else {
+            model.createAgent(config)
+            dismiss()
+        }
     }
 }

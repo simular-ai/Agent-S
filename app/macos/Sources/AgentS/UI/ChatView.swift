@@ -9,6 +9,8 @@ struct ChatView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
     @State private var drafts: [UUID: String] = [:]
+    @FocusState private var composerFocused: Bool
+    @ScaledMetric(relativeTo: .callout) private var followUpRowHeight: CGFloat = 26
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
     @State private var showsOpenRouterSettings = false
@@ -83,14 +85,12 @@ struct ChatView: View {
                     .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
                     .padding(.horizontal, 24).padding(.top, 8)
             }
-            if !agent.queuedFollowUps.isEmpty {
-                queuedFollowUps
-                    .frame(maxWidth: 820)
-                    .padding(.horizontal, 24).padding(.top, 8)
+            VStack(spacing: 4) {
+                if !agent.queuedFollowUps.isEmpty { queuedFollowUps }
+                composer
             }
-            composer
-                .frame(maxWidth: 820)
-                .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
+            .frame(maxWidth: 820)
+            .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
         }
     }
 
@@ -327,7 +327,9 @@ struct ChatView: View {
         case let .failed(message):
             return AnyView(VStack(alignment: .trailing, spacing: 6) {
                 bannerRow(symbol: "exclamationmark.triangle", text: message) {
-                    if model.vm.machine != nil, model.vm.state != .running {
+                    if !model.files.isPrepared {
+                        Button("Try again") { Task { await model.prepareAndStartSandbox() } }
+                    } else if model.vm.machine != nil, model.vm.state != .running {
                         Button("Turn off") { Task { await model.stop() } }
                     } else {
                         let title = model.hasSavedSandbox ? "Resume" : model.vm.state == .running ? "Try again" : "Turn on"
@@ -337,8 +339,9 @@ struct ChatView: View {
                 if model.hasSavedSandbox { DiscardSavedSandboxButton().padding(.trailing, 14) }
             })
         case .needsSetup:
-            return AnyView(bannerRow(symbol: "gearshape", text: "Set up the computer in Settings (the gear, bottom left) to chat.") {
-                EmptyView()
+            return AnyView(bannerRow(symbol: "gearshape", text: "Set up the sandbox to chat.") {
+                Button("Set up") { Task { await model.prepareAndStartSandbox() } }
+                    .buttonStyle(.borderedProminent).tint(Theme.accent)
             })
         }
     }
@@ -370,52 +373,54 @@ struct ChatView: View {
     }
 
     private var queuedFollowUps: some View {
-        let status = if agent.followUpsPaused { "Follow-ups paused" }
-            else if agent.queuedFollowUps.count == 1 { "Queued for the next turn" }
-            else { "Queued follow-ups (\(agent.queuedFollowUps.count))" }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Label(status, systemImage: agent.followUpsPaused ? "pause.circle" : "clock")
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                if agent.followUpsPaused {
-                    Button("Send next") { model.sendQueuedFollowUp(for: agent) }
-                        .buttonStyle(.borderless)
-                        .disabled(!model.canSendQueuedFollowUp(for: agent))
-                        .help("Send the first queued follow-up")
+        let remaining = agent.queuedFollowUps.dropFirst()
+        let rows = ForEach(remaining) { queuedFollowUpRow($0) }
+        return VStack(alignment: .leading, spacing: 0) {
+            if let next = agent.queuedFollowUps.first { queuedFollowUpRow(next, isNext: true) }
+            if remaining.count > 2 {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) { rows }
                 }
+                .frame(height: 2 * followUpRowHeight)
+            } else {
+                rows
             }
-            .font(.caption)
-
-            ViewThatFits(in: .vertical) {
-                queuedFollowUpRows.fixedSize(horizontal: false, vertical: true)
-                ScrollView { queuedFollowUpRows }
-            }
-            .frame(maxHeight: 84)
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bubble))
     }
 
-    private var queuedFollowUpRows: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(agent.queuedFollowUps, id: \.id) { followUp in
-                HStack(spacing: 8) {
-                    Text(verbatim: followUp.text)
-                        .font(.callout).lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .help(followUp.text)
-                    Button { agent.removeQueuedFollowUp(followUp.id) } label: {
-                        Image(systemName: "xmark").font(.caption2.weight(.semibold))
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.plain)
+    private func queuedFollowUpRow(_ followUp: AgentSession.QueuedFollowUp, isNext: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            if isNext {
+                Label(agent.followUpsPaused ? "Paused" : "Next turn",
+                      systemImage: agent.followUpsPaused ? "pause.circle" : "clock")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Remove queued follow-up")
-                    .help("Remove queued follow-up")
-                }
+                    .fixedSize()
             }
+            Text(verbatim: followUp.text)
+                .font(.callout).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(followUp.text)
+            if isNext, agent.followUpsPaused {
+                Button("Send next") { model.sendQueuedFollowUp(for: agent) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .fixedSize()
+                    .disabled(!model.canSendQueuedFollowUp(for: agent))
+                    .help("Send the first queued follow-up")
+            }
+            Button { agent.removeQueuedFollowUp(followUp.id) } label: {
+                Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .accessibilityLabel("Remove queued follow-up")
+            .help("Remove queued follow-up")
         }
+        .frame(height: followUpRowHeight)
     }
 
     private var composer: some View {
@@ -431,8 +436,9 @@ struct ChatView: View {
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(1...6)
+                .focused($composerFocused)
                 .onSubmit(send)
-                .disabled(!model.canChat && !agent.isRunning)
+                .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
                 .padding(.vertical, 9)
             roundButton(actionSymbol, help: stopsTurn ? "Stop" : submissionLabel) {
                 if stopsTurn { agent.stop() }
@@ -512,35 +518,59 @@ struct ChatView: View {
                     .formStyle(.grouped).frame(maxWidth: 480, maxHeight: 260)
                 }
             } else {
-                let hosted = model.privacy == .localVM
+                let usesOpenRouter = model.provider == .openRouter
                 Text(model.privacy.location.displayName).font(.title3.weight(.medium))
-                Text(hosted
+                Text(usesOpenRouter
                      ? "The sandbox runs on this Mac. OpenRouter processes model requests."
                      : "The agent works in a Linux VM on this Mac. Open the computer to watch or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                if hosted, !model.hasOpenRouterKey {
+                if agent.config.usesLocalComputer { sandboxStarterPrompts }
+                if usesOpenRouter, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
                 }
-                if model.phase != .ready, model.files.isPrepared, !isBusy,
-                   !model.hasSavedSandbox, !model.isSavingSandbox {
-                    Button("Turn on the computer") { Task { await model.start() } }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.accent)
-                        .padding(.top, 4)
+                if model.shouldCheckOllamaForChat, model.ollamaChecked, !model.hasAgentModel {
+                    Text(model.ollamaReady
+                         ? "Right-click this agent and choose Agent Settings → Model to download \(model.agentModel)."
+                         : "Check Ollama in Settings to get the model connection ready.")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center).frame(maxWidth: 420)
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
+        .padding(.vertical, agent.config.usesLocalComputer ? 24 : 80)
     }
 
-    private var isBusy: Bool {
-        switch model.phase {
-        case .booting, .preparing: true
-        default: false
+    private var sandboxStarterPrompts: some View {
+        VStack(spacing: 6) {
+            ForEach([
+                "Open example.com and summarize the page.",
+                "Compare the Moon and Mars Wikipedia pages in two tabs.",
+                "Create a short checklist in a text file on the sandbox desktop.",
+            ], id: \.self) { prompt in
+                Button {
+                    draft.wrappedValue = prompt
+                    composerFocused = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(prompt).multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "arrow.turn.down.right")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .font(.callout)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
+                }
+                .buttonStyle(.plain)
+                .help("Use this prompt as your draft")
+                .accessibilityHint("Loads this prompt in the draft")
+            }
         }
+        .frame(maxWidth: 420)
     }
 
     private func send() {

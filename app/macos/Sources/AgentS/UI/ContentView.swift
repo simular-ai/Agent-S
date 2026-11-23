@@ -12,9 +12,13 @@ struct ContentView: View {
     @State private var maximized = false
 
     var body: some View {
-        content
-            // The selected side's conversation; switching sides swaps it.
-            .environmentObject(model.agent)
+        if model.needsFirstAgentSetup {
+            NewAgentSheet(isFirstAgent: true)
+                .frame(minWidth: 641, maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.canvas)
+        } else {
+            content.environmentObject(model.agent)
+        }
     }
 
     private var content: some View {
