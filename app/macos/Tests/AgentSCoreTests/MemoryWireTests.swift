@@ -21,6 +21,75 @@ struct MemoryWireTests {
         }
     }
 
+    @Test func hidesShortenedTrailersAcrossEveryMarkerSplitWithoutAcceptingTheirProposal() {
+        let visible = "Finished. 🍵\n"
+        let payload = #"{"operations":[{"op":"add","kind":"decision","text":"Don't store this alias."}]}"#
+        for split in 0...markers(in: MemoryWire(), shortened: true).open.count {
+            var wire = MemoryWire()
+            let markers = markers(in: wire, shortened: true)
+            #expect(wire.consume(.textDelta(id: "first", text: visible + markers.open.prefix(split))) ==
+                    [.textDelta(id: "first", text: visible)])
+            #expect(wire.consume(.textDelta(id: "second", text: String(markers.open.dropFirst(split)) + payload)).isEmpty)
+            #expect(wire.consume(.textDelta(id: "second", text: markers.close)).isEmpty)
+            let completion = wire.finish()
+            #expect(completion.events.isEmpty)
+            #expect(completion.operations == nil)
+        }
+    }
+
+    @Test func hidesShortenedTrailersDuringCharacterAtATimeStreamingAndSnapshots() {
+        var wire = MemoryWire()
+        let markers = markers(in: wire, shortened: true)
+        let payload = #"{"operations":[]}"#
+        for character in markers.open + payload + markers.close {
+            #expect(wire.consume(.textDelta(id: "reply", text: String(character))).isEmpty)
+        }
+        #expect(wire.consume(.textSnapshot(id: "reply", text: "Done.\n" + markers.open + payload + markers.close)) ==
+                [.textDelta(id: "reply", text: "Done.\n")])
+        #expect(wire.finish().operations == nil)
+    }
+
+    @Test func scrubsPreviouslySavedAndIdentifiablyTruncatedShortenedTrailers() {
+        let markers = markers(in: MemoryWire(), shortened: true)
+        let visible = "Answer.\n"
+        #expect(MemoryWire.visibleText(visible + markers.open + #"{"operations":[]}"# + markers.close) == visible)
+        for truncated in ["<agent-memory", "<agent-memory:", String(markers.open.prefix(21))] {
+            #expect(MemoryWire.visibleText(visible + truncated) == visible)
+            var wire = MemoryWire()
+            #expect(wire.consume(.textSnapshot(id: "reply", text: visible + truncated)) ==
+                    [.textDelta(id: "reply", text: visible)])
+            #expect(wire.finish().events.isEmpty)
+        }
+
+        let ordinaryText = "Use <agent-memory:reference> or <agent-mem when discussing syntax."
+        #expect(MemoryWire.visibleText(ordinaryText) == ordinaryText)
+        var wire = MemoryWire()
+        #expect(wire.consume(.textSnapshot(id: "reply", text: ordinaryText)) == [.textDelta(id: "reply", text: ordinaryText)])
+        #expect(wire.finish().events.isEmpty)
+    }
+
+    @Test func releasesUnrelatedProseWhenMultipleBlocksDisambiguateAShortenedMarkerCandidate() {
+        var wire = MemoryWire()
+        let prefix = "Details: "
+        let first = "<agent-memory:"
+        let second = "a brief annotation> can be ordinary text."
+        #expect(wire.consume(.textDelta(id: "first", text: prefix + first)) == [.textDelta(id: "first", text: prefix)])
+        #expect(wire.consume(.textDelta(id: "second", text: "a")).isEmpty)
+        #expect(wire.consume(.textDelta(id: "second", text: String(second.dropFirst()))) == [
+            .textDelta(id: "first", text: first), .textDelta(id: "second", text: second),
+        ])
+        #expect(wire.finish().events.isEmpty)
+    }
+
+    @Test func ignoresACanonicalProposalAfterAShortenedTrailer() {
+        var wire = MemoryWire()
+        let shortened = markers(in: wire, shortened: true)
+        let canonical = markers(in: wire)
+        let payload = #"{"operations":[{"op":"add","kind":"preference","text":"Drinks tea."}]}"#
+        #expect(wire.consume(.text(shortened.open + shortened.close + canonical.open + payload + canonical.close)).isEmpty)
+        #expect(wire.finish().operations == nil)
+    }
+
     @Test func reconcilesMultipleBlocksAndAuthoritativeSnapshots() {
         var wire = MemoryWire()
         let markers = markers(in: wire)
@@ -103,8 +172,12 @@ struct MemoryWireTests {
         #expect(wire.finish().operations == nil)
     }
 
-    private func markers(in wire: MemoryWire) -> (open: String, close: String) {
+    private func markers(in wire: MemoryWire, shortened: Bool = false) -> (open: String, close: String) {
         let parts = wire.instructions.split(whereSeparator: \.isNewline)
+        if shortened {
+            return (parts[1].replacingOccurrences(of: "agent-s-memory", with: "agent-memory"),
+                    parts[3].replacingOccurrences(of: "agent-s-memory", with: "agent-memory"))
+        }
         return (String(parts[1]), String(parts[3]))
     }
 }
