@@ -21,6 +21,7 @@ final class AppModel: ObservableObject {
         case signedOut
         case connecting
         case awaitingSignIn
+        case awaitingDeviceCode(CodexAccount.DeviceCode)
         case connected(HarnessAccountPlan)
         case failed(String)
 
@@ -715,12 +716,7 @@ final class AppModel: ObservableObject {
             defer { accountSignIns[route] = nil }
             do {
                 if route.inSandbox {
-                    guard let ip = guestIP else { return }
-                    try await shell.run(SandboxAccount.signInCommand(for: provider), on: ip)
-                    try Task.checkCancellation()
-                    guard sandboxAccountGeneration == generation else { return }
-                    accountStatuses[route] = .awaitingSignIn
-                    if AccountRoute(agent.config) == route { sandboxSignInRequest = UUID() }
+                    try await signInToSandbox(route, generation: generation)
                 } else if provider == .codexAccount {
                     let plan = try await CodexAccount.signIn(dataFolder: files.root)
                     try Task.checkCancellation()
@@ -734,11 +730,43 @@ final class AppModel: ObservableObject {
                 }
             } catch {
                 guard !route.inSandbox || sandboxAccountGeneration == generation else { return }
-                accountStatuses[route] = Task.isCancelled ? .signedOut : .failed(error.localizedDescription)
+                accountStatuses[route] = Task.isCancelled || error is CancellationError
+                    ? .signedOut : .failed(error.localizedDescription)
             }
         }
         accountSignIns[route] = task
         await task.value
+    }
+
+    private func signInToSandbox(_ route: AccountRoute, generation: UUID) async throws {
+        try checkSandboxSignIn(generation)
+        guard let ip = guestIP else { throw AccountFailure(errorDescription: "Turn on the sandbox to sign in.") }
+        if route.provider == .codexAccount {
+            do {
+                let plan = try await CodexAccount.signInInSandbox(shell: shell, ip: ip) { code in
+                    try self.checkSandboxSignIn(generation)
+                    self.accountStatuses[route] = .awaitingDeviceCode(code)
+                    if AccountRoute(self.agent.config) == route {
+                        NSWorkspace.shared.open(code.verificationURL)
+                    }
+                }
+                try checkSandboxSignIn(generation)
+                accountStatuses[route] = .connected(plan)
+                return
+            } catch CodexAccount.DeviceSignInError.unsupported {
+                try checkSandboxSignIn(generation)
+            }
+        }
+
+        try await shell.run(SandboxAccount.signInCommand(for: route.provider), on: ip)
+        try checkSandboxSignIn(generation)
+        accountStatuses[route] = .awaitingSignIn
+        if AccountRoute(agent.config) == route { sandboxSignInRequest = UUID() }
+    }
+
+    private func checkSandboxSignIn(_ generation: UUID) throws {
+        try Task.checkCancellation()
+        guard sandboxAccountGeneration == generation, vm.state == .running else { throw CancellationError() }
     }
 
     func cancelAccountSignIn() { accountSignIns[AccountRoute(agent.config)]?.cancel() }

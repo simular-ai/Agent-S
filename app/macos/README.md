@@ -75,9 +75,14 @@ to send mouse and keyboard input to the VM.
 
 Chromium stays open between tasks while the sandbox is running. To use a subscription,
 select **Use Claude Code account** or **Use Codex account** as the provider. Start the
-sandbox and choose **Sign in** above the composer. Use **Take over** in the Computer
-panel to follow the CLI's sign-in prompts, then choose **Check sign-in** in the chat.
-Codex uses ChatGPT device-code sign-in. [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+sandbox and choose **Sign in** above the composer.
+
+- **Codex** shows a one-time code in Agent S and opens your Mac browser. Enter the code
+  there. Agent S detects when sign-in completes, and Codex stores its credentials in
+  the sandbox. An older Codex version may show the code in the Computer panel.
+  [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
+- **Claude Code** opens sign-in in the Computer panel. Use **Take over** to follow its
+  prompts, then choose **Check sign-in** in the chat.
 
 ### This Mac
 

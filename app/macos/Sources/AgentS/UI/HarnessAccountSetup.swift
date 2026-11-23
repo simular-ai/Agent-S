@@ -1,9 +1,11 @@
+import AppKit
 import SwiftUI
 import AgentSCore
 
 /// Sign-in for an account-backed agent, shown before chatting and in Agent Settings.
 struct HarnessAccountSetup: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openURL) private var openURL
     var onSandboxSignIn: () -> Void = {}
 
     private var inSandbox: Bool { model.privacy.usesLocalComputer }
@@ -34,8 +36,12 @@ struct HarnessAccountSetup: View {
         case .signedOut:
             signInButton(signInTitle)
         case .connecting:
-            ProgressView(inSandbox ? "Opening sign-in…" : "Waiting for sign-in…").controlSize(.small)
-            if !inSandbox { Button("Cancel sign-in") { model.cancelAccountSignIn() } }
+            let sandboxCodex = inSandbox && model.provider == .codexAccount
+            ProgressView(sandboxCodex ? "Preparing sign-in…" : inSandbox ? "Opening sign-in…" : "Waiting for sign-in…")
+                .controlSize(.small)
+            if !inSandbox || sandboxCodex { Button("Cancel sign-in") { model.cancelAccountSignIn() } }
+        case let .awaitingDeviceCode(code):
+            deviceCodeControls(code)
         case .awaitingSignIn:
             Text(inSandbox
                  ? "Use Take over in the Computer panel to finish signing in. Then check sign-in here."
@@ -56,6 +62,26 @@ struct HarnessAccountSetup: View {
         }
     }
 
+    private func deviceCodeControls(_ code: CodexAccount.DeviceCode) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Enter this device code in your browser.").font(.callout)
+            Text(verbatim: code.userCode)
+                .font(.system(.title3, design: .monospaced).weight(.semibold))
+                .textSelection(.enabled)
+                .accessibilityLabel("Device code \(code.userCode)")
+            HStack(spacing: 8) {
+                Button("Open browser") { openURL(code.verificationURL) }
+                Button("Copy code") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(code.userCode, forType: .string)
+                }
+                Button("Cancel", role: .cancel) { model.cancelAccountSignIn() }
+                    .accessibilityLabel("Cancel sign-in")
+            }
+            ProgressView("Waiting for sign-in…").controlSize(.small)
+        }
+    }
+
     private func signInButton(_ title: String) -> some View {
         Button(title, action: signIn)
             .disabled(inSandbox && model.sandboxHasActiveTurn)
@@ -67,8 +93,16 @@ struct HarnessAccountSetup: View {
     }
 
     private func signIn() {
-        if inSandbox { onSandboxSignIn() }
-        Task { await model.signInToAccount() }
+        let agentID = model.agent.id
+        let provider = model.provider
+        let usesSandbox = inSandbox
+        Task {
+            guard model.agent.id == agentID, model.provider == provider else { return }
+            await model.signInToAccount()
+            if usesSandbox, model.agent.id == agentID, model.provider == provider, case .awaitingSignIn = model.accountStatus {
+                onSandboxSignIn()
+            }
+        }
     }
 }
 

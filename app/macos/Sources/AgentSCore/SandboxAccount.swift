@@ -70,6 +70,12 @@ public enum SandboxAccount {
         return HarnessAccountPlan(provider: provider, reportedPlan: status.plan)
     }
 
+    /// Managed device authorization over SSH stdio. The Codex process writes its own guest profile.
+    public static var codexDeviceSignInCommand: String {
+        profileEnvironment(for: .codexAccount) + requireCLI("codex")
+            + "exec \(codex) app-server --listen stdio://"
+    }
+
     /// Open the unmodified CLI's sign-in on the guest desktop and release the SSH connection.
     public static func signInCommand(for provider: ModelProvider) -> String {
         let executable: String

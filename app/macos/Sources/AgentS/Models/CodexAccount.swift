@@ -6,6 +6,40 @@ import AgentSCore
 /// App Server owns the ChatGPT login in a profile dedicated to Agent S.
 @MainActor
 enum CodexAccount {
+    struct DeviceCode: Equatable {
+        let verificationURL: URL
+        let userCode: String
+    }
+
+    enum DeviceSignInError: LocalizedError, Equatable {
+        case unsupported, disabled, invalidResponse, expired, failed
+
+        var errorDescription: String? {
+            switch self {
+            case .unsupported: "This sandbox’s Codex version doesn’t support device sign-in in Agent S."
+            case .disabled: "Enable device-code sign-in in ChatGPT security settings. In a managed workspace, ask your admin to enable it."
+            case .invalidResponse: "Codex returned an invalid device sign-in request. Try again."
+            case .expired: "The Codex device code expired. Request a new code to sign in."
+            case .failed: "Codex sign-in in the sandbox didn’t complete. Try again."
+            }
+        }
+
+        fileprivate init(rpcCode: Int? = nil, message: String) {
+            let reason = message.lowercased().replacingOccurrences(of: "-", with: " ")
+            let mentionsDevice = reason.contains("device code") || reason.contains("device auth")
+            if mentionsDevice && (reason.contains("not enabled") || reason.contains("disabled")) {
+                self = .disabled
+            } else if rpcCode == -32601 || (rpcCode != nil && reason.contains("chatgptdevicecode")
+                && (reason.contains("unknown variant") || reason.contains("unsupported login type"))) {
+                self = .unsupported
+            } else if mentionsDevice && (reason.contains("timed out") || reason.contains("expired")) {
+                self = .expired
+            } else {
+                self = .failed
+            }
+        }
+    }
+
     static var executable: URL? {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let bins = ["\(home)/.local/bin", "/opt/homebrew/bin", "/usr/local/bin", "\(home)/.npm-global/bin"]
@@ -46,6 +80,73 @@ enum CodexAccount {
                 throw CodexFailure("Codex sign-in didn’t complete. Try again.")
             }
             return (try? await accountPlan(on: connection)) ?? .account
+        }
+    }
+
+    static func signInInSandbox(shell: GuestShell, ip: String,
+                                onDeviceCode: @MainActor (DeviceCode) throws -> Void) async throws -> HarnessAccountPlan {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
+        process.arguments = ["-T"] + shell.sshArguments(ip: ip, command: SandboxAccount.codexDeviceSignInCommand)
+        return try await signInWithDeviceCode(process: process, onDeviceCode: onDeviceCode)
+    }
+
+    static func signInWithDeviceCode(process: Process,
+                                     onDeviceCode: @MainActor (DeviceCode) throws -> Void) async throws -> HarnessAccountPlan {
+        try Task.checkCancellation()
+        guard let connection = try? CodexConnection(process: process, hidesProtocolErrors: true) else {
+            throw DeviceSignInError.failed
+        }
+        defer { connection.close() }
+        var pendingLoginID: String?
+        var expired = false
+        var timeout: Task<Void, Error>?
+        defer { timeout?.cancel() }
+        do {
+            try await connection.initialize()
+            if let plan = try await accountPlan(on: connection) { return plan }
+            let login = try await connection.request("account/login/start", ["type": "chatgptDeviceCode"])
+            guard let id = login["loginId"] as? String, UUID(uuidString: id) != nil else {
+                throw DeviceSignInError.invalidResponse
+            }
+            pendingLoginID = id
+            let verificationURL = URL(string: "https://auth.openai.com/codex/device")!
+            guard login["type"] as? String == "chatgptDeviceCode",
+                  login["verificationUrl"] as? String == verificationURL.absoluteString,
+                  let userCode = login["userCode"] as? String,
+                  userCode.utf8.count <= 32,
+                  userCode.range(of: #"\A[A-Z0-9]+(?:-[A-Z0-9]+)*\z"#, options: .regularExpression) != nil else {
+                throw DeviceSignInError.invalidResponse
+            }
+            timeout = Task { @MainActor in
+                try await Task.sleep(for: .seconds(900))
+                expired = true
+                connection.close(pendingError: DeviceSignInError.expired)
+            }
+            try onDeviceCode(DeviceCode(verificationURL: verificationURL, userCode: userCode))
+            while true {
+                let message = try await connection.next()
+                guard message["method"] as? String == "account/login/completed",
+                      let result = message["params"] as? [String: Any], result["loginId"] as? String == id else { continue }
+                pendingLoginID = nil
+                guard result["success"] as? Bool == true else {
+                    throw DeviceSignInError(message: result["error"] as? String ?? "")
+                }
+                timeout?.cancel()
+                let plan = (try? await accountPlan(on: connection)) ?? .account
+                try Task.checkCancellation()
+                return plan
+            }
+        } catch {
+            if let id = pendingLoginID, !expired {
+                // A dismissed Mac prompt still needs to cancel the guest's pending authorization.
+                await Task { @MainActor in
+                    _ = try? await connection.request("account/login/cancel", ["loginId": id], timeout: .seconds(2))
+                }.value
+            }
+            if Task.isCancelled || error is CancellationError { throw CancellationError() }
+            if expired { throw DeviceSignInError.expired }
+            throw error as? DeviceSignInError ?? .failed
         }
     }
 
@@ -132,7 +233,8 @@ private enum CodexInference {
 /// One JSON-RPC stream over stdio. Each connection owns only its current account operation or turn.
 @MainActor
 private final class CodexConnection {
-    private let process = Process()
+    private let process: Process
+    private let hidesProtocolErrors: Bool
     private let input = Pipe()
     private let output = Pipe()
     private let lineContinuation: AsyncStream<String>.Continuation
@@ -142,7 +244,29 @@ private final class CodexConnection {
     private var lastID = 0
     private var closed = false
 
-    init(executable: URL, profile: URL, home: URL, inference: CodexInference) throws {
+    convenience init(executable: URL, profile: URL, home: URL, inference: CodexInference) throws {
+        let process = Process()
+        process.executableURL = executable
+        process.arguments = [
+            "app-server", "--listen", "stdio://",
+            "-c", "web_search=\"disabled\"",
+            "-c", "mcp_servers={}",
+            "--disable", "shell_tool", "--disable", "hooks", "--disable", "apps",
+            "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent_v2",
+            "--disable", "code_mode", "--disable", "request_permissions_tool",
+        ] + inference.options
+        let environment = [
+            "CODEX_HOME": profile.path, "HOME": home.path,
+            "PATH": "\(executable.deletingLastPathComponent().path):/usr/bin:/bin:/usr/sbin:/sbin",
+        ]
+        process.environment = environment.merging(inference.environment) { original, _ in original }
+        process.currentDirectoryURL = home
+        try self.init(process: process)
+    }
+
+    init(process: Process, hidesProtocolErrors: Bool = false) throws {
+        self.process = process
+        self.hidesProtocolErrors = hidesProtocolErrors
         let lines = AsyncStream<String>.makeStream()
         let messages = AsyncStream<[String: Any]>.makeStream()
         lineContinuation = lines.continuation
@@ -163,21 +287,6 @@ private final class CodexConnection {
                 reader.feed(data)
             }
         }
-        process.executableURL = executable
-        process.arguments = [
-            "app-server", "--listen", "stdio://",
-            "-c", "web_search=\"disabled\"",
-            "-c", "mcp_servers={}",
-            "--disable", "shell_tool", "--disable", "hooks", "--disable", "apps",
-            "--disable", "plugins", "--disable", "remote_plugin", "--disable", "multi_agent_v2",
-            "--disable", "code_mode", "--disable", "request_permissions_tool",
-        ] + inference.options
-        let environment = [
-            "CODEX_HOME": profile.path, "HOME": home.path,
-            "PATH": "\(executable.deletingLastPathComponent().path):/usr/bin:/bin:/usr/sbin:/sbin",
-        ]
-        process.environment = environment.merging(inference.environment) { original, _ in original }
-        process.currentDirectoryURL = home
         process.standardInput = input
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
@@ -200,11 +309,11 @@ private final class CodexConnection {
         try write(["method": "initialized"])
     }
 
-    func request(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+    func request(_ method: String, _ params: [String: Any], timeout duration: Duration = .seconds(20)) async throws -> [String: Any] {
         lastID += 1
         let id = lastID
         let timeout = Task { @MainActor [weak self] in
-            try await Task.sleep(for: .seconds(20))
+            try await Task.sleep(for: duration)
             self?.resolve(id, with: .failure(CodexFailure("Codex didn’t respond to \(method).")))
         }
         defer { timeout.cancel() }
@@ -237,7 +346,10 @@ private final class CodexConnection {
             eventContinuation.yield(message)
         } else if let id = message["id"] as? Int {
             if let error = message["error"] as? [String: Any], let reason = error["message"] as? String {
-                resolve(id, with: .failure(CodexFailure(String(reason.prefix(400)))))
+                let failure: Error = hidesProtocolErrors
+                    ? CodexAccount.DeviceSignInError(rpcCode: error["code"] as? Int, message: reason)
+                    : CodexFailure(String(reason.prefix(400)))
+                resolve(id, with: .failure(failure))
             } else if let result = message["result"] as? [String: Any] {
                 resolve(id, with: .success(result))
             } else {
