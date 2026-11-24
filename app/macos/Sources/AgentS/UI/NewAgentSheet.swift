@@ -9,7 +9,7 @@ struct NewAgentSheet: View {
     @State private var name: String
     @State private var setupError: String?
     @State private var location: AgentLocation
-    @State private var harness: Harness = .claudeCode
+    @State private var harness: Harness
     @State private var provider: ModelProvider = .ollama
     @State private var selectedOllamaModel: String?
     @State private var openRouterModel = OpenRouter.suggested[0]
@@ -25,7 +25,10 @@ struct NewAgentSheet: View {
         self.isFirstAgent = isFirstAgent
         let location: AgentLocation = isFirstAgent ? .linuxVM : initialLocation
         _location = State(initialValue: location)
-        _harness = State(initialValue: location == .cloud ? .sai : .claudeCode)
+        let harness: Harness = if isFirstAgent { .deepSeek }
+            else if location == .cloud { .sai }
+            else { .claudeCode }
+        _harness = State(initialValue: harness)
         _name = State(initialValue: isFirstAgent ? "Agent" : "Sai")
     }
 
@@ -218,7 +221,7 @@ struct NewAgentSheet: View {
     }
 
     private var ollamaModel: String {
-        selectedOllamaModel ?? (isFirstAgent ? localOllamaNames.first : model.modelChoices.first) ?? AppModel.defaultAgentModel
+        selectedOllamaModel ?? (isFirstAgent ? OllamaModelSetup.nemotron : model.modelChoices.first) ?? AppModel.defaultAgentModel
     }
 
     private var ollamaChoices: [String] {
