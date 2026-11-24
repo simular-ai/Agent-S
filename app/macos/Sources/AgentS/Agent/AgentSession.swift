@@ -65,6 +65,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var text: String
     var toolInput: String? = nil
     var isSteering: Bool? = nil
+    var approvalTitle: String? = nil
 
     var isBlankAssistantMessage: Bool {
         kind == .agent && text.allSatisfy(\.isWhitespace)
@@ -735,10 +736,15 @@ final class AgentSession: ObservableObject, Identifiable {
         }
         guard needsApproval else { return true }
         let id = UUID().uuidString
+        let title: String? = if tool == "Bash", let command = input["command"] as? String {
+            ToolActivity.title(tool: "mac", summary: command)
+        } else {
+            nil
+        }
         return await withCheckedContinuation { continuation in
             pendingApprovals[id] = continuation
             items.append(ChatItem(id: "approval/\(id)", kind: .approval(id: id, linkOnly: false, url: nil, answer: nil),
-                                  text: Self.describe(tool: tool, input: input, macToolPath: macToolPath)))
+                                  text: Self.describe(tool: tool, input: input, macToolPath: macToolPath), approvalTitle: title))
         }
     }
 
@@ -1124,11 +1130,12 @@ final class AgentSession: ObservableObject, Identifiable {
             items[index].kind = .step(name: name, done: true, failed: true, output: output.isEmpty ? error : output + "\n" + error)
         case "data-approval-request":
             guard let id = data["approvalId"] as? String else { return }
-            let title = [data["title"] as? String, data["description"] as? String].compactMap { $0 }.joined(separator: ": ")
+            let title = data["title"] as? String
+            let details = [title, data["description"] as? String].compactMap { $0 }.joined(separator: ": ")
             items.append(ChatItem(id: "approval/\(id)",
                                   kind: .approval(id: id, linkOnly: data["isLinkOnly"] as? Bool ?? false,
                                                   url: SaiAPI.approvalURL(data), answer: nil),
-                                  text: title.isEmpty ? "Sai is asking for approval." : title))
+                                  text: details.isEmpty ? "Sai is asking for approval." : details, approvalTitle: title))
         case "data-turn-result":
             if let usage = data["usage"] as? [String: Any] {
                 let input = (usage["inputTokens"] as? Int) ?? 0, output = (usage["outputTokens"] as? Int) ?? 0
