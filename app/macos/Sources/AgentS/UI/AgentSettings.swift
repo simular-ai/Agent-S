@@ -52,14 +52,7 @@ struct AgentSettings: View {
                         Picker("Model", selection: $model.agentModel) {
                             ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
                         }
-                        if !model.hasAgentModel {
-                            if let status = model.pullStatus {
-                                Text(status).font(.caption)
-                            } else {
-                                Button("Download \(model.agentModel)") { Task { await model.pullAgentModel() } }
-                                    .disabled(!model.ollamaReady)
-                            }
-                        }
+                        OllamaModelSetup(name: model.agentModel)
                     }
                     if model.harness != .sai, model.provider.usesAccount {
                         LabeledContent("Model", value: "Automatic")

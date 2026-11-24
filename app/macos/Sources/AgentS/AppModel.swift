@@ -32,6 +32,11 @@ final class AppModel: ObservableObject {
         }
     }
 
+    enum OllamaDownload: Equatable {
+        case downloading(name: String, progress: Double?)
+        case failed(name: String, message: String)
+    }
+
     private struct AccountRoute: Hashable {
         let provider: ModelProvider
         let inSandbox: Bool
@@ -66,7 +71,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var ollamaChecked = false
     @Published private(set) var ollamaVersion: String?
     @Published private(set) var ollamaModels: [Ollama.Model] = []
-    @Published private(set) var pullStatus: String?
+    @Published private(set) var ollamaDownload: OllamaDownload?
+    private var ollamaRefreshGeneration = 0
+    private var appliedOllamaRefreshGeneration = 0
     @Published private(set) var openRouterModels: [OpenRouter.Model] = []
     @Published private(set) var isRefreshingOpenRouterModels = false
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
@@ -399,8 +406,13 @@ final class AppModel: ObservableObject {
         return Ollama.isAtLeast(ollamaVersion, Self.minimumOllama)
     }
 
-    var hasAgentModel: Bool {
-        ollamaModels.contains { $0.matches(agentModel) }
+    var hasAgentModel: Bool { hasOllamaModel(agentModel) }
+
+    func hasOllamaModel(_ name: String) -> Bool { ollamaModels.contains { $0.matches(name) } }
+
+    var isDownloading: Bool {
+        if case .downloading = ollamaDownload { return true }
+        return false
     }
 
     var hasOllamaAgents: Bool {
@@ -661,26 +673,46 @@ final class AppModel: ObservableObject {
         agents.forEach { $0.stop() }
     }
 
-    func refreshOllama() async {
-        async let version = Ollama.version()
-        async let models = Ollama.models()
-        let (checkedVersion, checkedModels) = await (version, models)
-        guard !Task.isCancelled else { return }
-        ollamaVersion = checkedVersion
-        ollamaModels = checkedModels
-        ollamaChecked = true
+    func refreshOllama(timeout: TimeInterval = 10) async {
+        _ = await refreshOllamaState(timeout: timeout)
     }
 
-    func pullAgentModel() async {
-        pullStatus = "Starting…"
+    private func refreshOllamaState(timeout: TimeInterval) async -> [Ollama.Model] {
+        ollamaRefreshGeneration += 1
+        let generation = ollamaRefreshGeneration
+        async let version = Ollama.version(timeout: timeout)
+        async let models = Ollama.models(timeout: timeout)
+        let (checkedVersion, checkedModels) = await (version, models)
+        if !Task.isCancelled, generation > appliedOllamaRefreshGeneration {
+            appliedOllamaRefreshGeneration = generation
+            ollamaVersion = checkedVersion
+            ollamaModels = checkedModels
+            ollamaChecked = true
+        }
+        return checkedModels
+    }
+
+    func downloadOllamaModel(_ name: String) async {
+        guard !Task.isCancelled, !isDownloading else { return }
+        guard ollamaReady else {
+            ollamaDownload = .failed(name: name, message: "Open Ollama and check the connection before downloading a model.")
+            return
+        }
+        ollamaDownload = .downloading(name: name, progress: nil)
         do {
-            try await Ollama.pull(agentModel) { [weak self] status, fraction in
-                self?.pullStatus = fraction.map { "\(status) \(Int($0 * 100))%" } ?? status
+            try await Ollama.pull(name) { [weak self] _, fraction in
+                self?.ollamaDownload = .downloading(name: name, progress: fraction)
             }
-            pullStatus = nil
-            await refreshOllama()
+            ollamaDownload = .downloading(name: name, progress: nil)
+            let downloadedModels = await refreshOllamaState(timeout: 10)
+            try Task.checkCancellation()
+            if downloadedModels.contains(where: { $0.matches(name) }) {
+                ollamaDownload = nil
+            } else {
+                ollamaDownload = .failed(name: name, message: "Ollama didn’t list \(name) after the download. Refresh the list or try again.")
+            }
         } catch {
-            pullStatus = "Couldn't pull \(agentModel): \(error.localizedDescription)"
+            ollamaDownload = Task.isCancelled ? nil : .failed(name: name, message: error.localizedDescription)
         }
     }
 
@@ -730,8 +762,8 @@ final class AppModel: ObservableObject {
         }
         if provider == .ollama {
             if !ollamaChecked { return "Checking Ollama…" }
-            if !ollamaModels.contains(where: { $0.matches(config.ollamaModel) }) {
-                return "Download \(config.ollamaModel) in Settings first"
+            if !hasOllamaModel(config.ollamaModel) {
+                return ollamaReady ? "Download \(config.ollamaModel) to chat" : "Connect Ollama to chat"
             }
         }
         if provider == .openRouter {

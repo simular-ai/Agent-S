@@ -11,7 +11,7 @@ struct NewAgentSheet: View {
     @State private var location: AgentLocation
     @State private var harness: Harness = .claudeCode
     @State private var provider: ModelProvider = .ollama
-    @State private var ollamaModel = AppModel.defaultAgentModel
+    @State private var selectedOllamaModel: String?
     @State private var openRouterModel = OpenRouter.suggested[0]
     @State private var openRouterZDR: Bool?
     @State private var saiMachine = ""
@@ -112,10 +112,17 @@ struct NewAgentSheet: View {
                         if selectedProvider == .ollama {
                             Text("Choose a local Ollama model for private inference on this Mac.")
                                 .font(.caption).foregroundStyle(.secondary)
-                            Picker("Model", selection: $ollamaModel) {
-                                ForEach(ollamaChoices, id: \.self) { Text($0).tag($0) }
+                            Picker("Model", selection: Binding(
+                                get: { ollamaModel }, set: { selectedOllamaModel = $0 }
+                            )) {
+                                ForEach(ollamaChoices, id: \.self) { name in
+                                    Text(OllamaModelSetup.title(for: name)).tag(name)
+                                }
                             }
-                            Button("Refresh model list") { Task { await refreshOllamaChoices() } }
+                            OllamaModelSetup(name: ollamaModel)
+                            if model.ollamaReady {
+                                Button("Refresh model list") { Task { await model.refreshOllama() } }
+                            }
                         } else if selectedProvider == .openRouter {
                             Text("OpenRouter and the selected model provider receive your messages and content the agent reads.")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -183,13 +190,16 @@ struct NewAgentSheet: View {
             fitHarnessAndProvider()
         }
         .task {
-            if !isFirstAgent {
-                ollamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
+            if !isFirstAgent, selectedOllamaModel == nil {
+                selectedOllamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
             }
         }
-        .task(id: isFirstAgent && selectedProvider == .ollama) {
-            if isFirstAgent, selectedProvider == .ollama {
-                await refreshOllamaChoices()
+        .task(id: selectedProvider == .ollama) {
+            if selectedProvider == .ollama { await model.refreshOllama() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            if selectedProvider == .ollama, !model.ollamaReady {
+                Task { await model.refreshOllama() }
             }
         }
         // Sai's computers are looked up (which reads the Sai key) only once a Sai agent is chosen.
@@ -207,17 +217,17 @@ struct NewAgentSheet: View {
             .map { $0.name.hasSuffix(":latest") ? String($0.name.dropLast(7)) : $0.name }
     }
 
-    private var ollamaChoices: [String] {
-        let choices = isFirstAgent ? localOllamaNames : model.modelChoices
-        return choices.contains(ollamaModel) ? choices : choices + [ollamaModel]
+    private var ollamaModel: String {
+        selectedOllamaModel ?? (isFirstAgent ? localOllamaNames.first : model.modelChoices.first) ?? AppModel.defaultAgentModel
     }
 
-    private func refreshOllamaChoices() async {
-        await model.refreshOllama()
-        if isFirstAgent, !Task.isCancelled, !localOllamaNames.contains(ollamaModel),
-           let installed = localOllamaNames.first {
-            ollamaModel = installed
+    private var ollamaChoices: [String] {
+        var choices = isFirstAgent ? localOllamaNames : model.modelChoices
+        for name in [AppModel.defaultAgentModel, OllamaModelSetup.nemotron] where !choices.contains(name) {
+            choices.append(name)
         }
+        if !choices.contains(ollamaModel) { choices.append(ollamaModel) }
+        return choices
     }
 
     private var cloudComputer: CloudComputer? { location == .cloud ? computer : nil }

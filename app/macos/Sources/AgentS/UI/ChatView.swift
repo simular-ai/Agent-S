@@ -534,12 +534,11 @@ struct ChatView: View {
                 if usesOpenRouter, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
                 }
-                if model.shouldCheckOllamaForChat, model.ollamaChecked, !model.hasAgentModel {
-                    Text(model.ollamaReady
-                         ? "Right-click this agent and choose Agent Settings → Model to download \(model.agentModel)."
-                         : "Check Ollama in Settings to get the model connection ready.")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center).frame(maxWidth: 420)
+                if model.shouldCheckOllamaForChat, !model.ollamaReady || !model.hasAgentModel {
+                    VStack(alignment: .leading, spacing: 8) {
+                        OllamaModelSetup(name: model.agentModel)
+                    }
+                    .frame(maxWidth: 360)
                 }
             }
         }

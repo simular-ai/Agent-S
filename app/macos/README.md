@@ -39,8 +39,10 @@ The Computer panel shows pending requests and open work first. Check items under
 ## Choose how an agent runs
 
 On first launch, pick a harness and model for **Sandbox on This Mac**, then click
-**Set up agent** to download and start the sandbox. The new chat offers sample tasks.
-Click one to fill the composer, where you can edit it before sending.
+**Set up agent** to download and start the sandbox. If you choose **Ollama**, the
+setup screen links to the Mac installer and lets you download the selected model.
+The new chat offers sample tasks. Click one to fill the composer, where you can
+edit it before sending.
 
 Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud Computer**, choose a
 computer first. Choose the harness and **Provider** when prompted. To change an existing

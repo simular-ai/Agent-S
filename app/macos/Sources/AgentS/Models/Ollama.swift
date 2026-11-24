@@ -21,8 +21,10 @@ struct Ollama {
     }
 
     /// Ollama's version, or nil when it is not running (or older than its Anthropic endpoint).
-    static func version() async -> String? {
-        guard let (data, _) = try? await URLSession.shared.data(from: base.appendingPathComponent("api/version")),
+    static func version(timeout: TimeInterval = 10) async -> String? {
+        var request = URLRequest(url: base.appendingPathComponent("api/version"))
+        request.timeoutInterval = timeout
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return json["version"] as? String
     }
@@ -49,17 +51,41 @@ struct Ollama {
     static func pull(_ name: String, update: @escaping @MainActor (String, Double?) -> Void) async throws {
         var request = URLRequest(url: base.appendingPathComponent("api/pull"))
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": name, "stream": true])
-        let (bytes, _) = try await URLSession.shared.bytes(for: request)
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let response = response as? HTTPURLResponse else { throw PullFailure.incomplete }
+        guard (200..<300).contains(response.statusCode) else { throw PullFailure.httpStatus(response.statusCode) }
         for try await line in bytes.lines {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-            if let error = json["error"] as? String { throw GuestImage.Failure(message: error) }
-            let status = json["status"] as? String ?? ""
+            if let error = json["error"] as? String { throw PullFailure.server(error) }
+            guard let status = json["status"] as? String else { continue }
+            if status == "success" { return }
             let total = (json["total"] as? NSNumber)?.doubleValue
             let done = (json["completed"] as? NSNumber)?.doubleValue
-            let fraction = (total != nil && done != nil && total! > 0) ? done! / total! : nil
+            let fraction: Double?
+            if let total, total.isFinite, total > 0, let done, done.isFinite {
+                fraction = min(max(done / total, 0), 1)
+            } else {
+                fraction = nil
+            }
             await update(status, fraction)
+        }
+        throw PullFailure.incomplete
+    }
+
+    private enum PullFailure: LocalizedError {
+        case httpStatus(Int)
+        case server(String)
+        case incomplete
+
+        var errorDescription: String? {
+            switch self {
+            case let .httpStatus(status): "Ollama returned HTTP \(status)."
+            case let .server(message): message
+            case .incomplete: "Ollama didn’t finish the download."
+            }
         }
     }
 
