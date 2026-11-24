@@ -47,7 +47,7 @@ struct Ollama {
         }
     }
 
-    /// Pulls a model, reporting Ollama's status line and progress (0…1) as it streams.
+    /// Pulls a model, reporting Ollama's status and the fraction of reported bytes downloaded.
     static func pull(_ name: String, update: @escaping @MainActor (String, Double?) -> Void) async throws {
         var request = URLRequest(url: base.appendingPathComponent("api/pull"))
         request.httpMethod = "POST"
@@ -56,23 +56,51 @@ struct Ollama {
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard let response = response as? HTTPURLResponse else { throw PullFailure.incomplete }
         guard (200..<300).contains(response.statusCode) else { throw PullFailure.httpStatus(response.statusCode) }
+        var progress = PullProgress()
         for try await line in bytes.lines {
             guard let data = line.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
             if let error = json["error"] as? String { throw PullFailure.server(error) }
             guard let status = json["status"] as? String else { continue }
-            if status == "success" { return }
             let total = (json["total"] as? NSNumber)?.doubleValue
-            let done = (json["completed"] as? NSNumber)?.doubleValue
-            let fraction: Double?
-            if let total, total.isFinite, total > 0, let done, done.isFinite {
-                fraction = min(max(done / total, 0), 1)
-            } else {
-                fraction = nil
-            }
+            let completed = (json["completed"] as? NSNumber)?.doubleValue
+            let fraction = progress.update(status: status, digest: json["digest"] as? String,
+                                           total: total, completed: completed)
             await update(status, fraction)
+            if status == "success" { return }
         }
         throw PullFailure.incomplete
+    }
+
+    private struct PullProgress {
+        private struct Layer {
+            let total: Double
+            let completed: Double
+        }
+
+        private var layers: [String?: Layer] = [:]
+
+        mutating func update(status: String, digest: String?, total: Double?, completed: Double?) -> Double? {
+            switch status {
+            case "verifying sha256 digest", "writing manifest", "removing any unused layers", "success":
+                return 1
+            default:
+                break
+            }
+
+            // Ollama announces each layer separately and omits `completed` when it is zero.
+            if let total, total.isFinite, total > 0 {
+                let completed = completed ?? 0
+                if completed.isFinite {
+                    layers[digest] = Layer(total: total, completed: min(max(completed, 0), total))
+                }
+            }
+
+            let totalBytes = layers.values.reduce(0) { $0 + $1.total }
+            guard totalBytes > 0 else { return nil }
+            let completedBytes = layers.values.reduce(0) { $0 + $1.completed }
+            return completedBytes / totalBytes
+        }
     }
 
     private enum PullFailure: LocalizedError {

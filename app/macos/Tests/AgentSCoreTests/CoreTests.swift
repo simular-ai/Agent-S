@@ -250,7 +250,10 @@ struct GuestToolsTests {
         #expect(install.contains("sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs"))
         #expect(install.contains("sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version) &&"))
         #expect(!install.contains("systemctl"))
-        #expect(GuestTools.installCommand.hasPrefix(GuestSetup.ensureNodeCommand(asRoot: false)))
+        let deadline = "/usr/bin/timeout --kill-after=5s \(GuestTools.installTimeoutSeconds)s /bin/bash -s <<'AGENT_S_TOOL_INSTALL'\n"
+        let setupNode = GuestSetup.ensureNodeCommand(asRoot: false)
+        #expect(install.hasPrefix(deadline + setupNode))
+        #expect(GuestTools.installCommand.hasPrefix(deadline + setupNode))
         #expect(GuestTools.installCommand.contains(GuestSetup.ensureBaseHarnessesCommand(asRoot: false)))
         #expect(GuestTools.installCommand.contains("sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version)"))
     }

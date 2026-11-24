@@ -16,6 +16,10 @@ struct ContentView: View {
             NewAgentSheet(isFirstAgent: true)
                 .frame(minWidth: 641, maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.canvas)
+        } else if model.needsFirstAgentPreparation {
+            FirstAgentPreparationView { showComputer = true }
+                .frame(minWidth: 641)
+                .background(Theme.canvas)
         } else {
             content.environmentObject(model.agent)
         }
@@ -466,7 +470,7 @@ extension AppModel {
     var status: ComputerStatus {
         switch phase {
         case .needsSetup: ComputerStatus(label: "Computer not set up", color: .secondary)
-        case let .preparing(step): ComputerStatus(label: step, color: .orange)
+        case let .preparing(step): ComputerStatus(label: step.label, color: .orange)
         case .stopped: ComputerStatus(label: "Computer off", color: .secondary)
         case let .booting(step): ComputerStatus(label: step, color: .orange)
         case .ready: ComputerStatus(label: "Computer on", color: .green)

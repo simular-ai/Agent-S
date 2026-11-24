@@ -9,10 +9,9 @@ struct OllamaModelSetup: View {
 
     var body: some View {
         if case let .downloading(current, progress) = model.ollamaDownload, current == name {
-            ProgressView(value: progress) {
-                Text("Downloading \(Self.title(for: name))…")
-            }
-            .controlSize(.small)
+            DownloadProgressView(label: "Downloading \(Self.title(for: name))…", progress: progress)
+        } else if case let .verifying(current) = model.ollamaDownload, current == name {
+            DownloadProgressView(label: "Checking the model in Ollama…", progress: 1)
         } else if !model.ollamaChecked {
             ProgressView("Checking Ollama…").controlSize(.small)
         } else if !model.ollamaReady {

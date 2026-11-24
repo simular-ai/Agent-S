@@ -8,7 +8,7 @@ import AgentSCore
 final class AppModel: ObservableObject {
     enum Phase: Equatable {
         case needsSetup
-        case preparing(String)
+        case preparing(GuestImage.PreparationStep)
         case stopped
         case booting(String)
         case ready
@@ -34,6 +34,7 @@ final class AppModel: ObservableObject {
 
     enum OllamaDownload: Equatable {
         case downloading(name: String, progress: Double?)
+        case verifying(name: String)
         case failed(name: String, message: String)
     }
 
@@ -59,7 +60,6 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var phase: Phase
-    @Published private(set) var downloadProgress: Double?
     @Published private(set) var guestIP: String?
     @Published private(set) var isSavingSandbox = false
     private var attemptedSandboxRestore = false
@@ -103,6 +103,7 @@ final class AppModel: ObservableObject {
     /// The user's agents, private ones (on this Mac) and cloud ones; each with its own context.
     @Published private(set) var agents: [AgentSession] = []
     @Published private(set) var needsFirstAgentSetup = false
+    @Published private(set) var needsFirstAgentPreparation = false
     @Published var selectedAgentID: UUID {
         didSet {
             if !needsFirstAgentSetup { UserDefaults.standard.set(selectedAgentID.uuidString, forKey: "selectedAgent") }
@@ -212,8 +213,14 @@ final class AppModel: ObservableObject {
         snapshot.config = config
         try writeFirstAgent(snapshot)
         starter.config = config
+        needsFirstAgentPreparation = true
         needsFirstAgentSetup = false
         selectedAgentID = starter.id
+    }
+
+    func finishFirstAgentPreparation() throws {
+        try FileManager.default.removeItem(at: firstAgentPreparationFile)
+        needsFirstAgentPreparation = false
     }
 
     private enum FirstAgentSetupError: LocalizedError {
@@ -307,6 +314,7 @@ final class AppModel: ObservableObject {
     }
 
     private var agentsFile: URL { files.root.appendingPathComponent("agents.json") }
+    private var firstAgentPreparationFile: URL { files.root.appendingPathComponent("first-agent-preparation") }
 
     /// Chats can hold page text and tool output: the file is readable by this user only.
     func saveAgents() {
@@ -332,6 +340,8 @@ final class AppModel: ObservableObject {
         defer { try? manager.removeItem(at: staging) }
         try GuestFiles(root: staging).ensureFolders()
         try writeAgents([snapshot], to: staging.appendingPathComponent(agentsFile.lastPathComponent))
+        try Data(snapshot.config.id.uuidString.utf8)
+            .write(to: staging.appendingPathComponent(firstAgentPreparationFile.lastPathComponent), options: .atomic)
         try manager.moveItem(at: staging, to: files.root)
     }
 
@@ -396,6 +406,9 @@ final class AppModel: ObservableObject {
             ?? UserDefaults(suiteName: GuestFiles.legacy[0].0)?.string(forKey: "selectedAgent"))
             .flatMap(UUID.init(uuidString:))
         selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
+        if let pending = try? String(contentsOf: firstAgentPreparationFile, encoding: .utf8) {
+            needsFirstAgentPreparation = UUID(uuidString: pending) == agent.id && agent.config.usesLocalComputer
+        }
         vm.onStateChange = { [weak self] state in self?.vmChanged(state) }
     }
 
@@ -411,8 +424,10 @@ final class AppModel: ObservableObject {
     func hasOllamaModel(_ name: String) -> Bool { ollamaModels.contains { $0.matches(name) } }
 
     var isDownloading: Bool {
-        if case .downloading = ollamaDownload { return true }
-        return false
+        switch ollamaDownload {
+        case .downloading, .verifying: true
+        default: false
+        }
     }
 
     var hasOllamaAgents: Bool {
@@ -490,13 +505,11 @@ final class AppModel: ObservableObject {
         guard !needsFirstAgentSetup, !isSavingSandbox, !files.isPrepared, vm.machine == nil else { return }
         if case .preparing = phase { return }
         if case .booting = phase { return }
-        phase = .preparing("Preparing the sandbox…")
-        downloadProgress = nil
+        phase = .preparing(.working("Preparing the sandbox…"))
         do {
-            try await GuestImage.prepare(files: files,
-                                         step: { [weak self] in self?.phase = .preparing($0) },
-                                         progress: { [weak self] in self?.downloadProgress = $0 })
-            downloadProgress = nil
+            try await GuestImage.prepare(files: files) { [weak self] step in
+                self?.phase = .preparing(step)
+            }
             phase = .stopped
         } catch {
             phase = .failed(error.localizedDescription)
@@ -581,9 +594,7 @@ final class AppModel: ObservableObject {
             }
         } catch {
             guard vm.machine === machine, vm.state == .running else { return }
-            let status = (error as? GuestShell.CommandFailure)?.status
-            let timedOut = error is GuestShell.CommandTimeout || status == 124 || status == 137
-            phase = .failed(timedOut
+            phase = .failed(GuestShell.commandTimedOut(error)
                             ? "Checking the sandbox tools timed out."
                             : "Couldn’t verify the sandbox tools.")
             return
@@ -593,11 +604,15 @@ final class AppModel: ObservableObject {
         if let install {
             phase = .booting(install.step)
             do {
-                try await shell.run(install.command, on: ip)
+                // Give the guest time to stop the installer and report its exit status.
+                let timeout = TimeInterval(GuestTools.installTimeoutSeconds + 15)
+                try await shell.run(install.command, on: ip, timeout: timeout)
             } catch {
                 guard vm.machine === machine, vm.state == .running else { return }
                 NSLog("Agent S: installing the sandbox tools failed: %@", "\(error)")
-                phase = .failed("Couldn’t install the sandbox tools. Try again to finish setup.")
+                phase = .failed(GuestShell.commandTimedOut(error)
+                                ? "Installing the sandbox tools timed out. Check your internet connection and try again."
+                                : "Couldn’t install the sandbox tools. Try again to finish setup.")
                 return
             }
         }
@@ -703,7 +718,7 @@ final class AppModel: ObservableObject {
             try await Ollama.pull(name) { [weak self] _, fraction in
                 self?.ollamaDownload = .downloading(name: name, progress: fraction)
             }
-            ollamaDownload = .downloading(name: name, progress: nil)
+            ollamaDownload = .verifying(name: name)
             let downloadedModels = await refreshOllamaState(timeout: 10)
             try Task.checkCancellation()
             if downloadedModels.contains(where: { $0.matches(name) }) {

@@ -326,7 +326,12 @@ struct ChatView: View {
                 })
             }
             return AnyView(MemoryBanner())
-        case let .booting(step), let .preparing(step):
+        case let .preparing(step):
+            if case let .downloadingDebian(progress) = step {
+                return AnyView(downloadBanner(label: step.label, progress: progress))
+            }
+            return AnyView(bannerRow(symbol: nil, text: step.label) { EmptyView() })
+        case let .booting(step):
             return AnyView(bannerRow(symbol: nil, text: step) { EmptyView() })
         case let .failed(message):
             return AnyView(VStack(alignment: .trailing, spacing: 6) {
@@ -348,6 +353,12 @@ struct ChatView: View {
                     .buttonStyle(.borderedProminent).tint(Theme.accent)
             })
         }
+    }
+
+    private func downloadBanner(label: String, progress: Double?) -> some View {
+        DownloadProgressView(label: label, progress: progress)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
     }
 
     private func bannerRow<Action: View>(symbol: String?, text: String, @ViewBuilder action: () -> Action) -> some View {
@@ -530,7 +541,7 @@ struct ChatView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                if agent.config.usesLocalComputer { sandboxStarterPrompts }
+                if agent.config.usesLocalComputer, model.canChat { sandboxStarterPrompts }
                 if usesOpenRouter, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
                 }

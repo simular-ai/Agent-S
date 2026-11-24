@@ -23,9 +23,10 @@ struct SetupView: View {
                 Text("Applies when you turn on a powered-off sandbox.")
                     .font(.caption).foregroundStyle(.secondary)
                 if case let .preparing(step) = model.phase {
-                    VStack(alignment: .leading) {
-                        Text(step)
-                        if let progress = model.downloadProgress { ProgressView(value: progress) }
+                    if case let .downloadingDebian(progress) = step {
+                        DownloadProgressView(label: step.label, progress: progress)
+                    } else {
+                        Text(step.label)
                     }
                 } else if !model.files.isPrepared {
                     Button("Set up the computer") { Task { await model.prepare() } }

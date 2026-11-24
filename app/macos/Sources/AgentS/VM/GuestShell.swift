@@ -84,6 +84,12 @@ struct GuestShell {
         var errorDescription: String? { "The sandbox command timed out." }
     }
 
+    /// Recognizes the host SSH deadline and the exit statuses from GNU timeout in the guest.
+    static func commandTimedOut(_ error: Error) -> Bool {
+        let status = (error as? CommandFailure)?.status
+        return error is CommandTimeout || status == 124 || status == 137
+    }
+
     /// Runs a command to completion, with an optional wall deadline on the Mac.
     @discardableResult
     func run(_ command: String, on ip: String, input: String? = nil, timeout: TimeInterval? = nil) async throws -> String {

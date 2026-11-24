@@ -499,10 +499,20 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
         ].joined(separator: " && ")
     }
 
+    public static let installTimeoutSeconds = 300
+
     public static var installCommand: String {
-        [GuestSetup.ensureNodeCommand(asRoot: false), GuestSetup.ensureBaseHarnessesCommand(asRoot: false),
-         installScriptsCommand, desktopLaunchDependencies, playwright, clipboard, terminal, installPinnedDeepSeek]
-            .joined(separator: " && ")
+        let commands = [GuestSetup.ensureNodeCommand(asRoot: false), GuestSetup.ensureBaseHarnessesCommand(asRoot: false),
+                        installScriptsCommand, desktopLaunchDependencies, playwright, clipboard, terminal, installPinnedDeepSeek]
+        return boundedInstallation(commands.joined(separator: " && "))
+    }
+
+    private static func boundedInstallation(_ command: String) -> String {
+        """
+        /usr/bin/timeout --kill-after=5s \(installTimeoutSeconds)s /bin/bash -s <<'AGENT_S_TOOL_INSTALL'
+        \(command)
+        AGENT_S_TOOL_INSTALL
+        """
     }
 
     private static let desktopLaunchDependencies =
@@ -527,7 +537,7 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
 
     /// Repairs the runtime on an existing guest without restarting its desktop.
     public static var installDeepSeekCommand: String {
-        "\(GuestSetup.ensureNodeCommand(asRoot: false)) && \(installPinnedDeepSeek)"
+        boundedInstallation("\(GuestSetup.ensureNodeCommand(asRoot: false)) && \(installPinnedDeepSeek)")
     }
 
     private static var deepSeekVersionCheck: String {

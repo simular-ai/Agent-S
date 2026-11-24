@@ -39,7 +39,7 @@ struct NewAgentSheet: View {
                     SaiAvatar(size: 40)
                     Text("Set up your first agent")
                         .font(.title2.weight(.semibold))
-                    Text("Choose how your agent runs in its own Linux sandbox.")
+                    Text("Choose a harness and model for your agent’s Linux sandbox.")
                         .foregroundStyle(.secondary)
                 }
                 .padding(.top, 20)
@@ -49,6 +49,8 @@ struct NewAgentSheet: View {
                 Section {
                     if isFirstAgent {
                         Label(location.displayName, systemImage: location.symbol)
+                        Text("Your agent gets a separate desktop that runs on this Mac.")
+                            .font(.caption).foregroundStyle(.secondary)
                     } else {
                         TextField("Name", text: $name)
                         Picker("Runs", selection: $location) {
@@ -122,9 +124,11 @@ struct NewAgentSheet: View {
                                     Text(OllamaModelSetup.title(for: name)).tag(name)
                                 }
                             }
-                            OllamaModelSetup(name: ollamaModel)
-                            if model.ollamaReady {
-                                Button("Refresh model list") { Task { await model.refreshOllama() } }
+                            if !isFirstAgent {
+                                OllamaModelSetup(name: ollamaModel)
+                                if model.ollamaReady {
+                                    Button("Refresh model list") { Task { await model.refreshOllama() } }
+                                }
                             }
                         } else if selectedProvider == .openRouter {
                             Text("OpenRouter and the selected model provider receive your messages and content the agent reads.")
@@ -137,7 +141,7 @@ struct NewAgentSheet: View {
                                 ForEach(OpenRouter.suggested, id: \.self) { Text($0).tag($0) }
                                 if !OpenRouter.suggested.contains(openRouterModel) { Text(openRouterModel).tag(openRouterModel) }
                             }
-                            KeySetup.openRouter(model)
+                            if !isFirstAgent { KeySetup.openRouter(model) }
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
                             Text("Sign in after creating the agent. \(notice)")
@@ -163,7 +167,7 @@ struct NewAgentSheet: View {
             Divider()
             HStack {
                 if isFirstAgent {
-                    Text("Downloads the sandbox and its tools.")
+                    Text("Next, set up the sandbox and connect your model.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
