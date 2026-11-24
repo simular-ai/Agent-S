@@ -79,9 +79,9 @@ Linux VM or cloud computer and see the agent's session context.
    to install the desktop and tools in the VM. Wait for setup to finish, then send a message.
    One agent can use the shared Linux desktop at a time.
 
-In **Settings → Computer → Memory**, choose **2 GB**, **4 GB**, or **6 GB** for the next
-VM start. The default is **6 GB**. This setting allocates memory to the VM. Ollama runs
-separately, so budget host memory for the model too. In the computer panel, use **Take over**
+Choose **2 GB**, **4 GB**, or **6 GB** during onboarding or in **Settings → Computer → Memory**.
+The default is **2 GB**. Changes apply when you start a powered-off sandbox. Ollama uses
+memory on the Mac separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
 
 On Apple silicon, quitting Agent S saves the running sandbox when the Mac and VM

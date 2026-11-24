@@ -32,6 +32,7 @@ struct NewAgentSheet: View {
     @State private var harness: Harness
     @State private var providerOverride: ModelProvider?
     @State private var selectedOllamaModel: String?
+    @State private var sandboxMemory: LinuxVM.MemoryAllocation?
     @State private var showsOllamaCatalog = false
     @State private var openRouterModel = OpenRouter.suggested[0]
     @State private var openRouterZDR: Bool?
@@ -91,6 +92,14 @@ struct NewAgentSheet: View {
                         Label(location.displayName, systemImage: location.symbol)
                         Text("Your agent gets a separate desktop that runs on this Mac.")
                             .font(.caption).foregroundStyle(.secondary)
+                        Picker("Sandbox memory", selection: Binding(
+                            get: { sandboxMemory ?? model.computerMemory },
+                            set: { sandboxMemory = $0 }
+                        )) {
+                            ForEach(LinuxVM.MemoryAllocation.allCases, id: \.self) { allocation in
+                                Text(SystemMemory.format(allocation.bytes)).tag(allocation)
+                            }
+                        }
                     } else {
                         TextField("Name", text: $name)
                         if !isCloudOnboarding {
@@ -405,6 +414,7 @@ struct NewAgentSheet: View {
         }
         switch mode {
         case .firstAgent:
+            if let sandboxMemory { model.computerMemory = sandboxMemory }
             Task { await model.prepareAndStartSandbox() }
         case let .cloudOnboarding(_, _, finished):
             finished()

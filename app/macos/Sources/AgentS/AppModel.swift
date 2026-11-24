@@ -65,7 +65,7 @@ final class AppModel: ObservableObject {
     private var attemptedSandboxRestore = false
     private var sandboxCanCheckpoint = false
     private var sandboxNeedsFullToolInstall = false
-    @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .sixGB {
+    @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .twoGB {
         didSet { UserDefaults.standard.set(computerMemory.rawValue, forKey: Self.computerMemoryKey) }
     }
     @Published private(set) var ollamaChecked = false
