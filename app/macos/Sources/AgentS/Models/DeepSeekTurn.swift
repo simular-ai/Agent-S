@@ -132,6 +132,14 @@ final class DeepSeekTurn {
         if let process, process.isRunning { process.terminate() }
     }
 
+    /// Confirms the local DeepSeek Harness is no longer writing to its session.
+    func waitUntilStopped() async -> Bool {
+        guard let process else { return true }
+        guard await process.waitForHostedExit() else { return false }
+        if self.process === process { self.process = nil }
+        return true
+    }
+
     private func toolBridge(for target: Target) async throws -> DeepSeekToolBridge {
         switch target {
         case let .box(boxName):
@@ -210,8 +218,8 @@ final class DeepSeekTurn {
         self.process = process
         defer {
             output.fileHandleForReading.readabilityHandler = nil
-            self.process = nil
             if process.isRunning { process.terminate() }
+            else { self.process = nil }
         }
         try process.run()
         let (statuses, finish) = AsyncStream<Int32>.makeStream()

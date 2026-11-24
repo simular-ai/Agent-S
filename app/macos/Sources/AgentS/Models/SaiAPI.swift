@@ -82,8 +82,11 @@ enum SaiAPI {
         return request
     }
 
-    private static func json(_ path: String, method: String = "GET", body: [String: Any]? = nil) async throws -> [String: Any] {
-        let (data, response) = try await URLSession.shared.data(for: request(path, method: method, body: body))
+    private static func json(_ path: String, method: String = "GET", body: [String: Any]? = nil,
+                             timeout: TimeInterval = 30) async throws -> [String: Any] {
+        var request = try request(path, method: method, body: body)
+        request.timeoutInterval = timeout
+        let (data, response) = try await URLSession.shared.data(for: request)
         let object = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else { throw failure(status: status, body: object) }
@@ -150,7 +153,45 @@ enum SaiAPI {
     }
 
     static func abort(session: String) async {
-        _ = try? await json("/v1/agents/abort", method: "POST", body: ["sessionId": session])
+        _ = try? await requestAbort(session: session)
+    }
+
+    /// Wait until Sai reports that this session has no running task.
+    static func abortConfirmed(session: String) async throws {
+        guard !session.isEmpty else { throw Failure(message: "Sai hasn’t reported a session to stop yet.") }
+        let reply = try await requestAbort(session: session, timeout: 5)
+        let alreadyStopping = ["no active session", "session already idle or aborting"]
+        guard reply["ok"] as? Bool == true, let aborted = reply["aborted"] as? Bool,
+              aborted || alreadyStopping.contains(reply["reason"] as? String ?? "") else {
+            throw Failure(message: "Sai didn’t acknowledge the stop request.")
+        }
+
+        // The abort response may say that the task is already aborting. A terminal session
+        // status is needed before a new message can be sent without joining the old task.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(12))
+        let unconfirmed = Failure(message: "Sai didn’t confirm that the task stopped.")
+        var cursor: String?
+        repeat {
+            try Task.checkCancellation()
+            var query = [URLQueryItem(name: "sessionId", value: session)]
+            if let cursor { query.append(URLQueryItem(name: "since", value: cursor)) }
+            var components = URLComponents()
+            components.queryItems = query
+            guard let encoded = components.percentEncodedQuery else { throw unconfirmed }
+            let events = try await json("/v1/agents/events?\(encoded)", timeout: 3)
+            guard events["sessionId"] as? String == session else { throw unconfirmed }
+            switch events["status"] as? String {
+            case "idle", "error": return
+            case "running", "needs_approval": cursor = events["cursor"] as? String
+            default: throw unconfirmed
+            }
+            try await Task.sleep(for: .milliseconds(500))
+        } while ContinuousClock.now < deadline
+        throw unconfirmed
+    }
+
+    private static func requestAbort(session: String, timeout: TimeInterval = 30) async throws -> [String: Any] {
+        try await json("/v1/agents/abort", method: "POST", body: ["sessionId": session], timeout: timeout)
     }
 
     /// Runs one message as a task and hands each stream event (a JSON object) to `event`.

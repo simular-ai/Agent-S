@@ -314,6 +314,9 @@ final class AppModel: ObservableObject {
             guard succeeded, !session.followUpsPaused else { return }
             self?.sendQueuedFollowUp(for: session)
         }
+        session.onForcedFollowUpReady = { [weak self] session, id in
+            self?.sendQueuedFollowUp(for: session, forcedID: id)
+        }
         agents.append(session)
     }
 
@@ -1119,17 +1122,32 @@ final class AppModel: ObservableObject {
         return session.enqueueFollowUp(prompt, route: memoryRoute(for: session))
     }
 
-    func canSendQueuedFollowUp(for session: AgentSession) -> Bool {
-        guard let followUp = session.queuedFollowUps.first, !checkingFollowUpRoutes.contains(followUp.id),
-              canDispatch(to: session), session.config == session.config.enforcingPrivacy else { return false }
-        return followUp.route == memoryRoute(for: session)
+    func canForceQueuedFollowUp(_ followUp: AgentSession.QueuedFollowUp, for session: AgentSession) -> Bool {
+        agents.contains(where: { $0 === session }) && session.isRunning
+            && !session.isStopping && !session.isSendingSteering
+            && session.config == session.config.enforcingPrivacy && followUp.route == memoryRoute(for: session)
     }
 
-    func sendQueuedFollowUp(for session: AgentSession) {
-        guard agents.contains(where: { $0 === session }), let followUp = session.queuedFollowUps.first,
-              !checkingFollowUpRoutes.contains(followUp.id) else { return }
-        guard canSendQueuedFollowUp(for: session) else { session.pauseQueuedFollowUps(); return }
-        session.resumeQueuedFollowUps()
+    func forceQueuedFollowUp(_ followUp: AgentSession.QueuedFollowUp, for session: AgentSession) {
+        guard canForceQueuedFollowUp(followUp, for: session) else { return }
+        session.forceFollowUp(followUp)
+    }
+
+    func canSendQueuedFollowUp(for session: AgentSession) -> Bool {
+        guard let followUp = session.queuedFollowUps.first else { return false }
+        return canDispatchFollowUp(followUp, to: session)
+    }
+
+    private func canDispatchFollowUp(_ followUp: AgentSession.QueuedFollowUp, to session: AgentSession) -> Bool {
+        !checkingFollowUpRoutes.contains(followUp.id) && canDispatch(to: session)
+            && session.config == session.config.enforcingPrivacy && followUp.route == memoryRoute(for: session)
+    }
+
+    func sendQueuedFollowUp(for session: AgentSession, forcedID: UUID? = nil) {
+        let next = session.queuedFollowUps.first { forcedID == nil || $0.id == forcedID }
+        guard let followUp = next, !checkingFollowUpRoutes.contains(followUp.id) else { return }
+        guard canDispatchFollowUp(followUp, to: session) else { session.pauseQueuedFollowUps(); return }
+        if forcedID == nil { session.resumeQueuedFollowUps() }
         guard followUp.route.provider == .ollama else {
             dispatchFollowUp(followUp, to: session)
             return
@@ -1141,12 +1159,13 @@ final class AppModel: ObservableObject {
             let verified = await Self.verifyOllamaMemoryRoute(followUp.route)
             guard let self else { return }
             self.checkingFollowUpRoutes.remove(followUp.id)
-            guard let session, !session.isRunning, !session.followUpsPaused else { return }
-            guard session.queuedFollowUps.first?.id == followUp.id else {
-                self.sendQueuedFollowUp(for: session)
+            guard let session, !session.isRunning, forcedID != nil || !session.followUpsPaused else { return }
+            let pending = session.queuedFollowUps.first { forcedID == nil || $0.id == forcedID }
+            guard pending?.id == followUp.id else {
+                if forcedID == nil { self.sendQueuedFollowUp(for: session) }
                 return
             }
-            guard verified == followUp.route, self.canSendQueuedFollowUp(for: session) else {
+            guard verified == followUp.route, self.canDispatchFollowUp(followUp, to: session) else {
                 session.pauseQueuedFollowUps()
                 return
             }

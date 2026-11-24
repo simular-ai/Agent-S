@@ -1,15 +1,21 @@
 import Foundation
 
-/// Tracks one sandbox Codex turn without touching other tools or its saved thread.
+/// Tracks a sandbox harness turn without touching the desktop or saved conversation.
 public struct SandboxCodexTurn: Sendable {
     public static let lifecycleFailureMarker = "AGENT_S_CODEX_LIFECYCLE:"
 
-    private static let ownerPrefix = "Agent S Codex turn "
+    public static func lifecycleFailureMarker(for harness: Harness) -> String {
+        harness == .codex ? lifecycleFailureMarker : "AGENT_S_SANDBOX_TURN_LIFECYCLE:"
+    }
+
+    private let harness: Harness
     private let unit: String
     private let turnID: UUID
+    private var ownerPrefix: String { "Agent S \(harness.displayName) turn " }
 
-    public init(agentID: UUID, turnID: UUID = UUID()) {
-        unit = "agent-s-codex-\(agentID.uuidString.lowercased()).service"
+    public init(agentID: UUID, turnID: UUID = UUID(), harness: Harness = .codex) {
+        self.harness = harness
+        unit = "agent-s-\(harness.rawValue)-\(agentID.uuidString.lowercased()).service"
         self.turnID = turnID
     }
 
@@ -18,14 +24,14 @@ public struct SandboxCodexTurn: Sendable {
         #"""
         \#(setup)
         if [ -f "$cancelled" ]; then
-          lifecycle_failure 'The Codex turn was stopped before it started.'
+          lifecycle_failure 'The \#(harness.displayName) turn was stopped before it started.'
         fi
 
-        owner=$(current_owner) || lifecycle_failure 'Could not inspect the Codex turn service.'
+        owner=$(current_owner) || lifecycle_failure 'Could not inspect the \#(harness.displayName) turn service.'
         case "$owner" in
           '') ;;
-          '\#(Self.ownerPrefix)'*) stop_unit ;;
-          *) lifecycle_failure 'The Codex turn service has an unexpected owner.' ;;
+          '\#(ownerPrefix)'*) stop_unit ;;
+          *) lifecycle_failure 'The \#(harness.displayName) turn service has an unexpected owner.' ;;
         esac
 
         # Use the guest's system manager because streaming needs a D-Bus socket.
@@ -57,8 +63,8 @@ public struct SandboxCodexTurn: Sendable {
         #"""
         \#(setup)
         # Also cancel an SSH command that was accepted but has not registered its service yet.
-        touch -- "$cancelled" || lifecycle_failure 'Could not mark the Codex turn as stopped.'
-        owner=$(current_owner) || lifecycle_failure 'Could not inspect the Codex turn service.'
+        touch -- "$cancelled" || lifecycle_failure 'Could not mark the \#(harness.displayName) turn as stopped.'
+        owner=$(current_owner) || lifecycle_failure 'Could not inspect the \#(harness.displayName) turn service.'
         if [ "$owner" = "$description" ]; then stop_unit; fi
         """#
     }
@@ -66,11 +72,11 @@ public struct SandboxCodexTurn: Sendable {
     private var setup: String {
         #"""
         unit='\#(unit)'
-        description='\#(Self.ownerPrefix)\#(turnID.uuidString)'
+        description='\#(ownerPrefix)\#(turnID.uuidString)'
         unset DBUS_SESSION_BUS_ADDRESS
 
         lifecycle_failure() {
-          printf '%s %s\n' '\#(Self.lifecycleFailureMarker)' "$1" >&2
+          printf '%s %s\n' '\#(Self.lifecycleFailureMarker(for: harness))' "$1" >&2
           exit 70
         }
         current_owner() {
@@ -84,25 +90,25 @@ public struct SandboxCodexTurn: Sendable {
         }
         stop_unit() {
           if ! sudo -n /usr/bin/systemctl --system stop "$unit"; then
-            owner=$(current_owner) && [ -z "$owner" ] || lifecycle_failure 'Could not stop the previous Codex turn.'
+            owner=$(current_owner) && [ -z "$owner" ] || lifecycle_failure 'Could not stop the previous \#(harness.displayName) turn.'
           fi
           # A stopped transient unit can remain loaded briefly while its waiter detaches.
           for ((attempt = 0; attempt < 20; attempt++)); do
-            owner=$(current_owner) || lifecycle_failure 'Could not inspect the stopped Codex turn.'
+            owner=$(current_owner) || lifecycle_failure 'Could not inspect the stopped \#(harness.displayName) turn.'
             if [ -z "$owner" ]; then return 0; fi
             sleep 0.05
           done
-          lifecycle_failure 'The previous Codex turn is still closing.'
+          lifecycle_failure 'The previous \#(harness.displayName) turn is still closing.'
         }
 
         uid=$(id -u) && gid=$(id -g) && [ "$uid" -gt 0 ] || lifecycle_failure 'Could not identify the sandbox user.'
         runtime="${XDG_RUNTIME_DIR:-/run/user/$uid}"
-        state="$HOME/.agent-s/codex-turns"
-        (umask 077 && mkdir -p -- "$state") || lifecycle_failure 'Could not create the Codex turn directory.'
+        state="$HOME/.agent-s/\#(harness.rawValue)-turns"
+        (umask 077 && mkdir -p -- "$state") || lifecycle_failure 'Could not create the \#(harness.displayName) turn directory.'
         umask 077
         cancelled="$state/$unit.\#(turnID.uuidString).cancelled"
-        exec 9>"$state/$unit.lock" || lifecycle_failure 'Could not open the Codex turn lock.'
-        flock -w 15 9 || lifecycle_failure 'Another Codex turn is still starting or stopping.'
+        exec 9>"$state/$unit.lock" || lifecycle_failure 'Could not open the \#(harness.displayName) turn lock.'
+        flock -w 15 9 || lifecycle_failure 'Another \#(harness.displayName) turn is still starting or stopping.'
         """#
     }
 

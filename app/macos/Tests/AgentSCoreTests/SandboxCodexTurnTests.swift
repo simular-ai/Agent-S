@@ -19,6 +19,8 @@ struct SandboxCodexTurnTests {
         }
         #expect(first.stopCommand.contains("description='Agent S Codex turn \(firstID.uuidString)'"))
         #expect(next.stopCommand.contains("description='Agent S Codex turn \(nextID.uuidString)'"))
+        #expect(first.stopCommand.contains(#"state="$HOME/.agent-s/codex-turns""#))
+        #expect(first.stopCommand.contains("Could not stop the previous Codex turn."))
         #expect(first.stopCommand.contains(#"if [ "$owner" = "$description" ]; then stop_unit; fi"#))
         #expect(!first.stopCommand.contains(nextID.uuidString))
     }
@@ -41,5 +43,26 @@ struct SandboxCodexTurnTests {
         #expect(turn.stopCommand.contains(#"sudo -n /usr/bin/systemctl --system stop "$unit""#))
         #expect(!turn.stopCommand.contains("codex exec"))
         #expect(!turn.stopCommand.contains("pkill"))
+    }
+
+    @Test(arguments: [Harness.claudeCode, .deepSeek])
+    func otherHarnessesKeepTheirOwnTurnServiceAndStreamingInput(harness: Harness) {
+        let turn = SandboxCodexTurn(agentID: agentID, turnID: firstID, harness: harness)
+        let unit = "agent-s-\(harness.rawValue)-\(agentID.uuidString.lowercased()).service"
+        let launch = turn.launchCommand("cat")
+        let stop = turn.stopCommand
+        for command in [launch, stop] {
+            #expect(command.contains("unit='\(unit)'"))
+            #expect(command.contains("description='Agent S \(harness.displayName) turn \(firstID.uuidString)'"))
+            #expect(command.contains("state=\"$HOME/.agent-s/\(harness.rawValue)-turns\""))
+            #expect(command.contains(SandboxCodexTurn.lifecycleFailureMarker(for: harness)))
+            #expect(!command.contains(SandboxCodexTurn.lifecycleFailureMarker))
+        }
+        #expect(launch.contains("--wait --pipe"))
+        #expect(launch.contains("exec 8<&0"))
+        #expect(launch.contains("<&8 8<&- 9>&- &"))
+        #expect(stop.contains(#"touch -- "$cancelled""#))
+        #expect(stop.contains(#"if [ "$owner" = "$description" ]; then stop_unit; fi"#))
+        #expect(!stop.contains("systemctl --user"))
     }
 }
