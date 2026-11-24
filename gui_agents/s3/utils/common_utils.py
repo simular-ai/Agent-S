@@ -5,6 +5,7 @@ from PIL import Image
 
 from typing import Tuple, Dict
 
+from gui_agents.code_safety import safe_eval_agent_action, CodeSafetyError
 from gui_agents.s3.memory.procedural_memory import PROCEDURAL_MEMORY
 
 import logging
@@ -28,7 +29,7 @@ def create_pyautogui_code(agent, code: str, obs: Dict) -> str:
         Exception: If there is an error in evaluating the code.
     """
     agent.assign_screenshot(obs)  # Necessary for grounding
-    exec_code = eval(code)
+    exec_code = safe_eval_agent_action(code, agent)
     return exec_code
 
 

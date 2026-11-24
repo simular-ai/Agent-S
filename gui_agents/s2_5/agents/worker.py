@@ -2,6 +2,7 @@ import logging
 import textwrap
 from typing import Dict, List, Tuple
 
+from gui_agents.code_safety import safe_eval_agent_action, CodeSafetyError
 from gui_agents.s2_5.agents.grounding import ACI
 from gui_agents.s2_5.core.module import BaseModule
 from gui_agents.s2_5.memory.procedural_memory import PROCEDURAL_MEMORY
@@ -182,11 +183,11 @@ class Worker(BaseModule):
             plan_code = parse_single_code_from_string(plan.split("Grounded Action")[-1])
             plan_code = sanitize_code(plan_code)
             plan_code = extract_first_agent_function(plan_code)
-            exec_code = eval(plan_code)
-        except Exception as e:
+            exec_code = safe_eval_agent_action(plan_code, agent)
+        except (CodeSafetyError, Exception) as e:
             logger.error("Error in parsing plan code: %s", e)
             plan_code = "agent.wait(1.0)"
-            exec_code = eval(plan_code)
+            exec_code = safe_eval_agent_action(plan_code, agent)
 
         executor_info = {
             "full_plan": full_plan,
