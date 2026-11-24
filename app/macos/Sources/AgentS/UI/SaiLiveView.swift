@@ -176,6 +176,43 @@ struct LiveWebView: NSViewRepresentable {
 
     @MainActor private static var views: [String: (view: WKWebView, coordinator: Coordinator)] = [:]
 
+    /// Centers the Guacamole display at its existing scale, which the page uses to map input.
+    /// Set element styles directly so the hosted page's policy can keep blocking inline stylesheets.
+    private static let previewLayout = """
+    (() => {
+      const screen = document.querySelector("main#screen.screen");
+      const status = document.querySelector("header.bar #status");
+      if (!screen || !status) return;
+
+      Object.assign(screen.style, {
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      });
+      const keepDisplaySize = () => {
+        const display = screen.firstElementChild;
+        if (display) display.style.flex = "none";
+      };
+      new MutationObserver(keepDisplaySize).observe(screen, { childList: true });
+      keepDisplaySize();
+
+      Object.assign(status.style, {
+        minWidth: "0",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis"
+      });
+      const title = status.parentElement.querySelector(".title");
+      if (title) {
+        title.style.whiteSpace = "nowrap";
+        const compact = window.matchMedia("(max-width: 500px)");
+        const updateTitle = () => { title.hidden = compact.matches; };
+        compact.addEventListener("change", updateTitle);
+        updateTitle();
+      }
+    })();
+    """
+
     /// Watches the Sai live page's notice and presses its own Try again on a schedule.
     private static let pacer = """
     (() => {
@@ -228,6 +265,8 @@ struct LiveWebView: NSViewRepresentable {
         } else {
             let coordinator = Coordinator()
             let configuration = WKWebViewConfiguration()
+            configuration.userContentController.addUserScript(
+                WKUserScript(source: Self.previewLayout, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
             configuration.userContentController.addUserScript(
                 WKUserScript(source: Self.pacer, injectionTime: .atDocumentEnd, forMainFrameOnly: true))
             configuration.userContentController.add(coordinator, name: "saiLive")
