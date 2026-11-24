@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
         case connecting
         case awaitingSignIn
         case awaitingDeviceCode(CodexAccount.DeviceCode)
+        case awaitingBrowserApproval(URL)
         case connected(HarnessAccountPlan)
         case failed(String)
 
@@ -986,9 +987,15 @@ final class AppModel: ObservableObject {
         try checkSandboxSignIn(generation)
         guard let ip = guestIP else { throw AccountFailure(errorDescription: "Turn on the sandbox to sign in.") }
         if route.provider == .claudeAccount {
-            try await ClaudeAccount.signInInSandbox(shell: shell, ip: ip, dataFolder: files.root)
+            let plan = try await ClaudeAccount.signInInSandbox(shell: shell, ip: ip) { url in
+                try self.checkSandboxSignIn(generation)
+                self.accountStatuses[route] = .awaitingBrowserApproval(url)
+                if AccountRoute(self.agent.config) == route {
+                    NSWorkspace.shared.open(url)
+                }
+            }
             try checkSandboxSignIn(generation)
-            accountStatuses[route] = .awaitingSignIn
+            accountStatuses[route] = .connected(plan)
             return
         }
         if route.provider == .codexAccount {

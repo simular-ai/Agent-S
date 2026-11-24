@@ -95,10 +95,8 @@ sandbox and choose **Sign in** above the composer.
   there. Agent S detects when sign-in completes, and Codex stores its credentials in
   the sandbox. An older Codex version may show the code in the Computer panel.
   [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
-- **Claude Code** opens Terminal on your Mac. Open the sign-in link it prints in your
-  Mac’s browser, paste the resulting code into Terminal, then choose **Check sign-in**
-  in the chat. Claude Code stores its credentials in the sandbox.
-  [Claude Code sign-in over SSH](https://code.claude.com/docs/en/troubleshoot-install#oauth-login-fails-in-wsl2-ssh-or-containers)
+- **Claude Code** opens its sign-in page in your Mac’s browser. Finish signing in
+  there and return to Agent S. Claude Code stores its credentials in the sandbox.
 
 ### This Mac
 

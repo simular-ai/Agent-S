@@ -1,9 +1,11 @@
 import AppKit
+import Darwin
 import AgentSCore
 
 /// The installed CLI owns authentication and stores its sign-in in Agent S's Claude Code profile.
 enum ClaudeAccount {
     private static let path = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    private static let sandboxSSH = URL(fileURLWithPath: "/usr/bin/ssh")
 
     static func profile(in dataFolder: URL) -> URL {
         dataFolder.appendingPathComponent("claude-account", isDirectory: true)
@@ -42,12 +44,154 @@ enum ClaudeAccount {
     }
 
     @MainActor
-    static func signInInSandbox(shell: GuestShell, ip: String, dataFolder: URL) async throws {
-        // Terminal carries the vendor's sign-in directly over SSH. Claude Code owns the guest profile.
-        let arguments = ["-tt"] + shell.sshArguments(ip: ip, command: SandboxAccount.claudeTerminalSignInCommand)
-        let command = "exec /usr/bin/ssh " + arguments.map(quote).joined(separator: " ")
-        let directory = dataFolder.appendingPathComponent("claude-sandbox-sign-in", isDirectory: true)
-        try await openTerminal(command: command, in: directory)
+    static func signInInSandbox(shell: GuestShell, ip: String,
+                                onBrowserApproval: @escaping @MainActor (URL) throws -> Void) async throws -> HarnessAccountPlan {
+        try Task.checkCancellation()
+        // Keep the control socket private and short enough for Darwin's Unix socket paths.
+        var template = Array("/tmp/agent-s-claude.XXXXXX".utf8CString)
+        guard let temporary = mkdtemp(&template) else { throw SandboxSignInError.failed }
+        let directory = URL(fileURLWithPath: String(cString: temporary), isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let socket = directory.appendingPathComponent("ssh").path
+
+        let command = shell.sshArguments(ip: ip, command: SandboxAccount.claudeBrowserSignInCommand)
+        let destination = "\(GuestSetup.user)@\(ip)"
+        let options = ["-F", "/dev/null", "-S", socket, "-o", "BatchMode=yes"]
+        let session = Process()
+        session.executableURL = sandboxSSH
+        session.arguments = options + ["-T", "-M", "-o", "ControlPersist=no", "-o", "IdentitiesOnly=yes"] + command
+        // The guest watches stdin EOF so closing this pipe cancels its login and releases its lock.
+        let status = try await runSandboxSSH(session, timeout: .seconds(310), input: Pipe()) { approval in
+            let port = approval.callbackPort
+            // Claude listens on guest IPv4. Mac browsers can resolve localhost to either family.
+            var listeners = ["-L", "127.0.0.1:\(port):127.0.0.1:\(port)"]
+            if approval.callbackHost == "localhost" {
+                listeners += ["-L", "[::1]:\(port):127.0.0.1:\(port)"]
+            }
+            let forwarding = Process()
+            forwarding.executableURL = sandboxSSH
+            forwarding.arguments = options + ["-O", "forward", "-o", "ExitOnForwardFailure=yes"] + listeners + [destination]
+            do {
+                guard try await runSandboxSSH(forwarding, timeout: .seconds(5)) == 0, session.isRunning else {
+                    throw SandboxSignInError.callbackUnavailable
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw SandboxSignInError.callbackUnavailable
+            }
+            try Task.checkCancellation()
+            try onBrowserApproval(approval.authorizationURL)
+        }
+        switch status {
+        case 0: break
+        case 75: throw SandboxSignInError.alreadyOpen
+        case 124, 137: throw SandboxSignInError.expired
+        default: throw SandboxSignInError.failed
+        }
+        let output = try? await shell.run(SandboxAccount.statusCommand(for: .claudeAccount), on: ip, timeout: 10)
+        try Task.checkCancellation()
+        guard let output, let plan = SandboxAccount.plan(for: .claudeAccount, output: output) else {
+            throw SandboxSignInError.statusUnavailable
+        }
+        return plan
+    }
+
+    private enum SandboxSSHEvent: Sendable {
+        case approval(ClaudeBrowserSignIn)
+        case exit(Int32)
+        case handoffDeadline
+        case deadline
+    }
+
+    @MainActor
+    private static func runSandboxSSH(_ process: Process, timeout: Duration, input: Pipe? = nil,
+                                      onApproval: (@MainActor (ClaudeBrowserSignIn) async throws -> Void)? = nil) async throws -> Int32 {
+        try Task.checkCancellation()
+        let (events, continuation) = AsyncStream<SandboxSSHEvent>.makeStream(bufferingPolicy: .bufferingNewest(2))
+        // Raw CLI output can contain authorization material. Only consume the validated announcement.
+        process.standardInput = input ?? FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let output = onApproval == nil ? nil : Pipe()
+        process.standardOutput = output ?? FileHandle.nullDevice
+        if let output {
+            let reader = LineReader { line in
+                guard let approval = ClaudeBrowserSignIn.parseAnnouncement(line) else { return }
+                continuation.yield(.approval(approval))
+            }
+            output.fileHandleForReading.readabilityHandler = { handle in
+                let bytes = handle.availableData
+                if bytes.isEmpty {
+                    handle.readabilityHandler = nil
+                    reader.flush()
+                } else {
+                    reader.feed(bytes)
+                }
+            }
+        }
+        process.terminationHandler = { finished in
+            continuation.yield(.exit(finished.terminationStatus))
+            continuation.finish()
+        }
+        func schedule(_ event: SandboxSSHEvent, after delay: Duration) -> Task<Void, Never> {
+            Task { @MainActor in
+                do { try await Task.sleep(for: delay) } catch { return }
+                continuation.yield(event)
+                continuation.finish()
+            }
+        }
+        let deadline = schedule(.deadline, after: timeout)
+        let handoffDeadline = onApproval == nil ? nil : schedule(.handoffDeadline, after: .seconds(20))
+        defer {
+            deadline.cancel()
+            handoffDeadline?.cancel()
+            continuation.finish()
+            output?.fileHandleForReading.readabilityHandler = nil
+            try? input?.fileHandleForWriting.close()
+            if process.isRunning {
+                // Let SSH deliver EOF before terminating the master when the guest is still reachable.
+                let grace = input == nil ? 0 : 250
+                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(grace)) {
+                    if process.isRunning { process.terminate() }
+                    DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + .milliseconds(250)) {
+                        if process.isRunning { Darwin.kill(process.processIdentifier, SIGKILL) }
+                    }
+                }
+            }
+        }
+        do { try process.run() } catch { throw SandboxSignInError.failed }
+
+        var opened = false
+        for await event in events {
+            try Task.checkCancellation()
+            switch event {
+            case let .approval(approval):
+                guard !opened, process.isRunning else { continue }
+                opened = true
+                handoffDeadline?.cancel()
+                try await onApproval?(approval)
+            case let .exit(status): return status
+            case .handoffDeadline: throw SandboxSignInError.handoffUnavailable
+            case .deadline: throw SandboxSignInError.expired
+            }
+        }
+        try Task.checkCancellation()
+        throw SandboxSignInError.failed
+    }
+
+    private enum SandboxSignInError: LocalizedError {
+        case failed, alreadyOpen, handoffUnavailable, callbackUnavailable, expired, statusUnavailable
+
+        var errorDescription: String? {
+            switch self {
+            case .failed: "Claude Code sign-in didn’t complete. Try again."
+            case .alreadyOpen: "Claude Code sign-in is already running. Close any previous sign-in, then try again."
+            case .handoffUnavailable: "Claude Code didn’t provide a browser sign-in link. Try again."
+            case .callbackUnavailable: "Couldn’t connect your browser to Claude Code in the sandbox. Try again."
+            case .expired: "Claude Code sign-in expired. Try again."
+            case .statusUnavailable: "Couldn’t verify Claude Code sign-in in the sandbox. Try again."
+            }
+        }
     }
 
     @MainActor

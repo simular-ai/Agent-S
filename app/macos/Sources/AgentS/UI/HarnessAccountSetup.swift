@@ -37,13 +37,20 @@ struct HarnessAccountSetup: View {
         case .signedOut:
             signInButton(signInTitle)
         case .connecting:
-            let title = if model.provider == .claudeAccount { "Opening Terminal…" }
-                else if inSandbox { "Preparing sign-in…" }
+            let title = if inSandbox { "Preparing sign-in…" }
+                else if model.provider == .claudeAccount { "Opening Terminal…" }
                 else { "Waiting for sign-in…" }
             ProgressView(title).controlSize(.small)
-            if !inSandbox || usesCodexSandboxSignIn { Button("Cancel sign-in") { model.cancelAccountSignIn() } }
+            Button("Cancel sign-in") { model.cancelAccountSignIn() }
         case let .awaitingDeviceCode(code):
             deviceCodeControls(code)
+        case let .awaitingBrowserApproval(url):
+            ProgressView("Finish signing in to Claude Code in your browser.").controlSize(.small)
+            HStack(spacing: 8) {
+                Button("Open browser") { openURL(url) }
+                Button("Cancel", role: .cancel) { model.cancelAccountSignIn() }
+                    .accessibilityLabel("Cancel sign-in")
+            }
         case .awaitingSignIn:
             Text(usesCodexSandboxSignIn
                  ? "Use Take over in the Computer panel to finish signing in. Then check sign-in here."

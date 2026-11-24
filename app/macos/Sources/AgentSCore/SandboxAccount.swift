@@ -76,17 +76,60 @@ public enum SandboxAccount {
             + "exec \(codex) app-server --listen stdio://"
     }
 
-    /// Runs the vendor login in a Mac Terminal SSH session using the persistent guest profile.
-    public static var claudeTerminalSignInCommand: String {
-        profileEnvironment(for: .claudeAccount) + requireCLI("claude") + #"""
+    /// Runs native OAuth and relays the browser URL. Keep SSH stdin open for the lifetime of the sign-in.
+    public static var claudeBrowserSignInCommand: String {
+        profileEnvironment(for: .claudeAccount) + requireCLI("claude") + requireCLI("flock") + #"""
         unset DISPLAY WAYLAND_DISPLAY CLAUDE_CODE_OAUTH_REFRESH_TOKEN CLAUDE_CODE_OAUTH_SCOPES;
-        export BROWSER=/usr/bin/false;
-        if command -v flock >/dev/null 2>&1; then
-            status=0; flock -n -E 75 "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" claude auth login --claudeai || status=$?;
-            if [ "$status" -eq 75 ]; then printf '%s\n' 'Claude Code sign-in is already open in Terminal.' >&2; fi;
-            exit "$status"
-        fi;
-        exec claude auth login --claudeai
+        browser_dir=$(mktemp -d "$CLAUDE_CONFIG_DIR/browser-sign-in.XXXXXXXX") || exit 1
+        login_pid=
+        watch_pid=
+        cleanup() {
+            if [ -n "$watch_pid" ]; then
+                kill -TERM "$watch_pid" 2>/dev/null || :
+                wait "$watch_pid" 2>/dev/null || :
+            fi
+            if [ -n "$login_pid" ]; then
+                kill -TERM "$login_pid" 2>/dev/null || :
+                wait "$login_pid" 2>/dev/null || :
+            fi
+            rm -rf -- "$browser_dir"
+        }
+        trap cleanup EXIT
+        trap 'exit 130' INT
+        trap 'exit 143' HUP TERM
+        export AGENT_S_CLAUDE_BROWSER_DIR="$browser_dir"
+        cat > "$browser_dir/open-browser" <<'AGENT_S_CLAUDE_BROWSER_HOOK' || exit 1
+        #!/bin/sh
+        [ "$#" -eq 1 ] && [ "${#1}" -le 4096 ] || exit 1
+        printf '%s\n' "$1" > "$AGENT_S_CLAUDE_BROWSER_DIR/url.tmp" &&
+            mv -- "$AGENT_S_CLAUDE_BROWSER_DIR/url.tmp" "$AGENT_S_CLAUDE_BROWSER_DIR/url"
+        AGENT_S_CLAUDE_BROWSER_HOOK
+        chmod 700 "$browser_dir/open-browser" || exit 1
+        export BROWSER="$browser_dir/open-browser"
+
+        /usr/bin/timeout --kill-after=2s 300s flock -n -E 75 -F "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" \
+            claude auth login --claudeai </dev/null >/dev/null 2>&1 &
+        login_pid=$!
+        # Losing a non-PTY SSH session must also release the guest's profile lock.
+        session_pid=$$
+        exec 3<&0
+        (
+            while IFS= read -r _; do :; done
+            kill -TERM "$session_pid" 2>/dev/null || :
+        ) <&3 3<&- &
+        watch_pid=$!
+        exec 3<&-
+        while [ ! -f "$browser_dir/url" ] && kill -0 "$login_pid" 2>/dev/null; do
+            sleep 0.1
+        done
+        if [ -f "$browser_dir/url" ]; then
+            IFS= read -r authorization_url < "$browser_dir/url" || exit 1
+            printf '%s%s\n' '\#(ClaudeBrowserSignIn.announcementPrefix)' "$authorization_url" || exit 1
+        fi
+        status=0
+        wait "$login_pid" || status=$?
+        login_pid=
+        exit "$status"
         """#
     }
 
