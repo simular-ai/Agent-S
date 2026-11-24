@@ -186,14 +186,18 @@ final class AppModel: ObservableObject {
         set { update { $0.saiModel = newValue } }
     }
 
-    /// Adds an agent with a fresh context and selects it; it gets the next headshot color.
-    func createAgent(_ config: AgentConfig) {
-        guard !needsFirstAgentSetup else { return }
+    /// Saves a new agent with a fresh context and the next headshot color.
+    func createAgent(_ config: AgentConfig, selectAfterCreation: Bool = true) throws {
+        guard !needsFirstAgentSetup, !GuestFiles.legacyAppRunning else {
+            throw FirstAgentSetupError.unavailable
+        }
         var config = config.enforcingPrivacy
         if config.avatarColor == nil { config.avatarColor = agents.count % AgentAvatar.palette.count }
-        adopt(AgentSession(config: config))
-        selectedAgentID = config.id
-        saveAgents()
+        let session = AgentSession(config: config)
+        try files.ensureFolders()
+        try writeAgents(agents.map(\.saved) + [session.saved], to: agentsFile)
+        adopt(session)
+        if selectAfterCreation { selectedAgentID = config.id }
     }
 
     func completeFirstAgentSetup(_ config: AgentConfig) throws {
@@ -229,7 +233,7 @@ final class AppModel: ObservableObject {
 
         var errorDescription: String? {
             switch self {
-            case .unavailable: "First-agent setup is unavailable."
+            case .unavailable: "Agent setup is unavailable."
             case .invalidLocation: "Choose a model for the sandbox on this Mac."
             }
         }
@@ -405,9 +409,13 @@ final class AppModel: ObservableObject {
         let saved = (UserDefaults.standard.string(forKey: "selectedAgent")
             ?? UserDefaults(suiteName: GuestFiles.legacy[0].0)?.string(forKey: "selectedAgent"))
             .flatMap(UUID.init(uuidString:))
-        selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
-        if let pending = try? String(contentsOf: firstAgentPreparationFile, encoding: .utf8) {
-            needsFirstAgentPreparation = UUID(uuidString: pending) == agent.id && agent.config.usesLocalComputer
+        if let pending = try? String(contentsOf: firstAgentPreparationFile, encoding: .utf8),
+           let id = UUID(uuidString: pending),
+           agents.contains(where: { $0.id == id && $0.config.usesLocalComputer }) {
+            selectedAgentID = id
+            needsFirstAgentPreparation = true
+        } else {
+            selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
         }
         vm.onStateChange = { [weak self] state in self?.vmChanged(state) }
     }

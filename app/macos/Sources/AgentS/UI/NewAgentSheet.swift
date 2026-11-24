@@ -1,11 +1,19 @@
 import SwiftUI
 import AgentSCore
 
-/// Agent configuration shared by first launch and the + button.
+/// Agent configuration for first launch, Box onboarding, and the + button.
 struct NewAgentSheet: View {
+    enum Mode: Equatable {
+        case firstAgent
+        case boxOnboarding
+        case newAgent(AgentLocation)
+    }
+
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    private let isFirstAgent: Bool
+    private let mode: Mode
+    private var isFirstAgent: Bool { mode == .firstAgent }
+    private var isBoxOnboarding: Bool { mode == .boxOnboarding }
     @State private var name: String
     @State private var setupError: String?
     @State private var location: AgentLocation
@@ -16,32 +24,45 @@ struct NewAgentSheet: View {
     @State private var openRouterZDR: Bool?
     @State private var saiMachine = ""
     @State private var saiModel = "auto"
-    /// Sai first: it's all in one (agent, model and computer with one key); Simular Box is the
-    /// configurable option.
-    @State private var computer: CloudComputer = .sai
+    @State private var computer: CloudComputer
     @State private var boxName = ""
 
-    init(initialLocation: AgentLocation = .linuxVM, isFirstAgent: Bool = false) {
-        self.isFirstAgent = isFirstAgent
-        let location: AgentLocation = isFirstAgent ? .linuxVM : initialLocation
-        _location = State(initialValue: location)
-        let harness: Harness = if isFirstAgent { .deepSeek }
-            else if location == .cloud { .sai }
-            else { .claudeCode }
-        _harness = State(initialValue: harness)
-        _name = State(initialValue: isFirstAgent ? "Agent" : "Sai")
+    init(_ mode: Mode) {
+        self.mode = mode
+        switch mode {
+        case .firstAgent:
+            _location = State(initialValue: .linuxVM)
+            _computer = State(initialValue: .sai)
+            _harness = State(initialValue: .deepSeek)
+            _name = State(initialValue: "Agent")
+        case .boxOnboarding:
+            _location = State(initialValue: .cloud)
+            _computer = State(initialValue: .box)
+            _harness = State(initialValue: .claudeCode)
+            _name = State(initialValue: "Box Agent")
+        case let .newAgent(location):
+            _location = State(initialValue: location)
+            _computer = State(initialValue: .sai)
+            _harness = State(initialValue: location == .cloud ? .sai : .claudeCode)
+            _name = State(initialValue: "Sai")
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            if isFirstAgent {
+            if isFirstAgent || isBoxOnboarding {
                 VStack(spacing: 8) {
                     SaiAvatar(size: 40)
-                    Text("Set up your first agent")
+                    Text(isFirstAgent ? "Set up your first agent" : "Set up Simular Box")
                         .font(.title2.weight(.semibold))
-                    Text("Choose a harness and model for your agent’s Linux sandbox.")
+                        .accessibilityAddTraits(.isHeader)
+                    Text(isFirstAgent
+                         ? "Choose a harness and model for your agent’s Linux sandbox."
+                         : "Your local sandbox keeps setting up while you add a Box agent.")
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
                 }
+                .padding(.horizontal, 20)
                 .padding(.top, 20)
                 .padding(.bottom, 4)
             }
@@ -53,32 +74,45 @@ struct NewAgentSheet: View {
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         TextField("Name", text: $name)
-                        Picker("Runs", selection: $location) {
-                            ForEach(AgentLocation.allCases) { location in
-                                Label(location.displayName, systemImage: location.symbol).tag(location)
+                        if !isBoxOnboarding {
+                            Picker("Runs", selection: $location) {
+                                ForEach(AgentLocation.allCases) { location in
+                                    Label(location.displayName, systemImage: location.symbol).tag(location)
+                                }
                             }
-                        }
-                        .pickerStyle(.segmented)
-                        Text(location.summary).font(.caption).foregroundStyle(.secondary)
-                        if location == .thisMac {
-                            Label("Review each action before approving it.", systemImage: "exclamationmark.shield")
-                                .font(.caption).foregroundStyle(.orange)
+                            .pickerStyle(.segmented)
+                            Text(location.summary).font(.caption).foregroundStyle(.secondary)
+                            if location == .thisMac {
+                                Label("Review each action before approving it.", systemImage: "exclamationmark.shield")
+                                    .font(.caption).foregroundStyle(.orange)
+                            }
                         }
                     }
                 }
                 if location == .cloud {
                     Section("Computer") {
-                        Picker("Computer", selection: $computer) {
-                            ForEach(CloudComputer.allCases) { Text($0.displayName).tag($0) }
+                        if isBoxOnboarding {
+                            Link("Open Box dashboard", destination: Box.portal)
+                            Text("Sign in to choose a Box. Leave the name blank to use your default Box.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        } else {
+                            Picker("Computer", selection: $computer) {
+                                ForEach(CloudComputer.allCases) { Text($0.displayName).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                            Text(computer == .sai
+                                 ? "Connect your Sai account to use its agent, model, and computer."
+                                 : "Choose the harness and model provider. The harness runs on your Mac and uses only your Box’s tools.")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
-                        .pickerStyle(.segmented)
-                        Text(computer == .sai
-                             ? "Connect your Sai account to use its agent, model, and computer."
-                             : "Choose the harness and model provider. The harness runs on your Mac and uses only your Box’s tools.")
-                            .font(.caption).foregroundStyle(.secondary)
                         if computer == .box {
-                            TextField("Box", text: $boxName, prompt: Text("Default Simular Box"))
-                            KeySetup.box(model)
+                            TextField("Box name", text: $boxName, prompt: Text("Default Simular Box"))
+                            if isBoxOnboarding, model.hasBoxKey {
+                                Label("Box key saved", systemImage: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else {
+                                KeySetup.box(model)
+                            }
                         }
                     }
                 }
@@ -87,8 +121,16 @@ struct NewAgentSheet: View {
                         Picker("Harness", selection: Binding(get: { harness }, set: selectHarness)) {
                             ForEach(availableHarnesses) { Text($0.displayName).tag($0) }
                         }
+                        if isBoxOnboarding {
+                            Text("The harness runs on this Mac and controls your Box remotely.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         if location != .linuxVM, harness == .deepSeek, DeepSeekTurn.executable == nil {
                             DeepSeekInstallHelp()
+                        } else if isBoxOnboarding, harness == .claudeCode, BoxAccount.claude == nil {
+                            Link("Install Claude Code on this Mac", destination: URL(string: "https://code.claude.com/docs/en/setup")!)
+                        } else if isBoxOnboarding, harness == .codex, CodexAccount.executable == nil {
+                            Link("Install Codex on this Mac", destination: URL(string: "https://learn.chatgpt.com/docs/cli")!)
                         }
                     }
                 }
@@ -151,7 +193,7 @@ struct NewAgentSheet: View {
                         }
                     }
                 }
-                if !isFirstAgent {
+                if !isFirstAgent, !isBoxOnboarding {
                     Section {
                         Text("A new agent starts with its own chat and harness session.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -177,9 +219,9 @@ struct NewAgentSheet: View {
                 if !isFirstAgent {
                     Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
-                Button(isFirstAgent ? "Set up agent" : "Create") { create() }
+                Button(createTitle) { create() }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty || (isBoxOnboarding && !model.hasBoxKey))
             }
             .padding(12)
         }
@@ -210,6 +252,14 @@ struct NewAgentSheet: View {
             if saiMachine.isEmpty {
                 saiMachine = model.saiMachines.first(where: \.online)?.id ?? model.saiMachines.first?.id ?? ""
             }
+        }
+    }
+
+    private var createTitle: String {
+        switch mode {
+        case .firstAgent: "Set up agent"
+        case .boxOnboarding: "Add Box agent"
+        case .newAgent: "Create"
         }
     }
 
@@ -266,13 +316,15 @@ struct NewAgentSheet: View {
             saiMachine: saiMachine, saiModel: saiModel,
             cloudComputer: cloudComputer,
             boxName: boxName.trimmingCharacters(in: .whitespaces).isEmpty ? nil : boxName.trimmingCharacters(in: .whitespaces))
-        if isFirstAgent {
-            do {
+        do {
+            if isFirstAgent {
                 try model.completeFirstAgentSetup(config)
-            } catch {
-                setupError = "Couldn’t save your agent. \(error.localizedDescription)"
-                return
+            } else {
+                try model.createAgent(config, selectAfterCreation: !isBoxOnboarding)
             }
+        } catch {
+            setupError = "Couldn’t save your agent. \(error.localizedDescription)"
+            return
         }
         if selectedProvider == .openRouter, harness != .sai, let openRouterZDR {
             model.openRouterRequiresZDR = openRouterZDR
@@ -280,7 +332,6 @@ struct NewAgentSheet: View {
         if isFirstAgent {
             Task { await model.prepareAndStartSandbox() }
         } else {
-            model.createAgent(config)
             dismiss()
         }
     }

@@ -4,6 +4,7 @@ import SwiftUI
 struct FirstAgentPreparationView: View {
     @EnvironmentObject private var model: AppModel
     @State private var finishError: String?
+    @State private var showBoxSetup = false
     let openComputer: () -> Void
 
     var body: some View {
@@ -28,6 +29,7 @@ struct FirstAgentPreparationView: View {
                             sandboxState
                         }
                         modelCard
+                        if isSettingUp || hasBoxAgent { boxCard }
                     }
                     if let finishError {
                         Text(finishError).font(.callout).foregroundStyle(.red)
@@ -48,6 +50,7 @@ struct FirstAgentPreparationView: View {
             }
         }
         .tint(Theme.accent)
+        .sheet(isPresented: $showBoxSetup) { NewAgentSheet(.boxOnboarding) }
         .task {
             if model.usesOllama { await model.refreshOllama() }
         }
@@ -65,6 +68,29 @@ struct FirstAgentPreparationView: View {
 
     private var readyToChat: Bool {
         model.canChat && (!model.usesOllama || model.ollamaReady)
+    }
+
+    private var isSettingUp: Bool {
+        switch model.phase {
+        case .preparing, .booting: true
+        default: model.usesOllama && model.isDownloading
+        }
+    }
+
+    private var hasBoxAgent: Bool {
+        model.agents.contains { $0.config.computer == .box }
+    }
+
+    private var boxCard: some View {
+        setupCard("Simular Box", symbol: "cloud") {
+            if hasBoxAgent {
+                Label("Box agent added", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+            } else {
+                Text("A cloud computer built for agents and optimized for computer use. Multiple agents can share the same Box.")
+                    .font(.callout).foregroundStyle(.secondary)
+                Button("Set up Simular Box…") { showBoxSetup = true }
+            }
+        }
     }
 
     @ViewBuilder private var sandboxState: some View {

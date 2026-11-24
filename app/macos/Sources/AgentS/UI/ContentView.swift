@@ -13,7 +13,7 @@ struct ContentView: View {
 
     var body: some View {
         if model.needsFirstAgentSetup {
-            NewAgentSheet(isFirstAgent: true)
+            NewAgentSheet(.firstAgent)
                 .frame(minWidth: 641, maxWidth: .infinity, maxHeight: .infinity)
                 .background(Theme.canvas)
         } else if model.needsFirstAgentPreparation {
@@ -291,7 +291,7 @@ struct Sidebar: View {
         .task(id: model.hasOllamaAgents) {
             if model.hasOllamaAgents, !model.ollamaChecked { await model.refreshOllama() }
         }
-        .sheet(item: $creating) { NewAgentSheet(initialLocation: $0) }
+        .sheet(item: $creating) { NewAgentSheet(.newAgent($0)) }
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .alert("Rename agent", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
