@@ -327,7 +327,8 @@ struct BoxLiveView: View {
                                 Text("The agent is working").font(.caption)
                             } else {
                                 Toggle("Take over", isOn: $takeOver).toggleStyle(.switch).controlSize(.mini).font(.caption)
-                                    .help("Your clicks, scrolling and typing go to the box")
+                                    .accessibilityLabel("Take over the Box")
+                                    .help(controlling ? "Release control and return to watching" : "Control the Box with your keyboard and mouse")
                             }
                             if let viewURL {
                                 Link("Open", destination: viewURL).font(.caption.weight(.medium))
