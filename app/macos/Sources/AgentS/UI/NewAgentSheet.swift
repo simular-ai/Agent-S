@@ -20,6 +20,7 @@ struct NewAgentSheet: View {
     @State private var harness: Harness
     @State private var providerOverride: ModelProvider?
     @State private var selectedOllamaModel: String?
+    @State private var showsOllamaCatalog = false
     @State private var openRouterModel = OpenRouter.suggested[0]
     @State private var openRouterZDR: Bool?
     @State private var saiMachine = ""
@@ -168,7 +169,14 @@ struct NewAgentSheet: View {
                                     Text(OllamaModelSetup.title(for: name)).tag(name)
                                 }
                             }
-                            if !isFirstAgent {
+                            if isFirstAgent {
+                                HStack {
+                                    OllamaModelSize(name: ollamaModel)
+                                    Spacer()
+                                    Button("Browse models…") { showsOllamaCatalog = true }
+                                }
+                            } else {
+                                Button("Browse Ollama models…") { showsOllamaCatalog = true }
                                 OllamaModelSetup(name: ollamaModel)
                                 if model.ollamaReady {
                                     Button("Refresh model list") { Task { await model.refreshOllama() } }
@@ -227,6 +235,9 @@ struct NewAgentSheet: View {
         }
         .frame(width: 520)
         .frame(minHeight: isFirstAgent ? nil : 600, idealHeight: 600, maxHeight: isFirstAgent ? 620 : 600)
+        .sheet(isPresented: $showsOllamaCatalog) {
+            OllamaCatalogView(selection: Binding(get: { ollamaModel }, set: { selectedOllamaModel = $0 }))
+        }
         .onChange(of: computer) { _, _ in fitHarness() }
         .onChange(of: location) { _, _ in fitHarness() }
         .onChange(of: model.saiMachines) { _, machines in
@@ -265,7 +276,7 @@ struct NewAgentSheet: View {
 
     private var localOllamaNames: [String] {
         model.ollamaModels.filter { !$0.usesRemoteInference && !Ollama.isCloudReference($0.name) }
-            .map { $0.name.hasSuffix(":latest") ? String($0.name.dropLast(7)) : $0.name }
+            .map { Ollama.normalizedName($0.name) }
     }
 
     private var ollamaModel: String {

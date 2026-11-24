@@ -14,6 +14,7 @@ struct ChatView: View {
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
     @State private var showsOpenRouterSettings = false
+    @State private var showsOllamaCatalog = false
 
     private enum TranscriptAnchor: Hashable {
         case row(String)
@@ -48,6 +49,9 @@ struct ChatView: View {
                     break
                 }
             }
+            .sheet(isPresented: $showsOllamaCatalog) {
+                OllamaCatalogView(selection: $model.agentModel)
+            }
             .sheet(isPresented: $showsOpenRouterSettings) {
                 VStack(spacing: 0) {
                     Form { OpenRouterSettings() }.formStyle(.grouped)
@@ -81,6 +85,15 @@ struct ChatView: View {
                 banner
                     .frame(maxWidth: 820)
                     .padding(.horizontal, 24).padding(.top, 8)
+            }
+            if model.shouldCheckOllamaForChat, !model.hasAgentModel {
+                VStack(alignment: .leading, spacing: 8) {
+                    OllamaModelSetup(name: model.agentModel)
+                }
+                .padding(12)
+                .frame(maxWidth: 820, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
+                .padding(.horizontal, 24).padding(.top, 8)
             }
             if needsAccountSignIn {
                 HarnessAccountSetup()
@@ -267,6 +280,7 @@ struct ChatView: View {
                                 if name == model.agentModel { Label(name, systemImage: "checkmark") } else { Text(name) }
                             }
                         }
+                        Button("Browse Ollama models…") { showsOllamaCatalog = true }
                         Button("Refresh model list") { Task { await model.refreshOllama() } }
                     } else if model.provider == .openRouter {
                         ForEach(openRouterChoices, id: \.self) { name in
@@ -544,12 +558,6 @@ struct ChatView: View {
                 if agent.config.usesLocalComputer, model.canChat { sandboxStarterPrompts }
                 if usesOpenRouter, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
-                }
-                if model.shouldCheckOllamaForChat, !model.ollamaReady || !model.hasAgentModel {
-                    VStack(alignment: .leading, spacing: 8) {
-                        OllamaModelSetup(name: model.agentModel)
-                    }
-                    .frame(maxWidth: 360)
                 }
             }
         }

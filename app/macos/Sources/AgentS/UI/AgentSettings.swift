@@ -7,6 +7,7 @@ struct AgentSettings: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var showsOllamaCatalog = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -52,6 +53,7 @@ struct AgentSettings: View {
                         Picker("Model", selection: $model.agentModel) {
                             ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
                         }
+                        Button("Browse Ollama models…") { showsOllamaCatalog = true }
                         OllamaModelSetup(name: model.agentModel)
                     }
                     if model.harness != .sai, model.provider.usesAccount {
@@ -77,6 +79,9 @@ struct AgentSettings: View {
             .padding(12)
         }
         .frame(width: 520, height: 560)
+        .sheet(isPresented: $showsOllamaCatalog) {
+            OllamaCatalogView(selection: $model.agentModel)
+        }
         .onAppear { name = model.agent.config.name }
         .task(id: model.usesOllama ? model.selectedAgentID : nil) {
             if model.usesOllama { await model.refreshOllama() }

@@ -502,7 +502,7 @@ final class AppModel: ObservableObject {
     /// The models Ollama has, without the `:latest` tag, plus the current choice if it isn't
     /// downloaded yet (so it can still be picked and downloaded).
     var modelChoices: [String] {
-        var names = ollamaModels.map { $0.name.hasSuffix(":latest") ? String($0.name.dropLast(7)) : $0.name }
+        var names = ollamaModels.map { Ollama.normalizedName($0.name) }
         if !names.contains(agentModel) { names.insert(agentModel, at: 0) }
         return names
     }

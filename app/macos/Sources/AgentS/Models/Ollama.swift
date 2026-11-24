@@ -11,7 +11,13 @@ struct Ollama {
         let usesRemoteInference: Bool
         var id: String { name }
 
-        func matches(_ model: String) -> Bool { name == model || name == model + ":latest" }
+        func matches(_ model: String) -> Bool {
+            Ollama.normalizedName(name) == Ollama.normalizedName(model)
+        }
+    }
+
+    static func normalizedName(_ model: String) -> String {
+        model.hasSuffix(":latest") ? String(model.dropLast(7)) : model
     }
 
     static func isCloudReference(_ model: String) -> Bool {

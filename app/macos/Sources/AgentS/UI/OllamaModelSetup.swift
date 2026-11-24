@@ -25,17 +25,16 @@ struct OllamaModelSetup: View {
                      destination: URL(string: "https://ollama.com/download/mac")!)
                 Button("Check connection") { Task { await model.refreshOllama() } }
             }
+            OllamaModelSize(name: name)
         } else if !model.hasOllamaModel(name) {
             if case let .failed(current, message) = model.ollamaDownload, current == name {
                 Text(message).font(.caption).foregroundStyle(.red)
             }
-            HStack {
-                Button("Download \(Self.title(for: name))") { Task { await model.downloadOllamaModel(name) } }
-                    .disabled(model.isDownloading)
-                if name == Self.nemotron {
-                    Text("About 2.9 GB").font(.caption).foregroundStyle(.secondary)
-                }
-            }
+            Button("Download \(Self.title(for: name))") { Task { await model.downloadOllamaModel(name) } }
+                .disabled(model.isDownloading)
+            OllamaModelSize(name: name)
+        } else {
+            OllamaModelSize(name: name)
         }
     }
 
