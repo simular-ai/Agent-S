@@ -216,9 +216,9 @@ struct ChatView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             // Centred while there is room; slides left rather than under the Computer button.
-            Spacer(minLength: 16)
+            WindowHeaderSpace(minWidth: 16)
             modelPill
-            Spacer(minLength: 12)
+            WindowHeaderSpace(minWidth: 12)
             HStack {
                 if model.privacy == .thisMac {
                     CircleButton(systemImage: "pip", help: "Show floating chat") {

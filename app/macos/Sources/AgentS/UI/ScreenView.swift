@@ -101,7 +101,7 @@ struct ComputerPanel: View {
                 Text(model.status.label).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 8)
+            WindowHeaderSpace(minWidth: 8)
             if model.agent.config.usesLocalComputer {
                 ViewThatFits(in: .horizontal) {
                     sandboxControls(.titleAndIcon)

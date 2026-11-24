@@ -265,7 +265,8 @@ struct Sidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Spacer()
+                WindowHeaderSpace()
+                    .padding(.leading, 64)
                 CircleButton(systemImage: "plus", help: "New agent") { creating = .linuxVM }
             }
             .padding(.horizontal, 16)
