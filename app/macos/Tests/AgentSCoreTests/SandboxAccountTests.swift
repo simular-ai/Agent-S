@@ -25,6 +25,15 @@ struct SandboxAccountTests {
         #expect(SandboxAccount.plan(for: .openRouter, output: #"{"signedIn":true}"#) == nil)
     }
 
+    @Test func reconcilesClaudeStatusWithAReadLock() {
+        let command = SandboxAccount.claudeCompletedSignInStatusCommand
+        #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .claudeAccount)))
+        #expect(command.contains(#"exec 9>> "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock""#))
+        #expect(command.contains(#"flock -s -n -E 75 9 || exit "$?""#))
+        let status = SandboxAccount.statusCommand(for: .claudeAccount)
+        #expect(command.hasSuffix(status[status.range(of: "status=0;")!.lowerBound...]))
+    }
+
     @Test func routesClaudeBrowserOpeningThroughOnePrivateAnnouncement() {
         let command = SandboxAccount.claudeBrowserSignInCommand
         #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .claudeAccount)))
@@ -32,7 +41,11 @@ struct SandboxAccountTests {
         #expect(command.contains(#"mktemp -d "$CLAUDE_CONFIG_DIR/browser-sign-in.XXXXXXXX""#))
         #expect(command.contains(#"export BROWSER="$browser_dir/open-browser""#))
         #expect(command.contains(#"/usr/bin/timeout --kill-after=2s 300s flock -n -E 75 -F "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock""#))
-        #expect(command.contains("claude auth login --claudeai </dev/null >/dev/null 2>&1"))
+        #expect(command.contains(#"claude auth login --claudeai </dev/null > "$browser_dir/login-output" 2>/dev/null"#))
+        #expect(command.contains(#"mkfifo "$browser_dir/login-output""#))
+        #expect(command.contains("'Login successful.'|'Paste code here if prompted > Login successful.'"))
+        #expect(command.contains("'\(ClaudeBrowserSignIn.completionAnnouncement)'"))
+        #expect(command.contains(#"wait "$output_pid""#))
         #expect(command.contains("while IFS= read -r _; do :; done"))
         #expect(command.contains("'AGENT_S_CLAUDE_BROWSER '"))
         #expect(command.contains("trap cleanup EXIT"))

@@ -6,6 +6,8 @@ public struct ClaudeBrowserSignIn: Equatable, Sendable {
     public let callbackPort: UInt16
     public let callbackHost: String
 
+    /// Claude Code confirmed that it saved and validated its sign-in.
+    public static let completionAnnouncement = "AGENT_S_CLAUDE_LOGIN_COMPLETE"
     static let announcementPrefix = "AGENT_S_CLAUDE_BROWSER "
     private static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
     private static let allowedParameters: Set<String> = [

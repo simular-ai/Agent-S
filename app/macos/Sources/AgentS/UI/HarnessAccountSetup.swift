@@ -47,6 +47,7 @@ struct HarnessAccountSetup: View {
         case let .awaitingBrowserApproval(url):
             ProgressView("Finish signing in to Claude Code in your browser.").controlSize(.small)
             HStack(spacing: 8) {
+                Button("Check sign-in", action: checkSignIn)
                 Button("Open browser") { openURL(url) }
                 Button("Cancel", role: .cancel) { model.cancelAccountSignIn() }
                     .accessibilityLabel("Cancel sign-in")

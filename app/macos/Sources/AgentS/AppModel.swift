@@ -930,8 +930,11 @@ final class AppModel: ObservableObject {
 
     func refreshAccountStatus() async {
         let route = AccountRoute(agent.config)
-        guard availableProviders.contains(route.provider), route.provider.usesAccount,
-              accountComputerReady, accountSignIns[route] == nil else { return }
+        guard availableProviders.contains(route.provider), route.provider.usesAccount, accountComputerReady else { return }
+        if let pending = accountSignIns[route] {
+            await confirmClaudeBrowserSignIn(route, pending: pending)
+            return
+        }
         let check = UUID()
         let previous = accountStatuses[route] ?? .unchecked
         accountChecks[route] = check
@@ -946,6 +949,25 @@ final class AppModel: ObservableObject {
         guard accountChecks[route] == check else { return }
         accountChecks[route] = nil
         accountStatuses[route] = Task.isCancelled ? (previous == .checking ? .unchecked : previous) : status
+    }
+
+    private func confirmClaudeBrowserSignIn(_ route: AccountRoute, pending: Task<Void, Never>) async {
+        guard route.inSandbox, route.provider == .claudeAccount, let ip = guestIP,
+              case .awaitingBrowserApproval = accountStatuses[route], accountChecks[route] == nil else { return }
+        let check = UUID()
+        let generation = sandboxAccountGeneration
+        accountChecks[route] = check
+        defer {
+            if accountChecks[route] == check { accountChecks[route] = nil }
+        }
+
+        // The guest verifies the saved account only after its login command releases the profile lock.
+        let output = try? await shell.run(SandboxAccount.claudeCompletedSignInStatusCommand, on: ip, timeout: 10)
+        guard !Task.isCancelled, !pending.isCancelled, accountChecks[route] == check, generation == sandboxAccountGeneration,
+              case .awaitingBrowserApproval = accountStatuses[route],
+              let output, let plan = SandboxAccount.plan(for: route.provider, output: output) else { return }
+        accountStatuses[route] = .connected(plan)
+        pending.cancel()
     }
 
     func signInToAccount() async {
@@ -975,6 +997,7 @@ final class AppModel: ObservableObject {
                 }
             } catch {
                 guard !route.inSandbox || sandboxAccountGeneration == generation else { return }
+                guard accountStatuses[route]?.isConnected != true else { return }
                 accountStatuses[route] = Task.isCancelled || error is CancellationError
                     ? .signedOut : .failed(error.localizedDescription)
             }
@@ -1026,7 +1049,12 @@ final class AppModel: ObservableObject {
         guard sandboxAccountGeneration == generation, vm.state == .running else { throw CancellationError() }
     }
 
-    func cancelAccountSignIn() { accountSignIns[AccountRoute(agent.config)]?.cancel() }
+    func cancelAccountSignIn() {
+        let route = AccountRoute(agent.config)
+        guard let pending = accountSignIns[route] else { return }
+        accountChecks[route] = nil
+        pending.cancel()
+    }
 
     private var checkingFollowUpRoutes: Set<UUID> = []
 

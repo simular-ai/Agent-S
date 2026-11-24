@@ -60,53 +60,81 @@ enum ClaudeAccount {
         let session = Process()
         session.executableURL = sandboxSSH
         session.arguments = options + ["-T", "-M", "-o", "ControlPersist=no", "-o", "IdentitiesOnly=yes"] + command
-        // The guest watches stdin EOF so closing this pipe cancels its login and releases its lock.
-        let status = try await runSandboxSSH(session, timeout: .seconds(310), input: Pipe()) { approval in
-            let port = approval.callbackPort
-            // Claude listens on guest IPv4. Mac browsers can resolve localhost to either family.
-            var listeners = ["-L", "127.0.0.1:\(port):127.0.0.1:\(port)"]
-            if approval.callbackHost == "localhost" {
-                listeners += ["-L", "[::1]:\(port):127.0.0.1:\(port)"]
-            }
-            let forwarding = Process()
-            forwarding.executableURL = sandboxSSH
-            forwarding.arguments = options + ["-O", "forward", "-o", "ExitOnForwardFailure=yes"] + listeners + [destination]
-            do {
-                guard try await runSandboxSSH(forwarding, timeout: .seconds(5)) == 0, session.isRunning else {
+        do {
+            // The guest watches stdin EOF so closing this pipe cancels its login and releases its lock.
+            let result = try await runSandboxSSH(session, timeout: .seconds(310), input: Pipe(), verifySignIn: {
+                guard let plan = try await sandboxSignInPlan(shell: shell, ip: ip, requireFinishedLogin: false) else {
+                    throw SandboxSignInError.statusUnavailable
+                }
+                return plan
+            }) { approval in
+                let port = approval.callbackPort
+                // Claude listens on guest IPv4. Mac browsers can resolve localhost to either family.
+                var listeners = ["-L", "127.0.0.1:\(port):127.0.0.1:\(port)"]
+                if approval.callbackHost == "localhost" {
+                    listeners += ["-L", "[::1]:\(port):127.0.0.1:\(port)"]
+                }
+                let forwarding = Process()
+                forwarding.executableURL = sandboxSSH
+                forwarding.arguments = options + ["-O", "forward", "-o", "ExitOnForwardFailure=yes"] + listeners + [destination]
+                do {
+                    guard try await runSandboxSSH(forwarding, timeout: .seconds(5)) == .exited(0), session.isRunning else {
+                        throw SandboxSignInError.callbackUnavailable
+                    }
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
                     throw SandboxSignInError.callbackUnavailable
                 }
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                throw SandboxSignInError.callbackUnavailable
+                try Task.checkCancellation()
+                try onBrowserApproval(approval.authorizationURL)
             }
+            switch result {
+            case let .verified(plan): return plan
+            case .exited(0): throw SandboxSignInError.statusUnavailable
+            case .exited(75): throw SandboxSignInError.alreadyOpen
+            case .exited(124), .exited(137): throw SandboxSignInError.expired
+            case .exited: throw SandboxSignInError.failed
+            }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            // A closed or lingering transport can outlast a finished login. Check the saved
+            // profile once more, without accepting credentials a running login may roll back.
             try Task.checkCancellation()
-            try onBrowserApproval(approval.authorizationURL)
+            if let plan = try await sandboxSignInPlan(shell: shell, ip: ip, requireFinishedLogin: true) { return plan }
+            throw error
         }
-        switch status {
-        case 0: break
-        case 75: throw SandboxSignInError.alreadyOpen
-        case 124, 137: throw SandboxSignInError.expired
-        default: throw SandboxSignInError.failed
-        }
-        let output = try? await shell.run(SandboxAccount.statusCommand(for: .claudeAccount), on: ip, timeout: 10)
+    }
+
+    private static func sandboxSignInPlan(shell: GuestShell, ip: String, requireFinishedLogin: Bool) async throws -> HarnessAccountPlan? {
+        let command = requireFinishedLogin
+            ? SandboxAccount.claudeCompletedSignInStatusCommand
+            : SandboxAccount.statusCommand(for: .claudeAccount)
+        let output = try? await shell.run(command, on: ip, timeout: 10)
         try Task.checkCancellation()
-        guard let output, let plan = SandboxAccount.plan(for: .claudeAccount, output: output) else {
-            throw SandboxSignInError.statusUnavailable
-        }
-        return plan
+        return output.flatMap { SandboxAccount.plan(for: .claudeAccount, output: $0) }
+    }
+
+    private enum SandboxSSHResult: Equatable {
+        case exited(Int32)
+        case verified(HarnessAccountPlan)
     }
 
     private enum SandboxSSHEvent: Sendable {
         case approval(ClaudeBrowserSignIn)
+        case completed
         case exit(Int32)
         case handoffDeadline
         case deadline
     }
 
     @MainActor
-    private static func runSandboxSSH(_ process: Process, timeout: Duration, input: Pipe? = nil,
-                                      onApproval: (@MainActor (ClaudeBrowserSignIn) async throws -> Void)? = nil) async throws -> Int32 {
+    private static func runSandboxSSH(
+        _ process: Process, timeout: Duration, input: Pipe? = nil,
+        verifySignIn: (@MainActor () async throws -> HarnessAccountPlan)? = nil,
+        onApproval: (@MainActor (ClaudeBrowserSignIn) async throws -> Void)? = nil
+    ) async throws -> SandboxSSHResult {
         try Task.checkCancellation()
         let (events, continuation) = AsyncStream<SandboxSSHEvent>.makeStream(bufferingPolicy: .bufferingNewest(2))
         // Raw CLI output can contain authorization material. Only consume the validated announcement.
@@ -116,8 +144,11 @@ enum ClaudeAccount {
         process.standardOutput = output ?? FileHandle.nullDevice
         if let output {
             let reader = LineReader { line in
-                guard let approval = ClaudeBrowserSignIn.parseAnnouncement(line) else { return }
-                continuation.yield(.approval(approval))
+                if line == ClaudeBrowserSignIn.completionAnnouncement {
+                    continuation.yield(.completed)
+                } else if let approval = ClaudeBrowserSignIn.parseAnnouncement(line) {
+                    continuation.yield(.approval(approval))
+                }
             }
             output.fileHandleForReading.readabilityHandler = { handle in
                 let bytes = handle.availableData
@@ -170,7 +201,9 @@ enum ClaudeAccount {
                 opened = true
                 handoffDeadline?.cancel()
                 try await onApproval?(approval)
-            case let .exit(status): return status
+            case .completed:
+                if let verifySignIn { return .verified(try await verifySignIn()) }
+            case let .exit(status): return .exited(status)
             case .handoffDeadline: throw SandboxSignInError.handoffUnavailable
             case .deadline: throw SandboxSignInError.expired
             }

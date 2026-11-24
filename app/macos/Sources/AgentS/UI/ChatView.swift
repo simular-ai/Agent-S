@@ -40,8 +40,12 @@ struct ChatView: View {
                 if accountSelection != nil { await model.refreshAccountStatus() }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                if accountSelection != nil, case .awaitingSignIn = model.accountStatus {
+                guard accountSelection != nil else { return }
+                switch model.accountStatus {
+                case .awaitingSignIn, .awaitingBrowserApproval:
                     Task { await model.refreshAccountStatus() }
+                default:
+                    break
                 }
             }
             .sheet(isPresented: $showsOpenRouterSettings) {

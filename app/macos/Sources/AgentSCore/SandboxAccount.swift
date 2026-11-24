@@ -26,24 +26,7 @@ public enum SandboxAccount {
     public static func statusCommand(for provider: ModelProvider) -> String {
         switch provider {
         case .claudeAccount:
-            return profileEnvironment(for: provider) + requireCLI("claude") + #"""
-            status=0; result=$(claude auth status --json 2>/dev/null) || status=$?;
-            case "$status" in
-                0) printf '%s' "$result" | node -e '
-                    let output = { signedIn: false };
-                    try {
-                        const value = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-                        if (value.authMethod === "claude.ai") {
-                            output.signedIn = true;
-                            const plan = typeof value.subscriptionType === "string" ? value.subscriptionType.toLowerCase() : "";
-                            if (plan === "pro" || plan === "max") output.plan = plan;
-                        }
-                    } catch {}
-                    console.log(JSON.stringify(output));' ;;
-                1) printf '%s\n' '{"signedIn":false}' ;;
-                *) exit "$status" ;;
-            esac
-            """#
+            return profileEnvironment(for: provider) + requireCLI("claude") + claudeStatus
         case .codexAccount:
             return profileEnvironment(for: provider) + requireCLI("codex") + """
             status=0; result=$(\(codex) login status 2>&1) || status=$?;
@@ -62,6 +45,33 @@ public enum SandboxAccount {
             return ""
         }
     }
+
+    /// Reconcile an earlier attempt only after the native login has released its lock.
+    public static var claudeCompletedSignInStatusCommand: String {
+        profileEnvironment(for: .claudeAccount) + requireCLI("claude") + requireCLI("flock") + #"""
+        exec 9>> "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" || exit 1
+        flock -s -n -E 75 9 || exit "$?"
+        """# + "\n" + claudeStatus
+    }
+
+    private static let claudeStatus = #"""
+    status=0; result=$(claude auth status --json 2>/dev/null) || status=$?;
+    case "$status" in
+        0) printf '%s' "$result" | node -e '
+            let output = { signedIn: false };
+            try {
+                const value = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
+                if (value.authMethod === "claude.ai") {
+                    output.signedIn = true;
+                    const plan = typeof value.subscriptionType === "string" ? value.subscriptionType.toLowerCase() : "";
+                    if (plan === "pro" || plan === "max") output.plan = plan;
+                }
+            } catch {}
+            console.log(JSON.stringify(output));' ;;
+        1) printf '%s\n' '{"signedIn":false}' ;;
+        *) exit "$status" ;;
+    esac
+    """#
 
     public static func plan(for provider: ModelProvider, output: String) -> HarnessAccountPlan? {
         guard provider.usesAccount,
@@ -83,6 +93,7 @@ public enum SandboxAccount {
         browser_dir=$(mktemp -d "$CLAUDE_CONFIG_DIR/browser-sign-in.XXXXXXXX") || exit 1
         login_pid=
         watch_pid=
+        output_pid=
         cleanup() {
             if [ -n "$watch_pid" ]; then
                 kill -TERM "$watch_pid" 2>/dev/null || :
@@ -91,6 +102,10 @@ public enum SandboxAccount {
             if [ -n "$login_pid" ]; then
                 kill -TERM "$login_pid" 2>/dev/null || :
                 wait "$login_pid" 2>/dev/null || :
+            fi
+            if [ -n "$output_pid" ]; then
+                kill -TERM "$output_pid" 2>/dev/null || :
+                wait "$output_pid" 2>/dev/null || :
             fi
             rm -rf -- "$browser_dir"
         }
@@ -107,8 +122,23 @@ public enum SandboxAccount {
         chmod 700 "$browser_dir/open-browser" || exit 1
         export BROWSER="$browser_dir/open-browser"
 
+        # Drain native output in the guest and forward one fixed completion signal.
+        mkfifo "$browser_dir/login-output" || exit 1
+        (
+            announced=0
+            while IFS= read -r line; do
+                case "$line" in
+                    'Login successful.'|'Paste code here if prompted > Login successful.')
+                        if [ "$announced" -eq 0 ]; then
+                            printf '%s\n' '\#(ClaudeBrowserSignIn.completionAnnouncement)' || exit 1
+                            announced=1
+                        fi ;;
+                esac
+            done
+        ) < "$browser_dir/login-output" &
+        output_pid=$!
         /usr/bin/timeout --kill-after=2s 300s flock -n -E 75 -F "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock" \
-            claude auth login --claudeai </dev/null >/dev/null 2>&1 &
+            claude auth login --claudeai </dev/null > "$browser_dir/login-output" 2>/dev/null &
         login_pid=$!
         # Losing a non-PTY SSH session must also release the guest's profile lock.
         session_pid=$$
@@ -129,6 +159,8 @@ public enum SandboxAccount {
         status=0
         wait "$login_pid" || status=$?
         login_pid=
+        wait "$output_pid" || :
+        output_pid=
         exit "$status"
         """#
     }
