@@ -57,7 +57,7 @@ struct NewAgentSheet: View {
                         .font(.title2.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
                     Text(isFirstAgent
-                         ? "Choose a harness and model for your agent’s Linux sandbox."
+                         ? "The open-source agent that uses apps and websites on its own private desktop."
                          : "Your local sandbox keeps setting up while you add a Box agent.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
