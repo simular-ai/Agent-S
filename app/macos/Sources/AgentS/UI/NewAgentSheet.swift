@@ -10,7 +10,7 @@ struct NewAgentSheet: View {
     @State private var setupError: String?
     @State private var location: AgentLocation
     @State private var harness: Harness
-    @State private var provider: ModelProvider = .ollama
+    @State private var providerOverride: ModelProvider?
     @State private var selectedOllamaModel: String?
     @State private var openRouterModel = OpenRouter.suggested[0]
     @State private var openRouterZDR: Bool?
@@ -84,7 +84,7 @@ struct NewAgentSheet: View {
                 }
                 if cloudComputer != .sai {
                     Section("Harness") {
-                        Picker("Harness", selection: $harness) {
+                        Picker("Harness", selection: Binding(get: { harness }, set: selectHarness)) {
                             ForEach(availableHarnesses) { Text($0.displayName).tag($0) }
                         }
                         if location != .linuxVM, harness == .deepSeek, DeepSeekTurn.executable == nil {
@@ -108,7 +108,9 @@ struct NewAgentSheet: View {
                 } else {
                     Section("Model") {
                         if availableProviders.count > 1 {
-                            Picker("Provider", selection: $provider) {
+                            Picker("Provider", selection: Binding(
+                                get: { selectedProvider }, set: { providerOverride = $0 }
+                            )) {
                                 ForEach(availableProviders) { Text($0.displayName).tag($0) }
                             }
                         } else if let onlyProvider = availableProviders.first {
@@ -183,18 +185,10 @@ struct NewAgentSheet: View {
         }
         .frame(width: 520)
         .frame(minHeight: isFirstAgent ? nil : 600, idealHeight: 600, maxHeight: isFirstAgent ? 620 : 600)
-        .onChange(of: computer) { _, _ in fitHarnessAndProvider() }
-        .onChange(of: harness) { _, _ in fitProvider() }
+        .onChange(of: computer) { _, _ in fitHarness() }
+        .onChange(of: location) { _, _ in fitHarness() }
         .onChange(of: model.saiMachines) { _, machines in
             if saiMachine.isEmpty { saiMachine = machines.first(where: \.online)?.id ?? machines.first?.id ?? "" }
-        }
-        .onChange(of: location, initial: true) { previous, location in
-            if location == .cloud {
-                provider = model.hasOpenRouterKey ? .openRouter : .ollama
-            } else if previous == .cloud {
-                provider = .ollama
-            }
-            fitHarnessAndProvider()
         }
         .task {
             if !isFirstAgent, selectedOllamaModel == nil {
@@ -244,17 +238,24 @@ struct NewAgentSheet: View {
     private var availableProviders: [ModelProvider] { ModelProvider.allowed(at: location, harness: harness, computer: cloudComputer) }
 
     private var selectedProvider: ModelProvider {
-        ModelProvider.fitting(provider, at: location, harness: harness, computer: cloudComputer) ?? provider
+        let preferred: ModelProvider = switch harness {
+        case .claudeCode: .claudeAccount
+        case .codex: .codexAccount
+        case .deepSeek, .sai: .ollama
+        }
+        return ModelProvider.fitting(providerOverride ?? preferred, at: location, harness: harness,
+                                     computer: cloudComputer) ?? preferred
     }
 
-    private func fitHarnessAndProvider() {
-        let allowed = availableHarnesses
-        if !allowed.contains(harness) { harness = allowed[0] }
-        fitProvider()
+    private func fitHarness() {
+        let choices = availableHarnesses
+        if !choices.contains(harness), let first = choices.first { selectHarness(first) }
     }
 
-    private func fitProvider() {
-        provider = selectedProvider
+    private func selectHarness(_ choice: Harness) {
+        guard choice != harness else { return }
+        harness = choice
+        providerOverride = nil
     }
 
     private func create() {

@@ -562,7 +562,7 @@ struct ChatView: View {
             ForEach([
                 "Open example.com and summarize the page.",
                 "Compare the Moon and Mars Wikipedia pages in two tabs.",
-                "Create a short checklist in a text file on the sandbox desktop.",
+                "Save a short checklist to ~/work/checklist.txt and open it in the sandbox browser.",
             ], id: \.self) { prompt in
                 Button {
                     draft.wrappedValue = prompt
