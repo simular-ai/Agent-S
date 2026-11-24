@@ -1,56 +1,38 @@
 import SwiftUI
+import AgentSCore
 
 /// The setup steps for the first sandbox and its model, before opening the chat.
 struct FirstAgentPreparationView: View {
+    private enum Page {
+        case local
+        case cloud
+        case configureCloud(NewAgentSheet.CloudSetup)
+    }
+
     @EnvironmentObject private var model: AppModel
+    @State private var page: Page = .local
+    @State private var service: FirstAgentCloudView.Service = .automatic
+    @State private var finishedCloudStep = false
     @State private var finishError: String?
-    @State private var showBoxSetup = false
     let openComputer: () -> Void
 
     var body: some View {
-        GeometryReader { geometry in
-            ScrollView {
-                VStack(spacing: 20) {
-                    VStack(spacing: 8) {
-                        SaiAvatar(size: 44)
-                        Text("Get your agent ready")
-                            .font(.title2.weight(.semibold))
-                            .accessibilityAddTraits(.isHeader)
-                        if model.usesOllama {
-                            Text("You can download the model while the sandbox sets up.")
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                    VStack(spacing: 12) {
-                        setupCard("Sandbox on This Mac", symbol: "desktopcomputer") {
-                            Text("A separate Linux desktop for your agent. The first setup downloads Debian and installs the tools your agent uses.")
-                                .font(.callout).foregroundStyle(.secondary)
-                            sandboxState
-                        }
-                        modelCard
-                        if isSettingUp || hasBoxAgent { boxCard }
-                    }
-                    if let finishError {
-                        Text(finishError).font(.callout).foregroundStyle(.red)
-                    }
-                    HStack(spacing: 12) {
-                        if !readyToChat {
-                            Button("Finish later") { finish() }
-                        }
-                        Button("Open chat") { finish() }
-                            .buttonStyle(.borderedProminent)
-                            .keyboardShortcut(.defaultAction)
-                            .disabled(!readyToChat)
+        ZStack {
+            switch page {
+            case .local:
+                centeredPage { localSetup }
+            case .cloud:
+                centeredPage {
+                    FirstAgentCloudView(service: $service, back: { page = .local }, skip: finishCloudStep) {
+                        page = .configureCloud($0)
                     }
                 }
-                .frame(maxWidth: 500)
-                .padding(28)
-                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+            case let .configureCloud(choice):
+                NewAgentSheet(.cloudOnboarding(choice, back: { page = .cloud }, finished: finishCloudStep))
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .tint(Theme.accent)
-        .sheet(isPresented: $showBoxSetup) { NewAgentSheet(.boxOnboarding) }
         .task {
             if model.usesOllama { await model.refreshOllama() }
         }
@@ -59,38 +41,74 @@ struct FirstAgentPreparationView: View {
                 await model.refreshAccountStatus()
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            if model.usesOllama, !model.isDownloading {
-                Task { await model.refreshOllama() }
+    }
+
+    private func centeredPage<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        let pageContent = content()
+        return GeometryReader { geometry in
+            ScrollView {
+                pageContent
+                    .frame(maxWidth: 500)
+                    .padding(28)
+                    .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
         }
+    }
+
+    private var localSetup: some View {
+        VStack(spacing: 20) {
+            VStack(spacing: 8) {
+                SaiAvatar(size: 44)
+                Text("Get your agent ready")
+                    .font(.title2.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                if model.usesOllama {
+                    Text("You can download the model while the sandbox sets up.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            VStack(spacing: 12) {
+                setupCard("Sandbox on This Mac", symbol: "desktopcomputer") {
+                    Text("A separate Linux desktop for your agent. The first setup downloads Debian and installs the tools your agent uses.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    sandboxState
+                }
+                modelCard
+            }
+            if let finishError {
+                Text(finishError).font(.callout).foregroundStyle(.red)
+            }
+            HStack(spacing: 12) {
+                if !readyToChat {
+                    Button("Finish later") { finish() }
+                }
+                if offersCloudStep {
+                    Button("Continue") { page = .cloud }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                } else {
+                    Button("Open chat") { finish() }
+                        .buttonStyle(.borderedProminent)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(!readyToChat)
+                }
+            }
+        }
+    }
+
+    private var offersCloudStep: Bool {
+        !finishedCloudStep && !model.agents.contains { $0.config.privacy.location == .cloud }
     }
 
     private var readyToChat: Bool {
         model.canChat && (!model.usesOllama || model.ollamaReady)
     }
 
-    private var isSettingUp: Bool {
-        switch model.phase {
-        case .preparing, .booting: true
-        default: model.usesOllama && model.isDownloading
-        }
-    }
-
-    private var hasBoxAgent: Bool {
-        model.agents.contains { $0.config.computer == .box }
-    }
-
-    private var boxCard: some View {
-        setupCard("Simular Box", symbol: "cloud") {
-            if hasBoxAgent {
-                Label("Box agent added", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-            } else {
-                Text("A cloud computer built for agents and optimized for computer use. Multiple agents can share the same Box.")
-                    .font(.callout).foregroundStyle(.secondary)
-                Button("Set up Simular Box…") { showBoxSetup = true }
-            }
-        }
+    private func finishCloudStep() {
+        finishedCloudStep = true
+        page = .local
+        if readyToChat { finish() }
     }
 
     @ViewBuilder private var sandboxState: some View {
