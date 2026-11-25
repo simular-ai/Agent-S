@@ -1,9 +1,7 @@
 import Darwin
 import Foundation
 
-/// How much memory the Mac can give right now: free pages plus the ones macOS would hand over
-/// without swapping (inactive, purgeable and speculative), the way Activity Monitor thinks of
-/// "available".
+/// An estimate of available RAM from free and inactive pages.
 enum SystemMemory {
     static var total: UInt64 { ProcessInfo.processInfo.physicalMemory }
 
@@ -16,9 +14,9 @@ enum SystemMemory {
             }
         }
         guard result == KERN_SUCCESS else { return nil }
+        // The kernel's free count includes speculative pages.
         let pages = UInt64(stats.free_count) + UInt64(stats.inactive_count)
-            + UInt64(stats.purgeable_count) + UInt64(stats.speculative_count)
-        return pages * UInt64(vm_kernel_page_size)
+        return min(pages * UInt64(vm_kernel_page_size), total)
     }
 
     /// "6 GB", "9.6 GB".

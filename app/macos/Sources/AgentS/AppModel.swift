@@ -8,7 +8,7 @@ import AgentSCore
 final class AppModel: ObservableObject {
     enum Phase: Equatable {
         case needsSetup
-        case preparing(String)
+        case preparing(GuestImage.PreparationStep)
         case stopped
         case booting(String)
         case ready
@@ -22,6 +22,7 @@ final class AppModel: ObservableObject {
         case connecting
         case awaitingSignIn
         case awaitingDeviceCode(CodexAccount.DeviceCode)
+        case awaitingBrowserApproval(URL)
         case connected(HarnessAccountPlan)
         case failed(String)
 
@@ -29,6 +30,20 @@ final class AppModel: ObservableObject {
             if case .connected = self { return true }
             return false
         }
+    }
+
+    enum OllamaDownload: Equatable {
+        case downloading(name: String, progress: Double?)
+        case verifying(name: String)
+        case failed(name: String, message: String)
+    }
+
+    private struct OpenRouterZDRCheck {
+        let catalog: OpenRouterZDRCatalog
+        let publicModelIDs: Set<String>?
+        let checkedAt = ContinuousClock.now
+
+        var isFresh: Bool { checkedAt.duration(to: .now) < .seconds(300) }
     }
 
     private struct AccountRoute: Hashable {
@@ -41,8 +56,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Claude Code's model: tool calling and a long context matter most.
-    static let defaultAgentModel = "gemma4"
+    /// The preselected Ollama model for new agents.
+    static let defaultAgentModel = Ollama.nemotronNano4B
     /// Ollama >= 0.14 serves the Anthropic Messages API Claude Code speaks.
     static let minimumOllama = "0.14.0"
     private static let computerMemoryKey = "computerMemoryGB"
@@ -53,20 +68,26 @@ final class AppModel: ObservableObject {
     }
 
     @Published private(set) var phase: Phase
-    @Published private(set) var downloadProgress: Double?
     @Published private(set) var guestIP: String?
     @Published private(set) var isSavingSandbox = false
     private var attemptedSandboxRestore = false
     private var sandboxCanCheckpoint = false
-    @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .sixGB {
+    private var sandboxNeedsFullToolInstall = false
+    @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .twoGB {
         didSet { UserDefaults.standard.set(computerMemory.rawValue, forKey: Self.computerMemoryKey) }
     }
     @Published private(set) var ollamaChecked = false
     @Published private(set) var ollamaVersion: String?
     @Published private(set) var ollamaModels: [Ollama.Model] = []
-    @Published private(set) var pullStatus: String?
+    @Published private var installedOllamaInputs: [Ollama.Model: ModelInputCapability] = [:]
+    @Published private var libraryOllamaInputs: [String: ModelInputCapability] = [:]
+    private var ollamaInputsTask: Task<Void, Never>?
+    @Published private(set) var ollamaDownload: OllamaDownload?
+    private var ollamaRefreshGeneration = 0
+    private var appliedOllamaRefreshGeneration = 0
     @Published private(set) var openRouterModels: [OpenRouter.Model] = []
     @Published private(set) var isRefreshingOpenRouterModels = false
+    @Published private var openRouterZDRCheck: OpenRouterZDRCheck?
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
     @Published var openRouterRequiresZDR = AppModel.storedOpenRouterRequiresZDR {
         didSet { UserDefaults.standard.set(openRouterRequiresZDR, forKey: Self.openRouterZDRKey) }
@@ -93,8 +114,12 @@ final class AppModel: ObservableObject {
 
     /// The user's agents, private ones (on this Mac) and cloud ones; each with its own context.
     @Published private(set) var agents: [AgentSession] = []
+    @Published private(set) var needsFirstAgentSetup = false
+    @Published private(set) var needsFirstAgentPreparation = false
     @Published var selectedAgentID: UUID {
-        didSet { UserDefaults.standard.set(selectedAgentID.uuidString, forKey: "selectedAgent") }
+        didSet {
+            if !needsFirstAgentSetup { UserDefaults.standard.set(selectedAgentID.uuidString, forKey: "selectedAgent") }
+        }
     }
     /// The selected agent, whose chat and settings the window shows.
     var agent: AgentSession { agents.first { $0.id == selectedAgentID } ?? agents[0] }
@@ -173,13 +198,57 @@ final class AppModel: ObservableObject {
         set { update { $0.saiModel = newValue } }
     }
 
-    /// Adds an agent with a fresh context and selects it; it gets the next headshot color.
-    func createAgent(_ config: AgentConfig) {
+    /// Saves a new agent with a fresh context and the next headshot color.
+    func createAgent(_ config: AgentConfig, selectAfterCreation: Bool = true) throws {
+        guard !needsFirstAgentSetup, !GuestFiles.legacyAppRunning else {
+            throw FirstAgentSetupError.unavailable
+        }
         var config = config.enforcingPrivacy
         if config.avatarColor == nil { config.avatarColor = agents.count % AgentAvatar.palette.count }
-        adopt(AgentSession(config: config))
-        selectedAgentID = config.id
-        saveAgents()
+        let session = AgentSession(config: config)
+        try files.ensureFolders()
+        try writeAgents(agents.map(\.saved) + [session.saved], to: agentsFile)
+        adopt(session)
+        if selectAfterCreation { selectedAgentID = config.id }
+    }
+
+    func completeFirstAgentSetup(_ config: AgentConfig) throws {
+        guard needsFirstAgentSetup, agents.count == 1, let starter = agents.first,
+              starter.id == selectedAgentID, !GuestFiles.legacyAppRunning,
+              !FileManager.default.fileExists(atPath: files.root.path) else {
+            throw FirstAgentSetupError.unavailable
+        }
+        guard config.usesLocalComputer else { throw FirstAgentSetupError.invalidLocation }
+
+        var config = config
+        config.privacy = AgentLocation.linuxVM.mode(for: config.provider)
+        config = config.enforcingPrivacy
+        config.id = starter.id
+        if config.avatarColor == nil { config.avatarColor = 0 }
+        var snapshot = starter.saved
+        snapshot.config = config
+        try writeFirstAgent(snapshot)
+        starter.config = config
+        needsFirstAgentPreparation = true
+        needsFirstAgentSetup = false
+        selectedAgentID = starter.id
+    }
+
+    func finishFirstAgentPreparation() throws {
+        try FileManager.default.removeItem(at: firstAgentPreparationFile)
+        needsFirstAgentPreparation = false
+    }
+
+    private enum FirstAgentSetupError: LocalizedError {
+        case unavailable
+        case invalidLocation
+
+        var errorDescription: String? {
+            switch self {
+            case .unavailable: "Agent setup is unavailable."
+            case .invalidLocation: "Choose a model for the sandbox on this Mac."
+            }
+        }
     }
 
     func rename(_ session: AgentSession, to name: String) {
@@ -257,18 +326,60 @@ final class AppModel: ObservableObject {
             guard succeeded, !session.followUpsPaused else { return }
             self?.sendQueuedFollowUp(for: session)
         }
+        session.onForcedFollowUpReady = { [weak self] session, id in
+            self?.sendQueuedFollowUp(for: session, forcedID: id)
+        }
         agents.append(session)
     }
 
     private var agentsFile: URL { files.root.appendingPathComponent("agents.json") }
+    private var firstAgentPreparationFile: URL { files.root.appendingPathComponent("first-agent-preparation") }
 
     /// Chats can hold page text and tool output: the file is readable by this user only.
     func saveAgents() {
         // While an earlier build runs, this copy only shows "quit it first" and writes nothing.
-        guard !GuestFiles.legacyAppRunning, let data = try? JSONEncoder().encode(agents.map(\.saved)) else { return }
+        guard !needsFirstAgentSetup, !GuestFiles.legacyAppRunning else { return }
         try? files.ensureFolders()
-        try? data.write(to: agentsFile, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: agentsFile.path)
+        try? writeAgents(agents.map(\.saved), to: agentsFile)
+    }
+
+    private func writeAgents(_ snapshot: [SavedAgent], to url: URL) throws {
+        let data = try JSONEncoder().encode(snapshot)
+        try data.write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+
+    /// Publish the first support folder only after its private agent file has been written.
+    private func writeFirstAgent(_ snapshot: SavedAgent) throws {
+        let manager = FileManager.default
+        let parent = files.root.deletingLastPathComponent()
+        let staging = parent.appendingPathComponent(".agent-s-setup-\(UUID().uuidString)", isDirectory: true)
+        try manager.createDirectory(at: parent, withIntermediateDirectories: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: staging) }
+        try GuestFiles(root: staging).ensureFolders()
+        try writeAgents([snapshot], to: staging.appendingPathComponent(agentsFile.lastPathComponent))
+        try Data(snapshot.config.id.uuidString.utf8)
+            .write(to: staging.appendingPathComponent(firstAgentPreparationFile.lastPathComponent), options: .atomic)
+        try manager.moveItem(at: staging, to: files.root)
+    }
+
+    private var isFreshInstallation: Bool {
+        guard !GuestFiles.legacyAppRunning else { return false }
+
+        let folders = [files.root] + GuestFiles.legacy.map { _, name in
+            files.root.deletingLastPathComponent().appendingPathComponent(name, isDirectory: true)
+        }
+        guard !folders.contains(where: { FileManager.default.fileExists(atPath: $0.path) }) else { return false }
+
+        let priorSettings = ["selectedAgent", "agentModel", "openRouterModel", "harness", "harness.private", "harness.cloud",
+                             "provider", "provider.cloud", "saiMachine", "saiModel", Self.computerMemoryKey, Self.openRouterZDRKey]
+        let defaults = UserDefaults.standard
+        guard !priorSettings.contains(where: { defaults.object(forKey: $0) != nil }) else { return false }
+        return !GuestFiles.legacy.contains { bundleID, _ in
+            let prior = defaults.persistentDomain(forName: bundleID) ?? [:]
+            return priorSettings.contains { prior[$0] != nil }
+        }
     }
 
     /// Saved agents, or the first ones from the settings before agents existed.
@@ -308,11 +419,19 @@ final class AppModel: ObservableObject {
         vm = LinuxVM(files: files)
         phase = files.isPrepared ? .stopped : .needsSetup
         selectedAgentID = UUID()
+        needsFirstAgentSetup = isFreshInstallation
         loadAgents()
         let saved = (UserDefaults.standard.string(forKey: "selectedAgent")
             ?? UserDefaults(suiteName: GuestFiles.legacy[0].0)?.string(forKey: "selectedAgent"))
             .flatMap(UUID.init(uuidString:))
-        selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
+        if let pending = try? String(contentsOf: firstAgentPreparationFile, encoding: .utf8),
+           let id = UUID(uuidString: pending),
+           agents.contains(where: { $0.id == id && $0.config.usesLocalComputer }) {
+            selectedAgentID = id
+            needsFirstAgentPreparation = true
+        } else {
+            selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
+        }
         vm.onStateChange = { [weak self] state in self?.vmChanged(state) }
     }
 
@@ -323,8 +442,30 @@ final class AppModel: ObservableObject {
         return Ollama.isAtLeast(ollamaVersion, Self.minimumOllama)
     }
 
-    var hasAgentModel: Bool {
-        ollamaModels.contains { $0.matches(agentModel) }
+    static func minimumOllamaVersion(for name: String) -> String {
+        Ollama.normalizedName(name) == Ollama.nemotronBoltE4B ? "0.40.10" : minimumOllama
+    }
+
+    func ollamaUpgradeMessage(for name: String) -> String? {
+        guard let ollamaVersion else { return nil }
+        let minimum = Self.minimumOllamaVersion(for: name)
+        guard !Ollama.isAtLeast(ollamaVersion, minimum) else { return nil }
+        return "Update Ollama to \(minimum) or later to use \(Ollama.displayName(for: name))."
+    }
+
+    func ollamaReady(for name: String) -> Bool {
+        ollamaVersion != nil && ollamaUpgradeMessage(for: name) == nil
+    }
+
+    var hasAgentModel: Bool { hasOllamaModel(agentModel) }
+
+    func hasOllamaModel(_ name: String) -> Bool { ollamaModels.contains { $0.matches(name) } }
+
+    var isDownloading: Bool {
+        switch ollamaDownload {
+        case .downloading, .verifying: true
+        default: false
+        }
     }
 
     var hasOllamaAgents: Bool {
@@ -391,23 +532,66 @@ final class AppModel: ObservableObject {
     /// The models Ollama has, without the `:latest` tag, plus the current choice if it isn't
     /// downloaded yet (so it can still be picked and downloaded).
     var modelChoices: [String] {
-        var names = ollamaModels.map { $0.name.hasSuffix(":latest") ? String($0.name.dropLast(7)) : $0.name }
+        let selected = Ollama.normalizedName(agentModel)
+        var names = ollamaModels.map {
+            let name = Ollama.normalizedName($0.name)
+            return name == selected ? agentModel : name
+        }
         if !names.contains(agentModel) { names.insert(agentModel, at: 0) }
         return names
+    }
+
+    func ollamaInputCapability(for name: String) -> ModelInputCapability? {
+        if let installed = ollamaModels.first(where: { $0.matches(name) }) {
+            return installedOllamaInputs[installed]
+        }
+        return libraryOllamaInputs[Ollama.normalizedName(name)] ?? Ollama.suggestedModelInput(for: name)
+    }
+
+    func rememberOllamaInput(_ capability: ModelInputCapability?, for name: String) {
+        guard let capability else { return }
+        let normalized = Ollama.normalizedName(name)
+        if libraryOllamaInputs[normalized] != capability { libraryOllamaInputs[normalized] = capability }
+    }
+
+    func ollamaOptionTitle(_ name: String) -> String {
+        let title = Ollama.displayName(for: name)
+        return ollamaInputCapability(for: name).map { "\(title) · \($0.label)" } ?? title
+    }
+
+    func openRouterOptionTitle(_ id: String) -> String {
+        let input = openRouterModels.first { $0.id == id }?.inputCapability?.label
+        let zdr = openRouterZDRAvailability(for: id).label
+        return [id, input, zdr].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: Actions
 
     func prepare() async {
-        downloadProgress = nil
+        guard !needsFirstAgentSetup, !isSavingSandbox, !files.isPrepared, vm.machine == nil else { return }
+        if case .preparing = phase { return }
+        if case .booting = phase { return }
+        phase = .preparing(.working("Preparing the sandbox…"))
         do {
-            try await GuestImage.prepare(files: files,
-                                         step: { [weak self] in self?.phase = .preparing($0) },
-                                         progress: { [weak self] in self?.downloadProgress = $0 })
-            downloadProgress = nil
+            try await GuestImage.prepare(files: files) { [weak self] step in
+                self?.phase = .preparing(step)
+            }
             phase = .stopped
         } catch {
             phase = .failed(error.localizedDescription)
+        }
+    }
+
+    func prepareAndStartSandbox() async {
+        guard !needsFirstAgentSetup, !Task.isCancelled else { return }
+        if !files.isPrepared {
+            await prepare()
+            guard phase == .stopped else { return }
+        }
+        guard !Task.isCancelled else { return }
+        switch phase {
+        case .stopped, .failed: await start()
+        default: break
         }
     }
 
@@ -446,29 +630,63 @@ final class AppModel: ObservableObject {
         guard vm.machine === machine, vm.state == .running else { return }
         guestIP = ip
 
-        if resuming {
-            let ready = await shell.isReady(on: ip)
+        let install: (command: String, step: String)?
+        do {
+            if resuming, !sandboxNeedsFullToolInstall, try await shell.isReady(on: ip) {
+                guard vm.machine === machine, vm.state == .running else { return }
+                phase = .booting("Checking the sandbox tools…")
+                do {
+                    try await shell.run(GuestTools.deepSeekReadyCommand, on: ip, timeout: 20)
+                    install = nil
+                } catch let failure as GuestShell.CommandFailure where failure.status == GuestTools.deepSeekUpdateRequiredStatus {
+                    install = (GuestTools.installDeepSeekCommand, "Updating DeepSeek Harness in the sandbox…")
+                }
+            } else {
+                guard vm.machine === machine, vm.state == .running else { return }
+                phase = .booting("Waiting for the sandbox’s first-time setup…")
+                let clock = ContinuousClock()
+                let deadline = clock.now.advanced(by: .seconds(600))
+                while (try? await shell.isReady(on: ip)) != true {
+                    guard vm.machine === machine, vm.state == .running else { return }
+                    guard clock.now < deadline else {
+                        phase = .failed("The sandbox’s first-time setup is taking longer than expected. Try again to check its progress.")
+                        return
+                    }
+                    try await Task.sleep(for: .seconds(3))
+                }
+                guard vm.machine === machine, vm.state == .running else { return }
+                sandboxNeedsFullToolInstall = true
+                let minutes = (GuestTools.installTimeoutSeconds + 59) / 60
+                install = (GuestTools.installCommand, "Installing the sandbox tools… Allow about \(minutes) minutes")
+            }
+        } catch {
             guard vm.machine === machine, vm.state == .running else { return }
-            if ready {
-                phase = .ready
+            phase = .failed(GuestShell.commandTimedOut(error)
+                            ? "Checking the sandbox tools timed out."
+                            : "Couldn’t verify the sandbox tools.")
+            return
+        }
+
+        guard vm.machine === machine, vm.state == .running else { return }
+        if let install {
+            phase = .booting(install.step)
+            do {
+                // Give the guest time to stop the installer and report its exit status.
+                let timeout = TimeInterval(GuestTools.installTimeoutSeconds + 15)
+                try await shell.run(install.command, on: ip, timeout: timeout)
+            } catch {
+                guard vm.machine === machine, vm.state == .running else { return }
+                NSLog("Agent S: installing the sandbox tools failed: %@", "\(error)")
+                phase = .failed(GuestShell.commandTimedOut(error)
+                                ? "Installing the sandbox tools timed out. Check your internet connection and try again."
+                                : "Couldn’t install the sandbox tools. Try again to finish setup.")
                 return
             }
         }
-
-        phase = .booting("Installing the desktop, simulang and Claude Code (first start only, a few minutes)…")
-        while !(await shell.isReady(on: ip)) {
-            if vm.machine !== machine || vm.state != .running { return }
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
-        }
         guard vm.machine === machine, vm.state == .running else { return }
-        phase = .booting("Installing Sai's screen tools…")
-        do { try await shell.run(GuestTools.installCommand, on: ip) } catch {
-            NSLog("Agent S: installing the screen tools failed: %@", "\(error)")
-        }
-        if vm.machine === machine, vm.state == .running {
-            sandboxCanCheckpoint = true
-            phase = .ready
-        }
+        sandboxNeedsFullToolInstall = false
+        sandboxCanCheckpoint = true
+        phase = .ready
     }
 
     func stop() async {
@@ -489,7 +707,7 @@ final class AppModel: ObservableObject {
         agents.filter { $0.config.usesLocalComputer }.forEach { $0.stop() }
 
         do {
-            // Let the host finish closing SSH and guest sign-in before pausing the VM.
+            // Let setup and active guest work finish before pausing the VM.
             let clock = ContinuousClock()
             let deadline = clock.now.advanced(by: .seconds(5))
             while sandboxIsBusyForSave {
@@ -520,14 +738,15 @@ final class AppModel: ObservableObject {
     }
 
     private var sandboxIsBusyForSave: Bool {
-        vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn
+        if case .booting = phase { return true }
+        return vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn
             || accountSignIns.keys.contains(where: \.inSandbox)
     }
 
     private enum SandboxSaveFailure: LocalizedError {
         case stillBusy
 
-        var errorDescription: String? { "Sandbox work is still stopping." }
+        var errorDescription: String? { "Sandbox work is still in progress." }
     }
 
     func stopAppWork() {
@@ -536,26 +755,66 @@ final class AppModel: ObservableObject {
         agents.forEach { $0.stop() }
     }
 
-    func refreshOllama() async {
-        async let version = Ollama.version()
-        async let models = Ollama.models()
-        let (checkedVersion, checkedModels) = await (version, models)
-        guard !Task.isCancelled else { return }
-        ollamaVersion = checkedVersion
-        ollamaModels = checkedModels
-        ollamaChecked = true
+    func refreshOllama(timeout: TimeInterval = 10) async {
+        _ = await refreshOllamaState(timeout: timeout)
     }
 
-    func pullAgentModel() async {
-        pullStatus = "Starting…"
-        do {
-            try await Ollama.pull(agentModel) { [weak self] status, fraction in
-                self?.pullStatus = fraction.map { "\(status) \(Int($0 * 100))%" } ?? status
+    private func refreshOllamaState(timeout: TimeInterval) async -> [Ollama.Model] {
+        ollamaRefreshGeneration += 1
+        let generation = ollamaRefreshGeneration
+        async let version = Ollama.version(timeout: timeout)
+        async let models = Ollama.models(timeout: timeout)
+        let (checkedVersion, checkedModels) = await (version, models)
+        if !Task.isCancelled, generation > appliedOllamaRefreshGeneration {
+            appliedOllamaRefreshGeneration = generation
+            ollamaVersion = checkedVersion
+            if ollamaModels != checkedModels {
+                ollamaModels = checkedModels
+                refreshInstalledOllamaInputs()
             }
-            pullStatus = nil
-            await refreshOllama()
+            ollamaChecked = true
+        }
+        return checkedModels
+    }
+
+    private func refreshInstalledOllamaInputs() {
+        ollamaInputsTask?.cancel()
+        let local = ollamaModels.filter { !$0.usesRemoteInference && !Ollama.isCloudReference($0.name) }
+        let current = Set(local)
+        installedOllamaInputs = installedOllamaInputs.filter { current.contains($0.key) }
+        let missing = local.filter { installedOllamaInputs[$0] == nil }
+        ollamaInputsTask = Task { [weak self] in
+            for installed in missing {
+                guard !Task.isCancelled else { return }
+                let capability = await Ollama.inputCapability(for: installed.name)
+                guard !Task.isCancelled else { return }
+                if let capability { self?.installedOllamaInputs[installed] = capability }
+            }
+        }
+    }
+
+    func downloadOllamaModel(_ name: String) async {
+        guard !Task.isCancelled, !isDownloading else { return }
+        guard ollamaReady(for: name) else {
+            let message = ollamaUpgradeMessage(for: name) ?? "Open Ollama and check the connection before downloading a model."
+            ollamaDownload = .failed(name: name, message: message)
+            return
+        }
+        ollamaDownload = .downloading(name: name, progress: nil)
+        do {
+            try await Ollama.pull(name) { [weak self] _, fraction in
+                self?.ollamaDownload = .downloading(name: name, progress: fraction)
+            }
+            ollamaDownload = .verifying(name: name)
+            let downloadedModels = await refreshOllamaState(timeout: 10)
+            try Task.checkCancellation()
+            if downloadedModels.contains(where: { $0.matches(name) }) {
+                ollamaDownload = nil
+            } else {
+                ollamaDownload = .failed(name: name, message: "Ollama didn’t list \(name) after the download. Refresh the list or try again.")
+            }
         } catch {
-            pullStatus = "Couldn't pull \(agentModel): \(error.localizedDescription)"
+            ollamaDownload = Task.isCancelled ? nil : .failed(name: name, message: error.localizedDescription)
         }
     }
 
@@ -605,8 +864,9 @@ final class AppModel: ObservableObject {
         }
         if provider == .ollama {
             if !ollamaChecked { return "Checking Ollama…" }
-            if !ollamaModels.contains(where: { $0.matches(config.ollamaModel) }) {
-                return "Download \(config.ollamaModel) in Settings first"
+            if let message = ollamaUpgradeMessage(for: config.ollamaModel) { return message }
+            if !hasOllamaModel(config.ollamaModel) {
+                return ollamaReady ? "Download \(Ollama.displayName(for: config.ollamaModel)) to chat" : "Connect Ollama to chat"
             }
         }
         if provider == .openRouter {
@@ -659,6 +919,8 @@ final class AppModel: ObservableObject {
         if isSavingSandbox { return "Saving the sandbox…" }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
+        case .preparing, .booting: return "Waiting for the sandbox…"
+        case .failed where vm.state == .running: return "Finish sandbox setup to chat"
         case .ready:
             if agents.contains(where: { $0 !== session && $0.config.usesLocalComputer && $0.isRunning }) {
                 return "Another agent is using the sandbox"
@@ -757,12 +1019,30 @@ final class AppModel: ObservableObject {
         hasOpenRouterKey = false
     }
 
-    func refreshOpenRouterModels() async {
-        guard openRouterModels.isEmpty, !isRefreshingOpenRouterModels else { return }
+    var openRouterZDRNeedsRefresh: Bool {
+        guard let check = openRouterZDRCheck else { return true }
+        return !check.isFresh || check.publicModelIDs == nil
+    }
+
+    func openRouterZDRAvailability(for id: String) -> OpenRouterZDRAvailability {
+        guard let check = openRouterZDRCheck, check.isFresh else { return .unknown }
+        return check.catalog.availability(for: id, isPublicModel: check.publicModelIDs?.contains(id) == true)
+    }
+
+    func refreshOpenRouterModels(force: Bool = false) async {
+        guard !isRefreshingOpenRouterModels, force || openRouterModels.isEmpty || openRouterZDRNeedsRefresh else { return }
         isRefreshingOpenRouterModels = true
         defer { isRefreshingOpenRouterModels = false }
-        let models = await OpenRouter.models()
-        if !Task.isCancelled { openRouterModels = models }
+
+        async let models = OpenRouter.models()
+        async let zdrCatalog = OpenRouter.zdrCatalog()
+        let (loadedModels, loadedZDRCatalog) = await (models, zdrCatalog)
+        guard !Task.isCancelled else { return }
+
+        if let loadedModels { openRouterModels = loadedModels }
+        openRouterZDRCheck = loadedZDRCatalog.map { catalog in
+            OpenRouterZDRCheck(catalog: catalog, publicModelIDs: loadedModels.map { Set($0.map(\.id)) })
+        }
     }
 
     // MARK: Harness accounts
@@ -803,8 +1083,11 @@ final class AppModel: ObservableObject {
 
     func refreshAccountStatus() async {
         let route = AccountRoute(agent.config)
-        guard availableProviders.contains(route.provider), route.provider.usesAccount,
-              accountComputerReady, accountSignIns[route] == nil else { return }
+        guard availableProviders.contains(route.provider), route.provider.usesAccount, accountComputerReady else { return }
+        if let pending = accountSignIns[route] {
+            await confirmClaudeBrowserSignIn(route, pending: pending)
+            return
+        }
         let check = UUID()
         let previous = accountStatuses[route] ?? .unchecked
         accountChecks[route] = check
@@ -819,6 +1102,25 @@ final class AppModel: ObservableObject {
         guard accountChecks[route] == check else { return }
         accountChecks[route] = nil
         accountStatuses[route] = Task.isCancelled ? (previous == .checking ? .unchecked : previous) : status
+    }
+
+    private func confirmClaudeBrowserSignIn(_ route: AccountRoute, pending: Task<Void, Never>) async {
+        guard route.inSandbox, route.provider == .claudeAccount, let ip = guestIP,
+              case .awaitingBrowserApproval = accountStatuses[route], accountChecks[route] == nil else { return }
+        let check = UUID()
+        let generation = sandboxAccountGeneration
+        accountChecks[route] = check
+        defer {
+            if accountChecks[route] == check { accountChecks[route] = nil }
+        }
+
+        // The guest verifies the saved account only after its login command releases the profile lock.
+        let output = try? await shell.run(SandboxAccount.claudeCompletedSignInStatusCommand, on: ip, timeout: 10)
+        guard !Task.isCancelled, !pending.isCancelled, accountChecks[route] == check, generation == sandboxAccountGeneration,
+              case .awaitingBrowserApproval = accountStatuses[route],
+              let output, let plan = SandboxAccount.plan(for: route.provider, output: output) else { return }
+        accountStatuses[route] = .connected(plan)
+        pending.cancel()
     }
 
     func signInToAccount() async {
@@ -848,6 +1150,7 @@ final class AppModel: ObservableObject {
                 }
             } catch {
                 guard !route.inSandbox || sandboxAccountGeneration == generation else { return }
+                guard accountStatuses[route]?.isConnected != true else { return }
                 accountStatuses[route] = Task.isCancelled || error is CancellationError
                     ? .signedOut : .failed(error.localizedDescription)
             }
@@ -859,6 +1162,18 @@ final class AppModel: ObservableObject {
     private func signInToSandbox(_ route: AccountRoute, generation: UUID) async throws {
         try checkSandboxSignIn(generation)
         guard let ip = guestIP else { throw AccountFailure(errorDescription: "Turn on the sandbox to sign in.") }
+        if route.provider == .claudeAccount {
+            let plan = try await ClaudeAccount.signInInSandbox(shell: shell, ip: ip) { url in
+                try self.checkSandboxSignIn(generation)
+                self.accountStatuses[route] = .awaitingBrowserApproval(url)
+                if AccountRoute(self.agent.config) == route {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            try checkSandboxSignIn(generation)
+            accountStatuses[route] = .connected(plan)
+            return
+        }
         if route.provider == .codexAccount {
             do {
                 let plan = try await CodexAccount.signInInSandbox(shell: shell, ip: ip) { code in
@@ -887,7 +1202,12 @@ final class AppModel: ObservableObject {
         guard sandboxAccountGeneration == generation, vm.state == .running else { throw CancellationError() }
     }
 
-    func cancelAccountSignIn() { accountSignIns[AccountRoute(agent.config)]?.cancel() }
+    func cancelAccountSignIn() {
+        let route = AccountRoute(agent.config)
+        guard let pending = accountSignIns[route] else { return }
+        accountChecks[route] = nil
+        pending.cancel()
+    }
 
     private var checkingFollowUpRoutes: Set<UUID> = []
 
@@ -897,17 +1217,32 @@ final class AppModel: ObservableObject {
         return session.enqueueFollowUp(prompt, route: memoryRoute(for: session))
     }
 
-    func canSendQueuedFollowUp(for session: AgentSession) -> Bool {
-        guard let followUp = session.queuedFollowUps.first, !checkingFollowUpRoutes.contains(followUp.id),
-              canDispatch(to: session), session.config == session.config.enforcingPrivacy else { return false }
-        return followUp.route == memoryRoute(for: session)
+    func canForceQueuedFollowUp(_ followUp: AgentSession.QueuedFollowUp, for session: AgentSession) -> Bool {
+        agents.contains(where: { $0 === session }) && session.isRunning
+            && !session.isStopping && !session.isSendingSteering
+            && session.config == session.config.enforcingPrivacy && followUp.route == memoryRoute(for: session)
     }
 
-    func sendQueuedFollowUp(for session: AgentSession) {
-        guard agents.contains(where: { $0 === session }), let followUp = session.queuedFollowUps.first,
-              !checkingFollowUpRoutes.contains(followUp.id) else { return }
-        guard canSendQueuedFollowUp(for: session) else { session.pauseQueuedFollowUps(); return }
-        session.resumeQueuedFollowUps()
+    func forceQueuedFollowUp(_ followUp: AgentSession.QueuedFollowUp, for session: AgentSession) {
+        guard canForceQueuedFollowUp(followUp, for: session) else { return }
+        session.forceFollowUp(followUp)
+    }
+
+    func canSendQueuedFollowUp(for session: AgentSession) -> Bool {
+        guard let followUp = session.queuedFollowUps.first else { return false }
+        return canDispatchFollowUp(followUp, to: session)
+    }
+
+    private func canDispatchFollowUp(_ followUp: AgentSession.QueuedFollowUp, to session: AgentSession) -> Bool {
+        !checkingFollowUpRoutes.contains(followUp.id) && canDispatch(to: session)
+            && session.config == session.config.enforcingPrivacy && followUp.route == memoryRoute(for: session)
+    }
+
+    func sendQueuedFollowUp(for session: AgentSession, forcedID: UUID? = nil) {
+        let next = session.queuedFollowUps.first { forcedID == nil || $0.id == forcedID }
+        guard let followUp = next, !checkingFollowUpRoutes.contains(followUp.id) else { return }
+        guard canDispatchFollowUp(followUp, to: session) else { session.pauseQueuedFollowUps(); return }
+        if forcedID == nil { session.resumeQueuedFollowUps() }
         guard followUp.route.provider == .ollama else {
             dispatchFollowUp(followUp, to: session)
             return
@@ -919,12 +1254,13 @@ final class AppModel: ObservableObject {
             let verified = await Self.verifyOllamaMemoryRoute(followUp.route)
             guard let self else { return }
             self.checkingFollowUpRoutes.remove(followUp.id)
-            guard let session, !session.isRunning, !session.followUpsPaused else { return }
-            guard session.queuedFollowUps.first?.id == followUp.id else {
-                self.sendQueuedFollowUp(for: session)
+            guard let session, !session.isRunning, forcedID != nil || !session.followUpsPaused else { return }
+            let pending = session.queuedFollowUps.first { forcedID == nil || $0.id == forcedID }
+            guard pending?.id == followUp.id else {
+                if forcedID == nil { self.sendQueuedFollowUp(for: session) }
                 return
             }
-            guard verified == followUp.route, self.canSendQueuedFollowUp(for: session) else {
+            guard verified == followUp.route, self.canDispatchFollowUp(followUp, to: session) else {
                 session.pauseQueuedFollowUps()
                 return
             }
@@ -1147,11 +1483,13 @@ final class AppModel: ObservableObject {
         switch state {
         case .stopped:
             sandboxCanCheckpoint = false
+            sandboxNeedsFullToolInstall = false
             resetSandboxAccountStatus()
             guestIP = nil
             if case .needsSetup = phase {} else { phase = .stopped }
         case let .failed(message):
             sandboxCanCheckpoint = false
+            sandboxNeedsFullToolInstall = false
             resetSandboxAccountStatus()
             guestIP = nil
             phase = .failed(message)

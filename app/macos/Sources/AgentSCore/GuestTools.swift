@@ -499,9 +499,20 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
         ].joined(separator: " && ")
     }
 
+    public static let installTimeoutSeconds = 300
+
     public static var installCommand: String {
-        [installScriptsCommand, desktopLaunchDependencies, playwright, deepSeekHarness, clipboard, terminal]
-            .joined(separator: " && ")
+        let commands = [GuestSetup.ensureNodeCommand(asRoot: false), GuestSetup.ensureBaseHarnessesCommand(asRoot: false),
+                        installScriptsCommand, desktopLaunchDependencies, playwright, clipboard, terminal, installPinnedDeepSeek]
+        return boundedInstallation(commands.joined(separator: " && "))
+    }
+
+    private static func boundedInstallation(_ command: String) -> String {
+        """
+        /usr/bin/timeout --kill-after=5s \(installTimeoutSeconds)s /bin/bash -s <<'AGENT_S_TOOL_INSTALL'
+        \(command)
+        AGENT_S_TOOL_INSTALL
+        """
     }
 
     private static let desktopLaunchDependencies =
@@ -510,10 +521,32 @@ main().then(() => process.exit(0), (e) => fail(e.message ?? String(e)))
     /// The terminal used to sign in to harness accounts from the guest desktop.
     private static let terminal = "(command -v xterm >/dev/null || sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -q xterm >/dev/null 2>&1)"
 
-    /// DeepSeek Harness, installed once per pinned version.
-    static var deepSeekHarness: String {
-        "(dsh --version 2>/dev/null | grep -qx '\(DeepSeekCommand.version)'"
-            + " || sudo npm install -g --silent @deepseek-ai/dsh@\(DeepSeekCommand.version) >/dev/null 2>&1)"
+    /// A completed check requests an update only when the installed versions are unsuitable.
+    public static let deepSeekUpdateRequiredStatus: Int32 = 65
+
+    public static var deepSeekReadyCommand: String {
+        """
+        /usr/bin/timeout --kill-after=2s 8s /bin/bash -s <<'AGENT_S_TOOL_CHECK'
+        if \(GuestSetup.nodeReadyCommand) && \(deepSeekVersionCheck); then
+          exit 0
+        fi
+        exit \(deepSeekUpdateRequiredStatus)
+        AGENT_S_TOOL_CHECK
+        """
+    }
+
+    /// Repairs the runtime on an existing guest without restarting its desktop.
+    public static var installDeepSeekCommand: String {
+        boundedInstallation("\(GuestSetup.ensureNodeCommand(asRoot: false)) && \(installPinnedDeepSeek)")
+    }
+
+    private static var deepSeekVersionCheck: String {
+        #"(dsh_version=$(dsh --version 2>/dev/null) && [ "$dsh_version" = '\#(DeepSeekCommand.version)' ])"#
+    }
+
+    private static var installPinnedDeepSeek: String {
+        "(\(deepSeekVersionCheck) || (sudo npm install -g --engine-strict @deepseek-ai/dsh@\(DeepSeekCommand.version)"
+            + " && \(deepSeekVersionCheck)))"
     }
 
     /// Playwright's library (no bundled browsers) for `web`, installed once per version.

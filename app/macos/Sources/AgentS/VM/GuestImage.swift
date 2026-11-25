@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import AgentSCore
 
 /// First-time setup of the guest's disk, key and cloud-init seed.
@@ -7,30 +8,44 @@ import AgentSCore
 /// once (~300 MB compressed), unpacked to a raw disk and grown; cloud-init resizes the root
 /// partition to fill it on first boot.
 enum GuestImage {
-    static let imageURL = URL(string: "https://cloud.debian.org/images/cloud/trixie/latest/debian-13-generic-arm64.tar.xz")!
+    private static let imageRelease = "20261123-2671"
+    static let imageURL = URL(string: "https://cloud.debian.org/images/cloud/trixie/\(imageRelease)/debian-13-generic-arm64-\(imageRelease).tar.xz")!
+    // The generic ARM64 archive entry in this release's SHA512SUMS.
+    private static let imageSHA512 = "800e63be2901b32689ea00a4a6eaab0df5b7ef43eb543cf59627b575cd9c279d93d791be96ba9306617d28e1973f9222d3ab490138117ee41eb7432f61e5f55f"
     static let diskSize: UInt64 = 32 * 1024 * 1024 * 1024
+
+    enum PreparationStep: Equatable {
+        case working(String)
+        case downloadingDebian(progress: Double?)
+
+        var label: String {
+            switch self {
+            case let .working(label): label
+            case .downloadingDebian: "Downloading Debian (about 300 MB)…"
+            }
+        }
+    }
 
     struct Failure: LocalizedError {
         let message: String
         var errorDescription: String? { message }
     }
 
-    /// Prepares whatever is missing, reporting each step and the download's progress (0…1).
+    /// Prepares whatever is missing and reports each step, including download progress when the size is known.
     static func prepare(files: GuestFiles,
-                        step: @escaping @MainActor (String) -> Void,
-                        progress: @escaping @MainActor (Double) -> Void) async throws {
+                        report: @escaping @MainActor (PreparationStep) -> Void) async throws {
         try files.ensureFolders()
 
         if !FileManager.default.fileExists(atPath: files.sshKey.path) {
-            await step("Creating the app's key for the computer…")
+            await report(.working("Creating the app's key for the computer…"))
             try run("/usr/bin/ssh-keygen", ["-t", "ed25519", "-N", "", "-C", "Agent S", "-f", files.sshKey.path])
         }
 
         if !FileManager.default.fileExists(atPath: files.disk.path) {
-            await step("Downloading Debian (about 300 MB)…")
-            let archive = try await download(imageURL, progress: progress)
+            await report(.downloadingDebian(progress: nil))
+            let archive = try await download(imageURL) { report(.downloadingDebian(progress: $0)) }
             defer { try? FileManager.default.removeItem(at: archive) }
-            await step("Unpacking the disk…")
+            await report(.working("Unpacking the disk…"))
             let work = files.root.appendingPathComponent("unpack", isDirectory: true)
             try? FileManager.default.removeItem(at: work)
             try FileManager.default.createDirectory(at: work, withIntermediateDirectories: true)
@@ -48,7 +63,7 @@ enum GuestImage {
         }
 
         if !FileManager.default.fileExists(atPath: files.seed.path) {
-            await step("Writing the computer's first-boot setup…")
+            await report(.working("Writing the computer's first-boot setup…"))
             try writeSeed(files: files)
         }
     }
@@ -77,25 +92,36 @@ enum GuestImage {
         guard (response as? HTTPURLResponse)?.statusCode == 200 else {
             throw Failure(message: "Downloading Debian failed (\((response as? HTTPURLResponse)?.statusCode ?? 0)).")
         }
-        let total = max(response.expectedContentLength, 1)
+        let total = response.expectedContentLength
+        if total > 0 { await progress(0) }
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("debian-\(UUID().uuidString).tar.xz")
         FileManager.default.createFile(atPath: target.path, contents: nil)
+        var verified = false
+        defer { if !verified { try? FileManager.default.removeItem(at: target) } }
         let handle = try FileHandle(forWritingTo: target)
         defer { try? handle.close() }
         var buffer = Data()
+        var checksum = SHA512()
         var written: Int64 = 0
         buffer.reserveCapacity(1 << 20)
         for try await byte in bytes {
             buffer.append(byte)
             if buffer.count >= 1 << 20 {
                 try handle.write(contentsOf: buffer)
+                checksum.update(data: buffer)
                 written += Int64(buffer.count)
                 buffer.removeAll(keepingCapacity: true)
-                let fraction = Double(written) / Double(total)
-                await progress(fraction)
+                if total > 0 {
+                    await progress(min(Double(written) / Double(total), 1))
+                }
             }
         }
         try handle.write(contentsOf: buffer)
+        checksum.update(data: buffer)
+        guard checksum.finalize().map({ String(format: "%02x", $0) }).joined() == imageSHA512 else {
+            throw Failure(message: "The Debian download failed the checksum check. Try setting up the computer again.")
+        }
+        verified = true
         await progress(1)
         return target
     }

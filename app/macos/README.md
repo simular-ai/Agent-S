@@ -38,6 +38,16 @@ The Computer panel shows pending requests and open work first. Check items under
 
 ## Choose how an agent runs
 
+On first launch, pick a harness and model for **Sandbox on This Mac**, then click
+**Set up agent** to download and start the sandbox. **Nemotron 3 Nano 4B** is
+the default Ollama model. The model browser shows input support and estimated
+download sizes for local models. Onboarding warns if the selected model is
+likely to need more memory than your Mac can spare. The setup screen can open
+the Ollama installer and download your selected model. Open chat when the
+sandbox and model are ready, or use **Set up a cloud agent…** to add one.
+The new chat offers sample tasks. Click one to fill the composer, where you can
+edit it before sending.
+
 Click **+** in the sidebar, name the agent, and select **Runs**. For **Cloud Computer**, choose a
 computer first. Choose the harness and **Provider** when prompted. To change an existing
 agent's configuration, right-click it and choose **Agent Settings…**. Each **Sandbox on This Mac**
@@ -62,8 +72,9 @@ Linux VM or cloud computer and see the agent's session context.
 
 ### Sandbox on This Mac
 
-1. Open **Settings → Computer** and click **Set up the computer**. This downloads a
-   Debian 13 ARM64 image and creates a sparse 32 GB disk that grows with use.
+1. If the sandbox hasn’t been set up, click **Set up** in the chat or
+   **Settings → Computer → Set up the computer**. Setup downloads a Debian 13 ARM64
+   image and creates a sparse 32 GB disk that grows with use.
 2. When creating the agent, set **Runs** to **Sandbox on This Mac** and select a **Provider**.
    For **Ollama**, start [Ollama](https://ollama.com/) 0.14 or later on your Mac and
    select or download a local model in **Agent Settings… → Model**. The default is
@@ -72,9 +83,9 @@ Linux VM or cloud computer and see the agent's session context.
    to install the desktop and tools in the VM. Wait for setup to finish, then send a message.
    One agent can use the shared Linux desktop at a time.
 
-In **Settings → Computer → Memory**, choose **2 GB**, **4 GB**, or **6 GB** for the next
-VM start. The default is **6 GB**. This setting allocates memory to the VM. Ollama runs
-separately, so budget host memory for the model too. In the computer panel, use **Take over**
+Choose **2 GB**, **4 GB**, or **6 GB** during onboarding or in **Settings → Computer → Memory**.
+The default is **2 GB**. Changes apply when you start a powered-off sandbox. Ollama uses
+memory on the Mac separately, so budget host memory for the model too. In the computer panel, use **Take over**
 to send mouse and keyboard input to the VM.
 
 On Apple silicon, quitting Agent S saves the running sandbox when the Mac and VM
@@ -90,8 +101,8 @@ sandbox and choose **Sign in** above the composer.
   there. Agent S detects when sign-in completes, and Codex stores its credentials in
   the sandbox. An older Codex version may show the code in the Computer panel.
   [Enable device-code sign-in for Codex](https://learn.chatgpt.com/docs/auth#login-on-headless-devices)
-- **Claude Code** opens sign-in in the Computer panel. Use **Take over** to follow its
-  prompts, then choose **Check sign-in** in the chat.
+- **Claude Code** opens its sign-in page in your Mac’s browser. Finish signing in
+  there and return to Agent S. Claude Code stores its credentials in the sandbox.
 
 ### This Mac
 
@@ -180,19 +191,26 @@ direct distribution as a Developer ID–signed, notarized DMG. A Mac App Store b
 would need to meet Apple's sandbox requirements for its automation features.
 [Apple's macOS distribution options](https://developer.apple.com/macos/distribution/)
 
-1. Build with the organization's **Developer ID Application** identity by setting
-   `SIGN_IDENTITY` when running `./scripts/bundle.sh release`. Verify that the app's signature
-   includes the hardened runtime and a secure timestamp.
-2. Put the app in a DMG, sign the DMG, and submit it with `xcrun notarytool submit`
-   using the organization's notary profile. After Apple accepts it, staple and validate
-   the ticket with `xcrun stapler`. Verify Gatekeeper on a clean Mac.
-   [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
-3. Test a fresh install and upgrade, including macOS permissions, VM startup, and Sai
-   and Box sign-in. Pin and verify the guest downloads, and publish a privacy policy
-   that covers the modes shipped in the release.
-4. Verify the account integrations for the intended distribution. OpenAI documents
+1. Install the organization's **Developer ID Application** signing identity and store
+   notarization credentials in a Keychain profile. From `app/macos`, run:
+
+   ```sh
+   xcrun notarytool store-credentials agent-s-notary
+   SIGN_IDENTITY='Developer ID Application: Your Organization (TEAMID)' \
+     NOTARY_KEYCHAIN_PROFILE=agent-s-notary ./scripts/release.sh
+   ```
+
+   The script builds and signs the app and disk image, submits the DMG to Apple, and
+   staples the approved ticket. It writes the versioned DMG and SHA-256 checksum to
+   `build/`. [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+2. Verify Gatekeeper on a clean Apple Silicon Mac. Test a fresh install and upgrade,
+   including macOS permissions, sandbox startup, and Sai and Box sign-in. The app
+   verifies the pinned Debian archive before unpacking. Publish a privacy policy that
+   covers the modes shipped in the release.
+3. Verify the account integrations for the intended distribution. OpenAI documents
    **Sign in with ChatGPT** for commercial or hosted integrations in place of the
    current Codex App Server authentication. Anthropic's terms govern the use of
    Claude Code in a product. [Codex authentication](https://learn.chatgpt.com/docs/app-server#auth-endpoints) · [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
+4. Attach the verified DMG and checksum to a GitHub Release for the tested commit.
 
 [Repository license](../../LICENSE)

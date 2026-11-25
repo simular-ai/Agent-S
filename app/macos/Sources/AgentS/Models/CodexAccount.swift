@@ -384,6 +384,10 @@ private final class CodexConnection {
         try? input.fileHandleForWriting.close()
         if process.isRunning { process.terminate() }
     }
+
+    func waitUntilStopped() async -> Bool {
+        await process.waitForHostedExit()
+    }
 }
 
 /// App Server gets no execution environment. Agent S dispatches the tools for the selected computer.
@@ -433,7 +437,6 @@ final class CodexAccountTurn {
         defer {
             clearSteering()
             connection.close()
-            self.connection = nil
         }
         try await connection.initialize()
         if case .account = inference, try await CodexAccount.accountPlan(on: connection) == nil {
@@ -570,6 +573,14 @@ final class CodexAccountTurn {
         macCommand.stop()
     }
 
+    /// Confirms the local Codex App Server is no longer writing to its thread.
+    func waitUntilStopped() async -> Bool {
+        guard let connection else { return true }
+        guard await connection.waitUntilStopped() else { return false }
+        if self.connection === connection { self.connection = nil }
+        return true
+    }
+
     private func checkRunning() throws {
         try Task.checkCancellation()
         if stopped { throw CancellationError() }
@@ -641,5 +652,19 @@ final class CodexAccountTurn {
         var items = [["type": "inputText", "text": text]]
         if let image { items.append(["type": "inputImage", "imageUrl": "data:image/png;base64,\(image.base64EncodedString())"]) }
         return ["success": success, "contentItems": items]
+    }
+}
+
+extension Process {
+    /// Termination requests are asynchronous. Confirm the child exited before reusing its session.
+    @MainActor
+    func waitForHostedExit() async -> Bool {
+        let deadline = ContinuousClock.now + .seconds(8)
+        while isRunning {
+            guard ContinuousClock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(100)) }
+            catch { return !isRunning }
+        }
+        return true
     }
 }

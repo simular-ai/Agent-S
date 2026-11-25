@@ -20,21 +20,38 @@ enum OpenRouter {
         "google/gemma-4-31b-it",
     ]
 
-    struct Model: Identifiable, Hashable {
+    struct Model: Identifiable, Hashable, Sendable {
         let id: String
         let name: String
         let contextLength: Int?
+        let inputCapability: ModelInputCapability?
     }
 
-    /// The public model list (no key needed).
-    static func models() async -> [Model] {
-        guard let (data, _) = try? await URLSession.shared.data(from: api.appendingPathComponent("v1/models")),
+    /// OpenRouter returns the full text-output model list when pagination is omitted.
+    static func models() async -> [Model]? {
+        guard let data = await publicCatalogData(at: "v1/models"),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let list = object["data"] as? [[String: Any]] else { return [] }
+              let list = object["data"] as? [[String: Any]] else { return nil }
         return list.compactMap { item in
             guard let id = item["id"] as? String else { return nil }
-            return Model(id: id, name: item["name"] as? String ?? id, contextLength: item["context_length"] as? Int)
+            let architecture = item["architecture"] as? [String: Any]
+            let capability = ModelInputCapability.fromInputModalities(architecture?["input_modalities"] as? [String])
+            return Model(id: id, name: item["name"] as? String ?? id,
+                         contextLength: item["context_length"] as? Int, inputCapability: capability)
         }
+    }
+
+    static func zdrCatalog() async -> OpenRouterZDRCatalog? {
+        guard let data = await publicCatalogData(at: "v1/endpoints/zdr") else { return nil }
+        return try? OpenRouterZDRCatalog(data: data)
+    }
+
+    private static func publicCatalogData(at path: String) async -> Data? {
+        let request = URLRequest(url: api.appendingPathComponent(path), cachePolicy: .reloadIgnoringLocalCacheData,
+                                 timeoutInterval: 15)
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
+        return data
     }
 
     // MARK: Keychain

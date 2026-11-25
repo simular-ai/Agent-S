@@ -5,6 +5,7 @@ import AgentSCore
 struct ContextView: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
+    @State private var showActionItems = false
     @State private var showSessionDetails = false
     @State private var showInstructions = false
 
@@ -30,31 +31,35 @@ struct ContextView: View {
         let requests = agent.pendingActionItems
         let work = model.openWork(for: agent)
 
-        return VStack(alignment: .leading, spacing: 8) {
-            Text("Action items").font(.headline).accessibilityAddTraits(.isHeader)
-            if requests.isEmpty, work.isEmpty {
-                Text("Nothing needs your attention.").font(.callout).foregroundStyle(.secondary)
-            }
-            ForEach(requests) { item in
-                HStack(spacing: 8) {
-                    Label(item.text, systemImage: "hand.raised")
-                        .font(.callout)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Review") { model.revealChatItem(item.id, in: agent) }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+        return DisclosureGroup(isExpanded: $showActionItems) {
+            VStack(alignment: .leading, spacing: 8) {
+                if requests.isEmpty, work.isEmpty {
+                    Text("Nothing needs your attention.").font(.callout).foregroundStyle(.secondary)
                 }
-                .padding(10)
-                .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline).allowsHitTesting(false))
-            }
-            if !work.isEmpty {
-                section("Open work") {
-                    OpenWorkChecklist(notes: work)
-                        .id("\(agent.id)/\(model.memoryRoute(for: agent).continuationKey)")
+                ForEach(requests) { item in
+                    let title = item.approvalTitle.flatMap(actionItemTitle) ?? actionItemTitle(item.text) ?? "Approval request"
+                    HStack(alignment: .top, spacing: 8) {
+                        ActionItemDisclosure(title: title, details: item.text, symbol: "hand.raised")
+                        Button("Review") { model.revealChatItem(item.id, in: agent) }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    .padding(10)
+                    .background(Theme.card, in: RoundedRectangle(cornerRadius: 10))
+                    .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.hairline).allowsHitTesting(false))
+                }
+                if !work.isEmpty {
+                    section("Open work") {
+                        OpenWorkChecklist(notes: work)
+                            .id("\(agent.id)/\(model.memoryRoute(for: agent).continuationKey)")
+                    }
                 }
             }
+            .padding(.top, 8)
+        } label: {
+            Text("Action items (\(requests.count + work.count))")
+                .font(.headline)
+                .accessibilityAddTraits(.isHeader)
         }
     }
 
@@ -137,6 +142,44 @@ struct ContextView: View {
     }
 }
 
+private struct ActionItemDisclosure: View {
+    let title: String
+    let details: String
+    var symbol: String? = nil
+
+    var body: some View {
+        DisclosureGroup {
+            Text(verbatim: details)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 6)
+        } label: {
+            HStack(spacing: 6) {
+                if let symbol { Image(systemName: symbol).accessibilityHidden(true) }
+                Text(verbatim: title).lineLimit(1)
+            }
+            .font(.callout)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+    }
+}
+
+private func actionItemTitle(_ text: String) -> String? {
+    guard let firstLine = text.split(whereSeparator: \.isNewline)
+        .first(where: { !$0.allSatisfy(\.isWhitespace) }) else { return nil }
+    let line = firstLine.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    var title = line
+    line.enumerateSubstrings(in: line.startIndex..<line.endIndex, options: .bySentences) { sentence, _, _, stop in
+        title = (sentence ?? line).trimmingCharacters(in: .whitespacesAndNewlines)
+        stop = true
+    }
+    return title
+}
+
 private struct OpenWorkChecklist: View {
     @EnvironmentObject private var model: AppModel
     @EnvironmentObject private var agent: AgentSession
@@ -166,19 +209,21 @@ private struct OpenWorkChecklist: View {
                 Divider()
             }
             ForEach(notes) { note in
-                Toggle(isOn: Binding(
-                    get: { selection.contains(note.id) },
-                    set: { checked in
-                        if checked { selection.insert(note.id) }
-                        else { selection.remove(note.id) }
-                    }
-                )) {
-                    Text(note.text).font(.callout).lineLimit(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                let title = actionItemTitle(note.text) ?? "Open work"
+                HStack(alignment: .top, spacing: 8) {
+                    Toggle(title, isOn: Binding(
+                        get: { selection.contains(note.id) },
+                        set: { checked in
+                            if checked { selection.insert(note.id) }
+                            else { selection.remove(note.id) }
+                        }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .disabled(startingWork)
+
+                    ActionItemDisclosure(title: title, details: note.text)
                 }
-                .toggleStyle(.checkbox)
-                .help(note.text)
-                .disabled(startingWork)
             }
         }
         .onChange(of: notes.map(\.id)) { _, ids in selection.formIntersection(ids) }

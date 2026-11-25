@@ -9,9 +9,13 @@ struct ChatView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
     @State private var drafts: [UUID: String] = [:]
+    @FocusState private var composerFocused: Bool
+    @ScaledMetric(relativeTo: .callout) private var followUpRowHeight: CGFloat = 26
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
+    @State private var showsOpenRouterCatalog = false
     @State private var showsOpenRouterSettings = false
+    @State private var showsOllamaCatalog = false
 
     private enum TranscriptAnchor: Hashable {
         case row(String)
@@ -34,13 +38,26 @@ struct ChatView: View {
             .task(id: model.shouldCheckOllamaForChat ? agent.id : nil) {
                 if model.shouldCheckOllamaForChat { await model.refreshOllama() }
             }
+            .task(id: model.provider == .openRouter) {
+                if model.provider == .openRouter { await model.refreshOpenRouterModels() }
+            }
             .task(id: accountSelection) {
                 if accountSelection != nil { await model.refreshAccountStatus() }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-                if accountSelection != nil, case .awaitingSignIn = model.accountStatus {
+                guard accountSelection != nil else { return }
+                switch model.accountStatus {
+                case .awaitingSignIn, .awaitingBrowserApproval:
                     Task { await model.refreshAccountStatus() }
+                default:
+                    break
                 }
+            }
+            .sheet(isPresented: $showsOllamaCatalog) {
+                OllamaCatalogView(selection: $model.agentModel)
+            }
+            .sheet(isPresented: $showsOpenRouterCatalog) {
+                OpenRouterCatalogView(selection: $model.openRouterModel)
             }
             .sheet(isPresented: $showsOpenRouterSettings) {
                 VStack(spacing: 0) {
@@ -76,6 +93,15 @@ struct ChatView: View {
                     .frame(maxWidth: 820)
                     .padding(.horizontal, 24).padding(.top, 8)
             }
+            if model.shouldCheckOllamaForChat, !model.hasAgentModel {
+                VStack(alignment: .leading, spacing: 8) {
+                    OllamaModelSetup(name: model.agentModel)
+                }
+                .padding(12)
+                .frame(maxWidth: 820, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
+                .padding(.horizontal, 24).padding(.top, 8)
+            }
             if needsAccountSignIn {
                 HarnessAccountSetup()
                     .padding(12)
@@ -83,14 +109,12 @@ struct ChatView: View {
                     .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
                     .padding(.horizontal, 24).padding(.top, 8)
             }
-            if !agent.queuedFollowUps.isEmpty {
-                queuedFollowUps
-                    .frame(maxWidth: 820)
-                    .padding(.horizontal, 24).padding(.top, 8)
+            VStack(spacing: 4) {
+                if !agent.queuedFollowUps.isEmpty { queuedFollowUps }
+                composer
             }
-            composer
-                .frame(maxWidth: 820)
-                .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
+            .frame(maxWidth: 820)
+            .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
         }
     }
 
@@ -199,9 +223,9 @@ struct ChatView: View {
     private var topBar: some View {
         HStack(spacing: 12) {
             // Centred while there is room; slides left rather than under the Computer button.
-            Spacer(minLength: 16)
+            WindowHeaderSpace(minWidth: 16)
             modelPill
-            Spacer(minLength: 12)
+            WindowHeaderSpace(minWidth: 12)
             HStack {
                 if model.privacy == .thisMac {
                     CircleButton(systemImage: "pip", help: "Show floating chat") {
@@ -260,17 +284,21 @@ struct ChatView: View {
                     if model.provider == .ollama {
                         ForEach(model.modelChoices, id: \.self) { name in
                             Button { model.agentModel = name } label: {
-                                if name == model.agentModel { Label(name, systemImage: "checkmark") } else { Text(name) }
+                                let title = model.ollamaOptionTitle(name)
+                                if name == model.agentModel { Label(title, systemImage: "checkmark") } else { Text(title) }
                             }
                         }
+                        Button("Browse Ollama models…") { showsOllamaCatalog = true }
                         Button("Refresh model list") { Task { await model.refreshOllama() } }
                     } else if model.provider == .openRouter {
+                        Button("Browse OpenRouter models…") { showsOpenRouterCatalog = true }
                         ForEach(openRouterChoices, id: \.self) { name in
                             Button { model.openRouterModel = name } label: {
-                                if name == model.openRouterModel { Label(name, systemImage: "checkmark") } else { Text(name) }
+                                let title = model.openRouterOptionTitle(name)
+                                if name == model.openRouterModel { Label(title, systemImage: "checkmark") } else { Text(title) }
                             }
                         }
-                        Button("Search OpenRouter models…") { showsOpenRouterSettings = true }
+                        Button("OpenRouter settings…") { showsOpenRouterSettings = true }
                         Toggle("Request Zero Data Retention (ZDR)", isOn: $model.openRouterRequiresZDR)
                     } else if let notice = model.provider.accountDataNotice {
                         Text("Automatic")
@@ -322,12 +350,19 @@ struct ChatView: View {
                 })
             }
             return AnyView(MemoryBanner())
-        case let .booting(step), let .preparing(step):
+        case let .preparing(step):
+            if case let .downloadingDebian(progress) = step {
+                return AnyView(downloadBanner(label: step.label, progress: progress))
+            }
+            return AnyView(bannerRow(symbol: nil, text: step.label) { EmptyView() })
+        case let .booting(step):
             return AnyView(bannerRow(symbol: nil, text: step) { EmptyView() })
         case let .failed(message):
             return AnyView(VStack(alignment: .trailing, spacing: 6) {
                 bannerRow(symbol: "exclamationmark.triangle", text: message) {
-                    if model.vm.machine != nil, model.vm.state != .running {
+                    if !model.files.isPrepared {
+                        Button("Try again") { Task { await model.prepareAndStartSandbox() } }
+                    } else if model.vm.machine != nil, model.vm.state != .running {
                         Button("Turn off") { Task { await model.stop() } }
                     } else {
                         let title = model.hasSavedSandbox ? "Resume" : model.vm.state == .running ? "Try again" : "Turn on"
@@ -337,10 +372,17 @@ struct ChatView: View {
                 if model.hasSavedSandbox { DiscardSavedSandboxButton().padding(.trailing, 14) }
             })
         case .needsSetup:
-            return AnyView(bannerRow(symbol: "gearshape", text: "Set up the computer in Settings (the gear, bottom left) to chat.") {
-                EmptyView()
+            return AnyView(bannerRow(symbol: "gearshape", text: "Set up the sandbox to chat.") {
+                Button("Set up") { Task { await model.prepareAndStartSandbox() } }
+                    .buttonStyle(.borderedProminent).tint(Theme.accent)
             })
         }
+    }
+
+    private func downloadBanner(label: String, progress: Double?) -> some View {
+        DownloadProgressView(label: label, progress: progress)
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 14).fill(Theme.bubble))
     }
 
     private func bannerRow<Action: View>(symbol: String?, text: String, @ViewBuilder action: () -> Action) -> some View {
@@ -366,75 +408,92 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        (agent.isRunning || model.canChat) && !agent.isSendingSteering && hasDraft
+        !agent.isStopping && hasDraft && (agent.isRunning || (model.canChat && !agent.isSendingSteering))
     }
 
     private var queuedFollowUps: some View {
-        let status = if agent.followUpsPaused { "Follow-ups paused" }
-            else if agent.queuedFollowUps.count == 1 { "Queued for the next turn" }
-            else { "Queued follow-ups (\(agent.queuedFollowUps.count))" }
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Label(status, systemImage: agent.followUpsPaused ? "pause.circle" : "clock")
-                    .foregroundStyle(.secondary)
-                Spacer(minLength: 8)
-                if agent.followUpsPaused {
-                    Button("Send next") { model.sendQueuedFollowUp(for: agent) }
-                        .buttonStyle(.borderless)
-                        .disabled(!model.canSendQueuedFollowUp(for: agent))
-                        .help("Send the first queued follow-up")
+        let remaining = agent.queuedFollowUps.dropFirst()
+        let rows = ForEach(remaining) { queuedFollowUpRow($0) }
+        return VStack(alignment: .leading, spacing: 0) {
+            if let next = agent.queuedFollowUps.first { queuedFollowUpRow(next, isNext: true) }
+            if remaining.count > 2 {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) { rows }
                 }
+                .frame(height: 2 * followUpRowHeight)
+            } else {
+                rows
             }
-            .font(.caption)
-
-            ViewThatFits(in: .vertical) {
-                queuedFollowUpRows.fixedSize(horizontal: false, vertical: true)
-                ScrollView { queuedFollowUpRows }
-            }
-            .frame(maxHeight: 84)
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.horizontal, 12).padding(.vertical, 4)
         .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bubble))
     }
 
-    private var queuedFollowUpRows: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            ForEach(agent.queuedFollowUps, id: \.id) { followUp in
-                HStack(spacing: 8) {
-                    Text(verbatim: followUp.text)
-                        .font(.callout).lineLimit(1)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .help(followUp.text)
-                    Button { agent.removeQueuedFollowUp(followUp.id) } label: {
-                        Image(systemName: "xmark").font(.caption2.weight(.semibold))
-                            .frame(width: 22, height: 22)
-                    }
-                    .buttonStyle(.plain)
+    private func queuedFollowUpRow(_ followUp: AgentSession.QueuedFollowUp, isNext: Bool = false) -> some View {
+        let sending = agent.steeringFollowUpID == followUp.id
+        let stopping = agent.forcedFollowUpID == followUp.id
+        let status = if sending { "Steering…" }
+            else if stopping { "Stopping…" }
+            else if agent.followUpsPaused { "Paused" }
+            else if agent.waitingForSteering(followUp) { "Waiting to steer" }
+            else { "Next turn" }
+        return HStack(spacing: 8) {
+            if isNext || sending || stopping {
+                Label(status, systemImage: agent.followUpsPaused && !sending && !stopping ? "pause.circle" : "clock")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel("Remove queued follow-up")
-                    .help("Remove queued follow-up")
-                }
+                    .fixedSize()
             }
+            Text(verbatim: followUp.text)
+                .font(.callout).lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .help(followUp.text)
+            if agent.isRunning, !agent.isStopping, !sending {
+                Button("Stop & send") { model.forceQueuedFollowUp(followUp, for: agent) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .fixedSize()
+                    .disabled(!model.canForceQueuedFollowUp(followUp, for: agent))
+                    .help("Stop this turn and send this follow-up once it has stopped")
+            } else if isNext, agent.followUpsPaused, !stopping, !sending {
+                Button("Send next") { model.sendQueuedFollowUp(for: agent) }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .fixedSize()
+                    .disabled(!model.canSendQueuedFollowUp(for: agent))
+                    .help("Send the first queued follow-up")
+            }
+            Button { agent.removeQueuedFollowUp(followUp.id) } label: {
+                Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.secondary)
+            .disabled(sending)
+            .accessibilityLabel("Remove queued follow-up")
+            .help("Remove queued follow-up")
         }
+        .frame(height: followUpRowHeight)
     }
 
     private var composer: some View {
         let stopsTurn = agent.isRunning && !hasDraft
-        let submissionLabel = if agent.isSendingSteering { "Sending steering message" }
-            else if !agent.isRunning { "Send" }
-            else if agent.canSteer { "Steer the current turn" }
+        let submissionLabel = if !agent.isRunning { "Send" }
+            else if agent.supportsSteering { "Steer the current turn" }
             else { "Queue follow-up" }
-        let actionSymbol = stopsTurn ? "stop.fill" : agent.isSendingSteering ? "hourglass" : "arrow.up"
-        let actionEnabled = stopsTurn || canSend
+        let stopLabel = agent.forcedFollowUpID == nil ? "Stop" : "Cancel follow-up after stopping"
+        let actionSymbol = stopsTurn ? "stop.fill" : "arrow.up"
+        let actionEnabled = canSend || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
         return HStack(alignment: .bottom, spacing: 10) {
             TextField(placeholder, text: draft, axis: .vertical)
                 .textFieldStyle(.plain)
                 .font(.body)
                 .lineLimit(1...6)
+                .focused($composerFocused)
                 .onSubmit(send)
-                .disabled(!model.canChat && !agent.isRunning)
+                .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
                 .padding(.vertical, 9)
-            roundButton(actionSymbol, help: stopsTurn ? "Stop" : submissionLabel) {
+            roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
                 if stopsTurn { agent.stop() }
                 else { send() }
             }
@@ -461,8 +520,9 @@ struct ChatView: View {
     }
 
     private var placeholder: String {
+        if agent.isStopping { return "Stopping the current turn…" }
         if agent.isRunning {
-            return agent.canSteer ? "Steer the current turn…" : "Queue a follow-up…"
+            return agent.supportsSteering ? "Steer the current turn…" : "Queue a follow-up…"
         }
         return model.chatBlocker ?? (model.harness == .sai
             ? "Ask \(model.agent.config.name) to do something on \(model.saiMachineName)…"
@@ -512,35 +572,52 @@ struct ChatView: View {
                     .formStyle(.grouped).frame(maxWidth: 480, maxHeight: 260)
                 }
             } else {
-                let hosted = model.privacy == .localVM
+                let usesOpenRouter = model.provider == .openRouter
                 Text(model.privacy.location.displayName).font(.title3.weight(.medium))
-                Text(hosted
+                Text(usesOpenRouter
                      ? "The sandbox runs on this Mac. OpenRouter processes model requests."
                      : "The agent works in a Linux VM on this Mac. Open the computer to watch or take over.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 420)
-                if hosted, !model.hasOpenRouterKey {
+                if agent.config.usesLocalComputer, model.canChat { sandboxStarterPrompts }
+                if usesOpenRouter, !model.hasOpenRouterKey {
                     Form { KeySetup.openRouter(model) }.formStyle(.grouped).frame(maxWidth: 480, maxHeight: 200)
-                }
-                if model.phase != .ready, model.files.isPrepared, !isBusy,
-                   !model.hasSavedSandbox, !model.isSavingSandbox {
-                    Button("Turn on the computer") { Task { await model.start() } }
-                        .buttonStyle(.borderedProminent)
-                        .tint(Theme.accent)
-                        .padding(.top, 4)
                 }
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 80)
+        .padding(.vertical, agent.config.usesLocalComputer ? 24 : 80)
     }
 
-    private var isBusy: Bool {
-        switch model.phase {
-        case .booting, .preparing: true
-        default: false
+    private var sandboxStarterPrompts: some View {
+        VStack(spacing: 6) {
+            ForEach([
+                "Open example.com and summarize the page.",
+                "Compare the Moon and Mars Wikipedia pages in two tabs.",
+                "Save a short checklist to ~/work/checklist.txt and open it in the sandbox browser.",
+            ], id: \.self) { prompt in
+                Button {
+                    draft.wrappedValue = prompt
+                    composerFocused = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(prompt).multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "arrow.turn.down.right")
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
+                    .font(.callout)
+                    .padding(.horizontal, 12).padding(.vertical, 8)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
+                }
+                .buttonStyle(.plain)
+                .help("Use this prompt as your draft")
+                .accessibilityHint("Loads this prompt in the draft")
+            }
         }
+        .frame(maxWidth: 420)
     }
 
     private func send() {
@@ -549,18 +626,11 @@ struct ChatView: View {
         let field = draft
         let original = field.wrappedValue
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        if session.isRunning, session.canSteer {
-            followsLatest = true
-            Task {
-                if await session.steer(text), field.wrappedValue == original { field.wrappedValue = "" }
-            }
-        } else {
-            let wasRunning = session.isRunning
-            let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
-            if accepted {
-                if field.wrappedValue == original { field.wrappedValue = "" }
-                if !wasRunning { followsLatest = true }
-            }
+        let wasRunning = session.isRunning
+        let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
+        if accepted {
+            if field.wrappedValue == original { field.wrappedValue = "" }
+            if !wasRunning || session.supportsSteering { followsLatest = true }
         }
     }
 }

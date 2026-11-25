@@ -101,19 +101,12 @@ struct ComputerPanel: View {
                 Text(model.status.label).font(.callout).foregroundStyle(.secondary).lineLimit(1)
                     .truncationMode(.tail)
             }
-            Spacer(minLength: 8)
-            // Take over, 1Password and power belong to Agent S’s own computer.
+            WindowHeaderSpace(minWidth: 8)
             if model.agent.config.usesLocalComputer {
-            Toggle(isOn: $takeOver) { Label("Take over", systemImage: "hand.raised") }
-                .toggleStyle(.button)
-                .labelStyle(.iconOnly)
-                .disabled(model.vm.machine == nil || model.isSavingSandbox)
-                .help(takeOver ? "Your keyboard and mouse reach the computer" : "Watch only")
-            Button { showOnePassword = true } label: { Label("Fill from 1Password", systemImage: "key") }
-                .labelStyle(.iconOnly)
-                .disabled(model.phase != .ready || model.isSavingSandbox)
-                .help("Type a login from your Mac's 1Password into the computer")
-            powerButton
+                ViewThatFits(in: .horizontal) {
+                    sandboxControls(.titleAndIcon)
+                    sandboxControls(.iconOnly)
+                }
             }
             CircleButton(systemImage: maximized ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
                          help: maximized ? "Back to the chat" : "Fill the window with the computer") {
@@ -125,6 +118,23 @@ struct ComputerPanel: View {
         // Maximized, the panel starts at the window's left edge: clear the traffic lights.
         .padding(.leading, maximized ? 64 : 0)
         .frame(height: Theme.titleBarHeight)
+    }
+
+    private func sandboxControls<Style: LabelStyle>(_ labelStyle: Style) -> some View {
+        HStack(spacing: 10) {
+            Toggle(isOn: $takeOver) { Label("Take over", systemImage: "hand.raised") }
+                .toggleStyle(.button)
+                .disabled(model.vm.machine == nil || model.isSavingSandbox)
+                .accessibilityLabel("Take over the sandbox")
+                .help(takeOver ? "Release control and return to watching" : "Control the sandbox with your keyboard and mouse")
+            Button { showOnePassword = true } label: { Label("1Password", systemImage: "key") }
+                .disabled(model.phase != .ready || model.isSavingSandbox)
+                .accessibilityLabel("Fill a login from 1Password")
+                .help("Fill a login from 1Password on this Mac")
+            powerButton
+        }
+        .labelStyle(labelStyle)
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private var showsSavedSandbox: Bool {
@@ -139,17 +149,31 @@ struct ComputerPanel: View {
         if !model.isSavingSandbox {
             switch model.phase {
             case .stopped, .failed:
+                if case .failed = model.phase, model.vm.state == .running {
+                    Button("Try again") { Task { await model.start() } }
+                }
                 if model.vm.machine != nil {
-                    Button("Turn off") { Task { await model.stop() } }
+                    turnOffButton
                 } else if model.files.isPrepared, !showsSavedSandbox {
                     Button("Turn on") { Task { await model.start() } }
                 }
             case .ready, .booting:
-                Button("Turn off") { Task { await model.stop() } }
+                turnOffButton
             default:
                 EmptyView()
             }
         }
+    }
+
+    private var turnOffButton: some View {
+        Button {
+            Task { await model.stop() }
+        } label: {
+            Label("Turn off the sandbox", systemImage: "power")
+        }
+        .labelStyle(.iconOnly)
+        .accessibilityLabel("Turn off the sandbox")
+        .help("Turn off the sandbox")
     }
 
     private var savedSandbox: some View {

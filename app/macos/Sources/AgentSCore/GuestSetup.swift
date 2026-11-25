@@ -4,8 +4,8 @@ import Foundation
 ///
 /// It makes the `sai` user (the app's SSH key, passwordless sudo), installs a minimal desktop
 /// (Xorg + Openbox, logged in automatically on the VM's screen), Chromium, the accessibility bus
-/// simulang reads on Linux, Node 22 (simulang needs >= 22.18; Debian 13 ships 20), simulang and
-/// Claude Code, and mounts the folder the app shares with the guest.
+/// simulang reads on Linux, Node 24, simulang, and the harnesses. It also mounts the folder the
+/// app shares with the guest.
 public enum GuestSetup {
     public static let user = "sai"
     /// The virtio-fs tag of the folder the app shares, and where the guest mounts it.
@@ -31,8 +31,41 @@ public enum GuestSetup {
             dhcp-identifier: mac
         """
 
+    // The pinned DeepSeek Harness requires Node 24.9 or later.
+    static let nodeReadyCommand = #"""
+    node -e 'const [major, minor] = process.versions.node.split(".").map(Number); if (major < 24 || (major === 24 && minor < 9)) process.exit(1)' >/dev/null 2>&1 && npm --version >/dev/null 2>&1
+    """#
+
+    /// Both new and existing guests use the same version check before installing packages.
+    static func ensureNodeCommand(asRoot: Bool) -> String {
+        let elevated = asRoot ? "" : "sudo "
+        return #"""
+        (
+          if \#(nodeReadyCommand); then exit 0; fi
+          setup_file=$(mktemp) || exit 1
+          trap 'rm -f "$setup_file"' EXIT
+          curl -fsSL --retry 3 --connect-timeout 15 https://deb.nodesource.com/setup_24.x -o "$setup_file" &&
+          \#(elevated)env DEBIAN_FRONTEND=noninteractive /bin/bash "$setup_file" &&
+          \#(elevated)env DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs &&
+          \#(nodeReadyCommand) || {
+            printf '%s\n' 'Could not install Node.js 24.9 or later with npm.' >&2
+            exit 1
+          }
+        )
+        """#
+    }
+
+    static func ensureBaseHarnessesCommand(asRoot: Bool) -> String {
+        let installed = ["simulang", "claude", "codex"].map { "command -v \($0) >/dev/null" }.joined(separator: " && ")
+        let elevated = asRoot ? "" : "sudo "
+        let install = "\(elevated)npm install -g @simular-ai/simulang @anthropic-ai/claude-code @openai/codex"
+        return "(\(installed) || (\(install) && \(installed)))"
+    }
+
     public static func userData(sshPublicKey: String) -> String {
         let key = sshPublicKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bootstrap = "\(ensureNodeCommand(asRoot: true)) && \(ensureBaseHarnessesCommand(asRoot: true))"
+            .split(separator: "\n").map { "    \($0)" }.joined(separator: "\n")
         return """
         #cloud-config
         users:
@@ -93,17 +126,16 @@ public enum GuestSetup {
         mounts:
           - [\(shareTag), \(shareMount), virtiofs, "rw,nofail", "0", "0"]
         runcmd:
-          - curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-          - apt-get install -y nodejs
-          - npm install -g @simular-ai/simulang @anthropic-ai/claude-code @openai/codex
+          - |
+        \(bootstrap)
           - mkdir -p \(shareMount) /home/\(user)/work
           - chown -R \(user):\(user) /home/\(user)/work
           - chown -R \(user):\(user) /home/\(user)/.config
           - systemctl restart getty@tty1
-          - touch /var/lib/sai-ready
+          - touch \(readyMarker)
         """
     }
 
-    /// Present once `runcmd` has finished: the guest is ready for Claude Code.
+    /// The desktop bootstrap finished. The app verifies and repairs its tools separately.
     public static let readyMarker = "/var/lib/sai-ready"
 }

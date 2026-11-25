@@ -7,6 +7,7 @@ struct AgentSettings: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    @State private var showsOllamaCatalog = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -50,16 +51,10 @@ struct AgentSettings: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Picker("Model", selection: $model.agentModel) {
-                            ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
+                            ForEach(model.modelChoices, id: \.self) { Text(model.ollamaOptionTitle($0)).tag($0) }
                         }
-                        if !model.hasAgentModel {
-                            if let status = model.pullStatus {
-                                Text(status).font(.caption)
-                            } else {
-                                Button("Download \(model.agentModel)") { Task { await model.pullAgentModel() } }
-                                    .disabled(!model.ollamaReady)
-                            }
-                        }
+                        Button("Browse Ollama models…") { showsOllamaCatalog = true }
+                        OllamaModelSetup(name: model.agentModel)
                     }
                     if model.harness != .sai, model.provider.usesAccount {
                         LabeledContent("Model", value: "Automatic")
@@ -84,6 +79,9 @@ struct AgentSettings: View {
             .padding(12)
         }
         .frame(width: 520, height: 560)
+        .sheet(isPresented: $showsOllamaCatalog) {
+            OllamaCatalogView(selection: $model.agentModel)
+        }
         .onAppear { name = model.agent.config.name }
         .task(id: model.usesOllama ? model.selectedAgentID : nil) {
             if model.usesOllama { await model.refreshOllama() }

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import AgentSCore
 
@@ -24,16 +25,100 @@ struct SandboxAccountTests {
         #expect(SandboxAccount.plan(for: .openRouter, output: #"{"signedIn":true}"#) == nil)
     }
 
-    @Test func launchesVendorSignInWithGuestTerminal() {
-        let claude = SandboxAccount.signInCommand(for: .claudeAccount)
-        let codex = SandboxAccount.signInCommand(for: .codexAccount)
-        #expect(claude.contains("claude auth login --claudeai"))
-        #expect(codex.contains("login --device-auth"))
-        for command in [claude, codex] {
-            #expect(command.contains("systemctl --user start agent-s-browser.service"))
-            #expect(command.contains("/usr/bin/setsid -f /usr/bin/xterm"))
-            #expect(command.contains("XTerm*selectToClipboard: true"))
-        }
+    @Test func reconcilesClaudeStatusWithAReadLock() {
+        let command = SandboxAccount.claudeCompletedSignInStatusCommand
+        #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .claudeAccount)))
+        #expect(command.contains(#"exec 9>> "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock""#))
+        #expect(command.contains(#"flock -s -n -E 75 9 || exit "$?""#))
+        let status = SandboxAccount.statusCommand(for: .claudeAccount)
+        #expect(command.hasSuffix(status[status.range(of: "status=0;")!.lowerBound...]))
+    }
+
+    @Test func routesClaudeBrowserOpeningThroughOnePrivateAnnouncement() {
+        let command = SandboxAccount.claudeBrowserSignInCommand
+        #expect(command.hasPrefix(SandboxAccount.profileEnvironment(for: .claudeAccount)))
+        #expect(command.contains("unset DISPLAY WAYLAND_DISPLAY CLAUDE_CODE_OAUTH_REFRESH_TOKEN CLAUDE_CODE_OAUTH_SCOPES"))
+        #expect(command.contains(#"mktemp -d "$CLAUDE_CONFIG_DIR/browser-sign-in.XXXXXXXX""#))
+        #expect(command.contains(#"export BROWSER="$browser_dir/open-browser""#))
+        #expect(command.contains(#"/usr/bin/timeout --kill-after=2s 300s flock -n -E 75 -F "$CLAUDE_CONFIG_DIR/terminal-sign-in.lock""#))
+        #expect(command.contains(#"claude auth login --claudeai </dev/null > "$browser_dir/login-output" 2>/dev/null"#))
+        #expect(command.contains(#"mkfifo "$browser_dir/login-output""#))
+        #expect(command.contains("'Login successful.'|'Paste code here if prompted > Login successful.'"))
+        #expect(command.contains("'\(ClaudeBrowserSignIn.completionAnnouncement)'"))
+        #expect(command.contains(#"wait "$output_pid""#))
+        #expect(command.contains("while IFS= read -r _; do :; done"))
+        #expect(command.contains("'AGENT_S_CLAUDE_BROWSER '"))
+        #expect(command.contains("trap cleanup EXIT"))
+        #expect(SandboxAccount.signInCommand(for: .claudeAccount).isEmpty)
+    }
+
+    @Test func acceptsClaudeBrowserCallbackOnLoopback() throws {
+        let current = try #require(ClaudeBrowserSignIn.parseAnnouncement(announcement()))
+        #expect(current.authorizationURL.host == "claude.com")
+        #expect(current.callbackPort == 49152)
+        #expect(current.callbackHost == "localhost")
+        let legacy = try #require(ClaudeBrowserSignIn.parseAnnouncement(announcement(
+            destination: "https://claude.ai/oauth/authorize", redirect: "http://127.0.0.1:65535/callback"
+        )))
+        #expect(legacy.callbackPort == 65535)
+        #expect(legacy.callbackHost == "127.0.0.1")
+    }
+
+    @Test(arguments: [
+        "http://localhost:0/callback", "http://localhost:22/callback", "http://localhost:65536/callback",
+        "http://localhost:49152/wrong", "http://localhost:49152/callback?destination=evil",
+        "http://localhost:49152/callback#fragment", "https://localhost:49152/callback",
+        "http://abc@localhost:49152/callback", "http://localhost.evil.example:49152/callback",
+        "http://0.0.0.0:49152/callback", "https://platform.claude.com/oauth/code/callback",
+    ])
+    func rejectsUnrelatedBrowserRedirects(_ redirect: String) {
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(announcement(redirect: redirect)) == nil)
+    }
+
+    @Test(arguments: [
+        "https://claude.com.bad.example/cai/oauth/authorize", "https://bad.example@claude.com/cai/oauth/authorize",
+        "http://claude.com/cai/oauth/authorize", "https://claude.com:65000/cai/oauth/authorize",
+        "https://claude.com/help", "https://platform.claude.com/oauth/authorize",
+    ])
+    func rejectsOtherAuthorizationOrigins(_ destination: String) {
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(announcement(destination: destination)) == nil)
+    }
+
+    @Test func rejectsRawAndMalformedBrowserAnnouncements() {
+        let valid = announcement()
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(String(valid.split(separator: " ")[1])) == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid + "\nextra") == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid + "&redirect_uri=http://localhost:49152/callback") == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid + "&return_to=https://bad.example") == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid.replacingOccurrences(of: "S256", with: "plain")) == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid.replacingOccurrences(of: "9d1c", with: "339c")) == nil)
+        #expect(ClaudeBrowserSignIn.parseAnnouncement(valid.replacingOccurrences(of: "&state=", with: "&unknown=")) == nil)
+    }
+
+    private func announcement(
+        destination: String = "https://claude.com/cai/oauth/authorize",
+        redirect: String = "http://localhost:49152/callback"
+    ) -> String {
+        var url = URLComponents(string: destination)!
+        url.queryItems = [
+            .init(name: "code", value: "true"),
+            .init(name: "client_id", value: "9d1c250a-e61b-44d9-88ed-5944d1962f5e"),
+            .init(name: "response_type", value: "code"),
+            .init(name: "redirect_uri", value: redirect),
+            .init(name: "scope", value: "user:profile user:inference"),
+            .init(name: "code_challenge", value: String(repeating: "c", count: 43)),
+            .init(name: "code_challenge_method", value: "S256"),
+            .init(name: "state", value: String(repeating: "s", count: 43)),
+        ]
+        return "AGENT_S_CLAUDE_BROWSER " + url.string!
+    }
+
+    @Test func launchesCodexFallbackSignInWithGuestTerminal() {
+        let command = SandboxAccount.signInCommand(for: .codexAccount)
+        #expect(command.contains("login --device-auth"))
+        #expect(command.contains("systemctl --user start agent-s-browser.service"))
+        #expect(command.contains("/usr/bin/setsid -f /usr/bin/xterm"))
+        #expect(command.contains("XTerm*selectToClipboard: true"))
     }
 
     @Test func startsDeviceCodeAppServerWithTheGuestCodexProfile() {

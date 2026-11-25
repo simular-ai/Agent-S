@@ -65,6 +65,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var text: String
     var toolInput: String? = nil
     var isSteering: Bool? = nil
+    var approvalTitle: String? = nil
 
     var isBlankAssistantMessage: Bool {
         kind == .agent && text.allSatisfy(\.isWhitespace)
@@ -80,7 +81,10 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var items: [ChatItem] = []
     @Published private(set) var isRunning = false
     @Published private(set) var canSteer = false
-    @Published private(set) var isSendingSteering = false
+    @Published private(set) var steeringFollowUpID: UUID?
+    @Published private(set) var isStopping = false
+    @Published private(set) var forcedFollowUpID: UUID?
+    var isSendingSteering: Bool { steeringFollowUpID != nil }
     @Published private(set) var queuedFollowUps: [QueuedFollowUp] = []
     @Published private(set) var followUpsPaused = false
     @Published private(set) var memory = AgentMemory()
@@ -93,6 +97,7 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Called when something worth saving changed (the definition, or a finished turn).
     var onChange: (() -> Void)?
     var onTurnEnded: ((AgentSession, Bool) -> Void)?
+    var onForcedFollowUpReady: ((AgentSession, UUID) -> Void)?
     var onMacUIActivity: ((_ session: AgentSession, _ needsApproval: Bool) -> Void)?
 
     nonisolated var id: UUID { MainActor.assumeIsolated { config.id } }
@@ -178,11 +183,18 @@ final class AgentSession: ObservableObject, Identifiable {
     private var activeMemoryRoute: AgentMemoryRoute?
     private var activeMemorySessionInvalidated = false
     private var activeSaiSessionID: String?
+    private var confirmedSaiSessionID: String?
+    private var confirmStop: (() async -> Bool)?
 
     struct QueuedFollowUp: Identifiable {
         let id = UUID()
         let text: String
         let route: AgentMemoryRoute
+        let steeringTurn: String?
+    }
+
+    var supportsSteering: Bool {
+        config.harness == .deepSeek || (config.harness == .codex && !config.usesLocalComputer)
     }
 
     struct ChatItemRequest: Equatable {
@@ -343,14 +355,33 @@ final class AgentSession: ObservableObject, Identifiable {
     @discardableResult
     func enqueueFollowUp(_ prompt: String, route: AgentMemoryRoute) -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard isRunning, !text.isEmpty else { return false }
-        queuedFollowUps.append(QueuedFollowUp(text: text, route: route))
+        guard isRunning, !isStopping, !text.isEmpty else { return false }
+        queuedFollowUps.append(QueuedFollowUp(text: text, route: route, steeringTurn: supportsSteering ? turn : nil))
+        tryNextSteering()
         return true
     }
 
     func removeQueuedFollowUp(_ id: UUID) {
+        guard id != steeringFollowUpID else { return }
+        if id == forcedFollowUpID { forcedFollowUpID = nil }
         queuedFollowUps.removeAll { $0.id == id }
         if queuedFollowUps.isEmpty { resumeQueuedFollowUps() }
+        tryNextSteering()
+    }
+
+    func waitingForSteering(_ followUp: QueuedFollowUp) -> Bool {
+        isRunning && !isStopping && !followUpsPaused && followUp.steeringTurn == turn
+    }
+
+    private func canSteerFollowUp(_ followUp: QueuedFollowUp) -> Bool {
+        canSteer && !isStopping && !isSendingSteering && activeMemoryRoute == followUp.route
+    }
+
+    func forceFollowUp(_ followUp: QueuedFollowUp) {
+        guard isRunning, !isStopping, !isSendingSteering,
+              queuedFollowUps.contains(where: { $0.id == followUp.id }) else { return }
+        forcedFollowUpID = followUp.id
+        requestStop()
     }
 
     func pauseQueuedFollowUps() {
@@ -367,49 +398,90 @@ final class AgentSession: ObservableObject, Identifiable {
         onTurnEnded?(self, true)
     }
 
-    private func completeTurn(success: Bool) {
+    private func completeTurn(success: Bool, stoppedSafely: Bool = false) {
         let confirmed = success && turnResult != false
-        turnResult = confirmed
-        if !confirmed { pauseQueuedFollowUps() }
+        guard let followUp = forcedFollowUpID else {
+            finalizeTurn(success: confirmed)
+            return
+        }
+        if stoppedSafely || confirmed {
+            finalizeTurn(success: confirmed, forceSend: followUp)
+            return
+        }
+
+        let check = confirmStop
+        // The runner task may have been cancelled. Confirm cleanup in a new task.
+        Task { @MainActor [weak self] in
+            let safe = await check?() == true
+            guard let self else { return }
+            let stillRequested = self.forcedFollowUpID == followUp
+            if stillRequested, !safe {
+                self.notice("Couldn’t confirm the previous turn stopped. The follow-up is still queued.", isError: true)
+            }
+            self.finalizeTurn(success: false, forceSend: safe && stillRequested ? followUp : nil)
+        }
+    }
+
+    private func finalizeTurn(success: Bool, forceSend: UUID? = nil) {
+        turnResult = success
+        if !success { pauseQueuedFollowUps() }
+        confirmStop = nil
+        forcedFollowUpID = nil
+        isStopping = false
         isRunning = false
         onChange?()
-        notifyReadyFollowUps()
+        if let forceSend { onForcedFollowUpReady?(self, forceSend) }
+        else { notifyReadyFollowUps() }
     }
 
     private func noteTurnResult(success: Bool) {
         if turnResult != false { turnResult = success }
     }
 
-    func steer(_ prompt: String) async -> Bool {
-        guard canSteer, !isSendingSteering, let submitSteering else { return false }
+    private func tryNextSteering() {
+        guard let followUp = queuedFollowUps.first(where: waitingForSteering) else { return }
+        _ = steer(followUp)
+    }
+
+    @discardableResult
+    private func steer(_ followUp: QueuedFollowUp) -> Bool {
+        guard canSteerFollowUp(followUp), let submitSteering else { return false }
         let turnID = turn
-        isSendingSteering = true
-        defer {
-            if turn == turnID {
-                isSendingSteering = false
-                notifyReadyFollowUps()
+        steeringFollowUpID = followUp.id
+        Task { @MainActor [weak self] in
+            guard let self, self.turn == turnID else { return }
+            defer {
+                if self.turn == turnID {
+                    self.steeringFollowUpID = nil
+                    self.tryNextSteering()
+                    self.notifyReadyFollowUps()
+                }
+            }
+            guard self.canSteer, !self.isStopping else { return }
+            do {
+                try await submitSteering(followUp.text)
+                guard self.turn == turnID else { return }
+                self.items.append(ChatItem(id: UUID().uuidString, kind: .user, text: followUp.text, isSteering: true))
+                self.queuedFollowUps.removeAll { $0.id == followUp.id }
+                if self.queuedFollowUps.isEmpty { self.resumeQueuedFollowUps() }
+                self.onChange?()
+            } catch {
+                guard self.turn == turnID else { return }
+                // An unacknowledged message might have arrived. Keep it queued for an explicit retry.
+                self.pauseQueuedFollowUps()
+                if self.deepSeekSteering?.isClosed == true { self.setSteeringReady(false) }
+                if !(error is CancellationError) {
+                    self.notice("Couldn’t confirm steering. \(error.localizedDescription)", isError: true)
+                    self.onChange?()
+                }
             }
         }
-        do {
-            try await submitSteering(prompt)
-            guard turn == turnID else { return false }
-            items.append(ChatItem(id: UUID().uuidString, kind: .user, text: prompt, isSteering: true))
-            onChange?()
-            return true
-        } catch is CancellationError {
-            return false
-        } catch {
-            if turn == turnID {
-                if deepSeekSteering?.isClosed == true { setSteeringReady(false) }
-                notice("Couldn't steer the current turn. \(error.localizedDescription)", isError: true)
-                onChange?()
-            }
-            return false
-        }
+        return true
     }
 
     private func setSteeringReady(_ ready: Bool) {
-        canSteer = ready && isRunning && submitSteering != nil
+        canSteer = ready && isRunning && !isStopping && submitSteering != nil
+        if canSteer { tryNextSteering() }
     }
 
     private func endSteering() {
@@ -459,12 +531,19 @@ final class AgentSession: ObservableObject, Identifiable {
             completeTurn(success: false)
             return
         }
+        let guestTurn = SandboxCodexTurn(agentID: config.id, harness: harness)
+        let launch = guestTurn.launchCommand(command)
+        let stopGuestTurn: () async -> Bool = {
+            (try? await shell.run(guestTurn.stopCommand, on: ip, timeout: 35)) != nil
+        }
         do {
-            let (process, output) = try shell.stream(command, on: ip, tunnelTo: tunnelTo, standardInput: steering?.input)
+            let (process, output) = try shell.stream(launch, on: ip, tunnelTo: tunnelTo, standardInput: steering?.input)
             self.process = process
             deepSeekSteering = steering
             submitSteering = steering.map { $0.send }
-            read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey)
+            confirmStop = stopGuestTurn
+            read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey,
+                 stopSandboxTurn: stopGuestTurn)
         } catch {
             notice("Couldn't reach the computer: \(error.localizedDescription)", isError: true)
             finishMemoryTurn(success: false)
@@ -473,6 +552,14 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     func stop() {
+        forcedFollowUpID = nil
+        pauseQueuedFollowUps()
+        requestStop()
+    }
+
+    private func requestStop() {
+        guard isRunning, !isStopping else { return }
+        isStopping = true
         noteTurnResult(success: false)
         pauseQueuedFollowUps()
         memoryTurn?.canCommit = false
@@ -480,7 +567,7 @@ final class AgentSession: ObservableObject, Identifiable {
         // The guest turn may still be reading the screen before it launches SSH.
         if isRunning, process == nil, appProcess == nil, hostedTask == nil, saiTask == nil {
             turn = UUID().uuidString
-            finish(status: 15, stderr: "")
+            finish(status: 15, stderr: "", stoppedSafely: true)
             return
         }
         if let process, process.isRunning { process.terminate() }
@@ -490,8 +577,39 @@ final class AgentSession: ObservableObject, Identifiable {
         stopHostedTurn?()
         denyPendingApprovals()
         if let saiTask {
-            saiTask.cancel()
-            if let session = activeSaiSessionID { Task { await SaiAPI.abort(session: session) } }
+            if forcedFollowUpID != nil {
+                let confirmation = Task { @MainActor [weak self] in
+                    await self?.confirmSaiStop(saiTask) == true
+                }
+                confirmStop = { await confirmation.value }
+            } else {
+                saiTask.cancel()
+                if let session = activeSaiSessionID { Task { await SaiAPI.abort(session: session) } }
+            }
+        }
+    }
+
+    private func confirmSaiStop(_ task: Task<Void, Never>) async -> Bool {
+        defer { task.cancel() }
+        let deadline = ContinuousClock.now + .seconds(8)
+        // A new turn may not have received its session ID yet.
+        while confirmedSaiSessionID == nil, saiTask != nil, ContinuousClock.now < deadline {
+            do { try await Task.sleep(for: .milliseconds(100)) } catch { return false }
+        }
+        guard let session = confirmedSaiSessionID else { return false }
+        do {
+            try await SaiAPI.abortConfirmed(session: session)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private var hasUnfinishedToolSteps: Bool {
+        let start = items.lastIndex { $0.kind == .user && $0.isSteering != true } ?? items.startIndex
+        return items[start...].contains { item in
+            if case .step(_, false, _, _) = item.kind { return true }
+            return false
         }
     }
 
@@ -618,10 +736,15 @@ final class AgentSession: ObservableObject, Identifiable {
         }
         guard needsApproval else { return true }
         let id = UUID().uuidString
+        let title: String? = if tool == "Bash", let command = input["command"] as? String {
+            ToolActivity.title(tool: "mac", summary: command)
+        } else {
+            nil
+        }
         return await withCheckedContinuation { continuation in
             pendingApprovals[id] = continuation
             items.append(ChatItem(id: "approval/\(id)", kind: .approval(id: id, linkOnly: false, url: nil, answer: nil),
-                                  text: Self.describe(tool: tool, input: input, macToolPath: macToolPath)))
+                                  text: Self.describe(tool: tool, input: input, macToolPath: macToolPath), approvalTitle: title))
         }
     }
 
@@ -725,10 +848,12 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool,
-                      sandboxSessionKey: String? = nil) {
+                      sandboxSessionKey: String? = nil, stopSandboxTurn: (() async -> Bool)? = nil) {
         Task { @MainActor [weak self] in
             var claude = ClaudeStream()
             var deepSeek = DeepSeekStream()
+            let isSandboxCodex = !inApp && harness == .codex
+            var writerConflict: String?
             for await line in output.lines {
                 guard let self, self.turn == turnID else { continue }
                 switch line {
@@ -738,7 +863,16 @@ final class AgentSession: ObservableObject, Identifiable {
                     case .deepSeek: deepSeek.consume(line: line)
                     default: harness.parse(line: line)
                     }
-                    self.apply(events, sandboxSessionKey: sandboxSessionKey)
+                    for event in events {
+                        if isSandboxCodex, case let .finished(diagnostic?, true, _) = event,
+                           let message = SandboxTurnFailure.codexWriterMessage(for: diagnostic) {
+                            writerConflict = message
+                            self.noteTurnResult(success: false)
+                            self.memoryTurn?.canCommit = false
+                        } else {
+                            self.apply([event], sandboxSessionKey: sandboxSessionKey)
+                        }
+                    }
                 case let .rejected(message):
                     self.noteTurnResult(success: false)
                     self.memoryTurn?.canCommit = false
@@ -746,6 +880,9 @@ final class AgentSession: ObservableObject, Identifiable {
                 }
             }
             let (status, stderr) = await output.completion()
+            if status == 15 || status == 255, self?.forcedFollowUpID == nil {
+                _ = await stopSandboxTurn?()
+            }
             guard let self else { return }
             if inApp {
                 self.appProcess = nil
@@ -761,7 +898,12 @@ final class AgentSession: ObservableObject, Identifiable {
             let error = inApp ? stderr.split(separator: "\n")
                 .filter { !$0.contains("unrecognized_model") && !$0.contains("no stdin data") }
                 .joined(separator: "\n") : stderr
-            self.finish(status: status, stderr: error, sandboxTurn: !inApp)
+            if isSandboxCodex, writerConflict == nil {
+                writerConflict = SandboxTurnFailure.codexWriterMessage(for: error)
+            }
+            let localStopped = inApp && (self.config.computer != .box || !self.hasUnfinishedToolSteps)
+            self.finish(status: status, stderr: error, sandboxTurn: !inApp,
+                        writerConflict: writerConflict, stoppedSafely: localStopped)
         }
     }
 
@@ -776,7 +918,7 @@ final class AgentSession: ObservableObject, Identifiable {
         let config = config
         let usesBox = config.computer == .box
         let readiness: (Bool) -> Void = { [weak self] ready in self?.setSteeringReady(ready) }
-        runHostedTurn(prompt, harness: .codex, stop: runner.stop, steer: runner.steer,
+        runHostedTurn(prompt, harness: .codex, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped, steer: runner.steer,
                       memoryRoute: memoryRoute) { [weak self] promptForModel, resume, onEvent in
             if usesBox {
                 try await runner.runOnBox(prompt: promptForModel, resume: resume, dataFolder: dataFolder, agentID: config.id,
@@ -796,7 +938,8 @@ final class AgentSession: ObservableObject, Identifiable {
         let runner = DeepSeekTurn()
         let config = config
         let steering = DeepSeekSteering()
-        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, steer: steering.send, deepSeekInput: steering,
+        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped,
+                      steer: steering.send, deepSeekInput: steering,
                       memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
                                  dataFolder: dataFolder, agentID: config.id, target: .box(config.boxName),
@@ -814,7 +957,8 @@ final class AgentSession: ObservableObject, Identifiable {
             guard let self else { return false }
             return await self.requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool)
         }
-        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, steer: steering.send, deepSeekInput: steering,
+        runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped,
+                      steer: steering.send, deepSeekInput: steering,
                       memoryRoute: memoryRoute, verifyRoute: verifyRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
                                  dataFolder: dataFolder, agentID: agentID, target: target,
@@ -823,6 +967,7 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func runHostedTurn(_ prompt: String, harness: Harness, stop: @escaping () -> Void,
+                               waitUntilStopped: @escaping () async -> Bool,
                                steer: ((String) async throws -> Void)? = nil, deepSeekInput: DeepSeekSteering? = nil,
                                memoryRoute: AgentMemoryRoute?,
                                verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil,
@@ -831,6 +976,10 @@ final class AgentSession: ObservableObject, Identifiable {
         let legacyResume = memoryRoute == nil ? currentSessionID : nil
         let context = boxSessionKey
         stopHostedTurn = stop
+        confirmStop = { [weak self] in
+            guard await waitUntilStopped(), let self else { return false }
+            return self.config.computer != .box || !self.hasUnfinishedToolSteps
+        }
         submitSteering = steer
         deepSeekSteering = deepSeekInput
         let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
@@ -916,6 +1065,7 @@ final class AgentSession: ObservableObject, Identifiable {
             }
             self.saiTask = nil
             self.activeSaiSessionID = nil
+            self.confirmedSaiSessionID = nil
             self.completeTurn(success: completed)
         }
     }
@@ -946,6 +1096,7 @@ final class AgentSession: ObservableObject, Identifiable {
         case "data-session":
             if let id = data["sessionId"] as? String {
                 activeSaiSessionID = id
+                confirmedSaiSessionID = id
                 if !recordRouteSession(id) { sessions[.sai] = id }
             }
         case "text-delta":
@@ -979,11 +1130,12 @@ final class AgentSession: ObservableObject, Identifiable {
             items[index].kind = .step(name: name, done: true, failed: true, output: output.isEmpty ? error : output + "\n" + error)
         case "data-approval-request":
             guard let id = data["approvalId"] as? String else { return }
-            let title = [data["title"] as? String, data["description"] as? String].compactMap { $0 }.joined(separator: ": ")
+            let title = data["title"] as? String
+            let details = [title, data["description"] as? String].compactMap { $0 }.joined(separator: ": ")
             items.append(ChatItem(id: "approval/\(id)",
                                   kind: .approval(id: id, linkOnly: data["isLinkOnly"] as? Bool ?? false,
                                                   url: SaiAPI.approvalURL(data), answer: nil),
-                                  text: title.isEmpty ? "Sai is asking for approval." : title))
+                                  text: details.isEmpty ? "Sai is asking for approval." : details, approvalTitle: title))
         case "data-turn-result":
             if let usage = data["usage"] as? [String: Any] {
                 let input = (usage["inputTokens"] as? Int) ?? 0, output = (usage["outputTokens"] as? Int) ?? 0
@@ -1020,7 +1172,7 @@ final class AgentSession: ObservableObject, Identifiable {
         memorySessions = [:]
         stop()
         if isRunning { turn = UUID().uuidString }
-        isSendingSteering = false
+        steeringFollowUpID = nil
         queuedFollowUps = []
         resumeQueuedFollowUps()
         memoryTurn = nil
@@ -1092,13 +1244,18 @@ final class AgentSession: ObservableObject, Identifiable {
         }
     }
 
-    private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false) {
+    private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false, writerConflict: String? = nil,
+                        stoppedSafely: Bool = false) {
         endSteering()
-        let completed = status == 0 && turnResult == true
+        let completed = status == 0 && turnResult == true && writerConflict == nil
         finishMemoryTurn(success: completed)
-        defer { completeTurn(success: completed) }
+        defer { completeTurn(success: completed, stoppedSafely: stoppedSafely) }
         // 15: stopped by the user (SIGTERM).
         if status == 15 { notice("Stopped.", isError: false); return }
+        if let writerConflict {
+            notice(writerConflict, isError: true)
+            return
+        }
         if status != 0 {
             let reason = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             let message: String
@@ -1106,6 +1263,8 @@ final class AgentSession: ObservableObject, Identifiable {
                 message = reason.contains("remote port forwarding failed")
                     ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
                     : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."
+            } else if sandboxTurn, harness == .codex, reason.contains(SandboxCodexTurn.lifecycleFailureMarker) {
+                message = "The sandbox couldn’t start or stop Codex safely. Wait a moment and try again in this chat."
             } else if harness == .deepSeek, reason.contains("already owned by an active write handle") {
                 message = "DeepSeek still has this conversation open. Wait for the previous turn to finish before sending again."
             } else {

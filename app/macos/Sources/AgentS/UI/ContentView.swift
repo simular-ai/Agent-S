@@ -12,9 +12,17 @@ struct ContentView: View {
     @State private var maximized = false
 
     var body: some View {
-        content
-            // The selected side's conversation; switching sides swaps it.
-            .environmentObject(model.agent)
+        if model.needsFirstAgentSetup {
+            NewAgentSheet(.firstAgent)
+                .frame(minWidth: 641, maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.canvas)
+        } else if model.needsFirstAgentPreparation {
+            FirstAgentPreparationView { showComputer = true }
+                .frame(minWidth: 641)
+                .background(Theme.canvas)
+        } else {
+            content.environmentObject(model.agent)
+        }
     }
 
     private var content: some View {
@@ -257,7 +265,8 @@ struct Sidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Spacer()
+                WindowHeaderSpace()
+                    .padding(.leading, 64)
                 CircleButton(systemImage: "plus", help: "New agent") { creating = .linuxVM }
             }
             .padding(.horizontal, 16)
@@ -283,7 +292,7 @@ struct Sidebar: View {
         .task(id: model.hasOllamaAgents) {
             if model.hasOllamaAgents, !model.ollamaChecked { await model.refreshOllama() }
         }
-        .sheet(item: $creating) { NewAgentSheet(initialLocation: $0) }
+        .sheet(item: $creating) { NewAgentSheet(.newAgent($0)) }
         .sheet(isPresented: $agentSettings) { AgentSettings() }
         .alert("Rename agent", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -462,7 +471,7 @@ extension AppModel {
     var status: ComputerStatus {
         switch phase {
         case .needsSetup: ComputerStatus(label: "Computer not set up", color: .secondary)
-        case let .preparing(step): ComputerStatus(label: step, color: .orange)
+        case let .preparing(step): ComputerStatus(label: step.label, color: .orange)
         case .stopped: ComputerStatus(label: "Computer off", color: .secondary)
         case let .booting(step): ComputerStatus(label: step, color: .orange)
         case .ready: ComputerStatus(label: "Computer on", color: .green)
