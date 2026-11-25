@@ -4,7 +4,16 @@
 </h1>
 
 <p align="center">
-  <b>An open-source computer use agent that can operate a real GUI like a human or work in the way beyond human capacity.</b>
+  <b>An open-source computer-use agent with a fully private on-device mode.</b><br>
+  Choose Sandbox on This Mac and a local Ollama model to run the agent and model inference on your Mac.
+</p>
+
+<p align="center">
+  <a href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.3/Agent-S-macOS-0.1.0-arm64.dmg">
+    <img src="https://img.shields.io/badge/Download%20Agent%20S-0969da?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Agent S for Mac">
+  </a>
+  <br>
+  Apple Silicon · macOS 14 or later
 </p>
 
 <p align="center">
@@ -68,7 +77,7 @@
 
 ## 🚀 Quick Start
 
-- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build [Agent S for Mac](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
+- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. On Apple Silicon Macs running macOS 14 or later, install Agent S from [GitHub Releases](https://github.com/simular-ai/Agent-S/releases/latest) or [build from source](./app/macos/README.md).
   - **Sandbox on This Mac** runs tools in a Linux VM. Choose Ollama for on-device inference with a local model or OpenRouter for hosted inference.
   - **This Mac** works in your apps, Terminal, and files with approvals for actions. Choose Claude Code or DeepSeek with a local Ollama model for on-device inference.
   - **Cloud Computer** works on a Sai computer or Simular Box.
