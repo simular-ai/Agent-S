@@ -53,6 +53,7 @@
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
 ## 🥳 Updates
+- [x] **2026/11/24** — Released **[Agent S v0.3.3](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.3)** with a notarized desktop installer and fully private on-device computer use through a local sandbox and a local Ollama model.
 - [x] **2026/10/20**: Released **[Agent S4](./agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost. *(OSWorld V2 is scored as a strict binary pass/fail with no partial credit, so 21.3% reflects benchmark difficulty, not low reliability — see the [Agent S4 README](./agent_s4/README.md) for details.)*
 - [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 
