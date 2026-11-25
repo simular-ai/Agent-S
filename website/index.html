@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#faf8f5">
+  <meta name="description" content="Agent S is a fully open-source, on-device computer-use agent for code, browsers, and desktop apps. Available for macOS. Windows coming soon.">
+  <meta property="og:title" content="Agent S — The private computer-use agent">
+  <meta property="og:description" content="Fully open-source computer use with local inference and a private sandbox. Available for macOS. Windows coming soon.">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://agent-s.simular.ai/">
+  <link rel="canonical" href="https://agent-s.simular.ai/">
+  <link rel="icon" href="assets/agent-s.png" type="image/png">
+  <link rel="preload" href="assets/fonts/adamina.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="styles.css">
+  <title>Agent S — The private computer-use agent</title>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="header">
+    <div class="wrap header-inner">
+      <a class="wordmark" href="./">
+        <img src="assets/agent-s.png" width="36" height="36" alt="">
+        <span>Agent S</span>
+      </a>
+      <nav aria-label="Main navigation">
+        <a href="https://www.simular.ai/">Back to Simular</a>
+        <a href="#private">Private mode</a>
+        <a href="#options">Cloud options</a>
+        <a class="nav-source" href="https://github.com/simular-ai/Agent-S">GitHub</a>
+      </nav>
+    </div>
+  </header>
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <img class="hero-photo" src="assets/misty-lake.jpg" width="1774" height="887" alt="" fetchpriority="high">
+      <div class="wrap hero-inner">
+        <div class="hero-copy">
+          <h1 id="hero-title">The private computer-use agent</h1>
+          <p>Agent S is fully open source. Run a model on your own computer and give your agent a private sandbox for code, the web, and desktop apps.</p>
+          <div class="actions">
+            <a class="button" id="mac-release" href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.3/Agent-S-macOS-0.1.0-arm64.dmg">Download for Mac</a>
+            <a class="text-link" href="https://github.com/simular-ai/Agent-S/blob/main/app/macos/README.md#build-and-run">Build from source</a>
+          </div>
+          <p class="requirements">
+            <span>Apple Silicon · macOS 14 or later</span>
+            <strong>Windows coming soon</strong>
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap" id="private" aria-labelledby="privacy-title">
+      <div class="section-intro">
+        <h2 id="privacy-title">Fully private on your device</h2>
+        <p>On macOS, pair a local Ollama model with the Linux sandbox to keep inference and desktop execution on your device.</p>
+      </div>
+      <div class="two-columns privacy-grid">
+        <article>
+          <h3>On-device inference</h3>
+          <p>The local model processes prompts, screenshots, and tool output on your computer. Chats are saved locally, and you choose which installed model to run.</p>
+        </article>
+        <article>
+          <h3>A separate desktop</h3>
+          <p>The agent works in its own Linux environment, separate from your everyday apps and files. Use the shared folder to give it files, and watch or take over its desktop at any time.</p>
+        </article>
+      </div>
+      <p class="network-note">Websites the agent visits still receive ordinary browser traffic. <a href="https://github.com/simular-ai/Agent-S/blob/main/app/macos/README.md#permissions-and-data">Permissions and data</a></p>
+    </section>
+
+    <section class="tools-section" aria-labelledby="tools-title">
+      <div class="wrap section">
+        <div class="section-intro">
+          <h2 id="tools-title">A sandbox with a full desktop</h2>
+          <p>Give Agent S a task in plain language. It can use the terminal, browser, and desktop together.</p>
+        </div>
+        <div class="tools-grid">
+          <article>
+            <span class="tool-icon terminal" aria-hidden="true"></span>
+            <h3>Run code</h3>
+            <p>Write and run scripts, use terminal tools, and process files inside the sandbox.</p>
+          </article>
+          <article>
+            <span class="tool-icon browser" aria-hidden="true"></span>
+            <h3>Browse the web</h3>
+            <p>Navigate sites in Chromium, fill forms, and collect information.</p>
+          </article>
+          <article>
+            <span class="tool-icon desktop" aria-hidden="true"></span>
+            <h3>Use desktop apps</h3>
+            <p>Open Linux apps and work in them by clicking, typing, and scrolling.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section wrap" id="options" aria-labelledby="options-title">
+      <div class="section-intro">
+        <h2 id="options-title">Optional cloud tools</h2>
+        <p>Choose hosted inference, a remote sandbox, or both when the task calls for it.</p>
+      </div>
+      <div class="two-columns options-grid">
+        <article>
+          <h3>OpenRouter with ZDR</h3>
+          <p>Use hosted models through OpenRouter and request Zero Data Retention routing. The model processes requests off-device, and retention follows your OpenRouter privacy settings.</p>
+          <a href="https://openrouter.ai/docs/guides/features/zdr">OpenRouter’s ZDR policy</a>
+        </article>
+        <article>
+          <h3>Remote sandbox with Simular Box</h3>
+          <p>Move work to a cloud Linux desktop with a browser, shell, and files. Box can group several desktop actions into one tool call, reducing model round trips.</p>
+          <a href="https://box.simular.ai/">Explore Simular Box</a>
+        </article>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <p>Agent S by <a href="https://www.simular.ai/">Simular</a></p>
+      <a href="https://github.com/simular-ai/Agent-S/blob/main/LICENSE">Apache 2.0 license</a>
+    </div>
+  </footer>
+</body>
+</html>
