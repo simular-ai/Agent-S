@@ -60,7 +60,9 @@ struct OllamaCatalogView: View {
                 Section("Installed on This Mac") {
                     ForEach(installed) { entry in
                         let name = Ollama.normalizedName(entry.name)
-                        OllamaCatalogRow(name: name, detail: entry.sizeLabel, selected: name == Ollama.normalizedName(selection)) {
+                        OllamaCatalogRow(name: Ollama.displayName(for: name),
+                                         input: model.ollamaInputCapability(for: name), detail: entry.sizeLabel,
+                                         selected: name == Ollama.normalizedName(selection)) {
                             select(name)
                         }
                     }
@@ -101,7 +103,8 @@ struct OllamaCatalogView: View {
         }
     }
 
-    private func select(_ name: String) {
+    private func select(_ name: String, input: ModelInputCapability? = nil) {
+        model.rememberOllamaInput(input, for: name)
         let normalized = Ollama.normalizedName(name)
         if normalized != Ollama.normalizedName(selection) { selection = normalized }
         dismiss()
@@ -111,7 +114,7 @@ struct OllamaCatalogView: View {
 private struct OllamaVariantList: View {
     let family: String
     let selection: String
-    let select: (String) -> Void
+    let select: (String, ModelInputCapability?) -> Void
     @EnvironmentObject private var model: AppModel
     @State private var search = ""
     @State private var variants: CatalogLoad<[OllamaCatalog.Variant]> = .loading
@@ -142,9 +145,10 @@ private struct OllamaVariantList: View {
                             let detail = installed?.sizeLabel
                                 ?? entry.size.map { "About \($0)" }
                                 ?? "Download size unavailable"
-                            OllamaCatalogRow(name: entry.name, detail: detail,
+                            let input = installed == nil ? entry.inputCapability : model.ollamaInputCapability(for: entry.name)
+                            OllamaCatalogRow(name: entry.name, input: input, detail: detail,
                                              selected: Ollama.normalizedName(entry.name) == Ollama.normalizedName(selection)) {
-                                select(entry.name)
+                                select(entry.name, entry.inputCapability)
                             }
                         }
                     }
@@ -161,14 +165,20 @@ private struct OllamaVariantList: View {
 
 private struct OllamaCatalogRow: View {
     let name: String
+    let input: ModelInputCapability?
     let detail: String
     let selected: Bool
     let select: () -> Void
 
     var body: some View {
         Button(action: select) {
-            HStack {
-                Text(name)
+            HStack(alignment: .firstTextBaseline) {
+                Text(name).lineLimit(1)
+                if let input {
+                    Text(input.label)
+                        .font(.caption).foregroundStyle(.secondary)
+                        .fixedSize()
+                }
                 Spacer()
                 Text(detail).font(.caption).foregroundStyle(.secondary)
                 if selected { Image(systemName: "checkmark").accessibilityHidden(true) }
@@ -180,39 +190,86 @@ private struct OllamaCatalogRow: View {
     }
 }
 
-/// The selected model’s reported footprint on this Mac or its estimated download from Ollama.
-struct OllamaModelSize: View {
+/// The selected model’s size and a warning when available RAM may fall short.
+struct OllamaModelDetails: View {
+    private struct Lookup: Hashable {
+        let name: String
+        let installed: Ollama.Model?
+    }
+
     @EnvironmentObject private var model: AppModel
     let name: String
-    @State private var lookup: (name: String, size: String?)?
+    let sandboxMemory: UInt64
+    @State private var result: (lookup: Lookup, size: String?)?
 
     var body: some View {
-        Text(description).font(.caption).foregroundStyle(.secondary)
-            .task(id: name) {
-                guard installed == nil else { return }
-                let size = try? await publishedSize()
-                if !Task.isCancelled { lookup = (name, size) }
+        let lookup = Lookup(name: name, installed: model.ollamaModels.first { $0.matches(name) })
+        VStack(alignment: .leading, spacing: 6) {
+            Text(description(for: lookup))
+                .foregroundStyle(.secondary)
+            if let estimate = memoryEstimate(for: lookup) {
+                TimelineView(.periodic(from: .now, by: 5)) { _ in
+                    memoryWarning(for: estimate)
+                }
             }
+        }
+        .font(.caption)
+        .task(id: lookup) {
+            guard lookup.installed == nil, presetSize == nil, !Ollama.isCloudReference(name) else { return }
+            let variant = try? await publishedVariant()
+            guard !Task.isCancelled else { return }
+            result = (lookup, variant?.size)
+            model.rememberOllamaInput(variant?.inputCapability, for: name)
+        }
     }
 
-    private var installed: Ollama.Model? {
-        model.ollamaModels.first { $0.matches(name) }
+    @ViewBuilder private func memoryWarning(for estimate: OllamaMemoryEstimate) -> some View {
+        let pendingSandbox = model.vm.machine == nil ? sandboxMemory : 0
+        if let available = SystemMemory.available(),
+           estimate.exceedsBudget(availableMemory: available, sandboxMemory: pendingSandbox) {
+            let modelBudget = SystemMemory.format(available - min(available, pendingSandbox))
+            Label {
+                Text("This model may need more than the \(modelBudget) of RAM available. Try a smaller local model or a cloud model.")
+                    .fixedSize(horizontal: false, vertical: true)
+            } icon: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+        }
     }
 
-    private var description: String {
-        if let installed { return installed.sizeLabel }
+    private var presetSize: String? {
+        switch Ollama.normalizedName(name) {
+        case Ollama.nemotronNano4B: "2.8 GB – 2.9 GB"
+        case Ollama.nemotronBoltE4B: "7.2 GB – 7.9 GB"
+        default: nil
+        }
+    }
+
+    private func description(for lookup: Lookup) -> String {
+        let loaded = result?.lookup == lookup ? result : nil
+        if let installed = lookup.installed { return installed.sizeLabel }
         if Ollama.isCloudReference(name) { return "Hosted by Ollama" }
-        if lookup?.name == name, let size = lookup?.size { return "Estimated download · \(size)" }
-        if name == OllamaModelSetup.nemotron { return "Estimated download · 2.8–2.9 GB" }
-        return lookup?.name == name ? "Download size unavailable" : "Checking download size…"
+        if let size = presetSize ?? loaded?.size { return "Estimated download · \(size)" }
+        return loaded == nil ? "Checking download size…" : "Download size unavailable"
     }
 
-    private func publishedSize() async throws -> String? {
-        guard !Ollama.isCloudReference(name),
-              let family = name.split(separator: ":", maxSplits: 1).first.map(String.init),
+    private func memoryEstimate(for lookup: Lookup) -> OllamaMemoryEstimate? {
+        guard !Ollama.isCloudReference(name), lookup.installed?.usesRemoteInference != true else { return nil }
+        if let installed = lookup.installed, installed.size > 0 {
+            return OllamaMemoryEstimate(modelBytes: UInt64(installed.size))
+        }
+        if let size = presetSize ?? (result?.lookup == lookup ? result?.size : nil) {
+            return OllamaMemoryEstimate(catalogSize: size)
+        }
+        return nil
+    }
+
+    private func publishedVariant() async throws -> OllamaCatalog.Variant? {
+        guard let family = name.split(separator: ":", maxSplits: 1).first.map(String.init),
               try await OllamaCatalog.shared.families().contains(family) else { return nil }
         let variants = try await OllamaCatalog.shared.variants(for: family)
-        return variants.first { Ollama.normalizedName($0.name) == Ollama.normalizedName(name) }?.size
+        return variants.first { Ollama.normalizedName($0.name) == Ollama.normalizedName(name) }
     }
 }
 

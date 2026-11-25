@@ -13,7 +13,7 @@ public enum ModelProvider: String, CaseIterable, Identifiable, Codable, Sendable
     public var displayName: String {
         switch self {
         case .ollama: "Ollama (on this Mac)"
-        case .openRouter: "OpenRouter"
+        case .openRouter: "OpenRouter (cloud)"
         case .claudeAccount: "Use Claude Code account"
         case .codexAccount: "Use Codex account"
         }

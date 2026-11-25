@@ -39,8 +39,12 @@ The Computer panel shows pending requests and open work first. Check items under
 ## Choose how an agent runs
 
 On first launch, pick a harness and model for **Sandbox on This Mac**, then click
-**Set up agent** to download and start the sandbox. If you choose **Ollama**, the
-setup screen links to the Mac installer and lets you download the selected model.
+**Set up agent** to download and start the sandbox. **Nemotron 3 Nano 4B** is
+the default Ollama model. The model browser shows input support and estimated
+download sizes for local models. Onboarding warns if the selected model is
+likely to need more memory than your Mac can spare. The setup screen can open
+the Ollama installer and download your selected model. Open chat when the
+sandbox and model are ready, or use **Set up a cloud agent…** to add one.
 The new chat offers sample tasks. Click one to fill the composer, where you can
 edit it before sending.
 

@@ -38,6 +38,14 @@ final class AppModel: ObservableObject {
         case failed(name: String, message: String)
     }
 
+    private struct OpenRouterZDRCheck {
+        let catalog: OpenRouterZDRCatalog
+        let publicModelIDs: Set<String>?
+        let checkedAt = ContinuousClock.now
+
+        var isFresh: Bool { checkedAt.duration(to: .now) < .seconds(300) }
+    }
+
     private struct AccountRoute: Hashable {
         let provider: ModelProvider
         let inSandbox: Bool
@@ -48,8 +56,8 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Claude Code's model: tool calling and a long context matter most.
-    static let defaultAgentModel = "gemma4"
+    /// The preselected Ollama model for new agents.
+    static let defaultAgentModel = Ollama.nemotronNano4B
     /// Ollama >= 0.14 serves the Anthropic Messages API Claude Code speaks.
     static let minimumOllama = "0.14.0"
     private static let computerMemoryKey = "computerMemoryGB"
@@ -71,11 +79,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var ollamaChecked = false
     @Published private(set) var ollamaVersion: String?
     @Published private(set) var ollamaModels: [Ollama.Model] = []
+    @Published private var installedOllamaInputs: [Ollama.Model: ModelInputCapability] = [:]
+    @Published private var libraryOllamaInputs: [String: ModelInputCapability] = [:]
+    private var ollamaInputsTask: Task<Void, Never>?
     @Published private(set) var ollamaDownload: OllamaDownload?
     private var ollamaRefreshGeneration = 0
     private var appliedOllamaRefreshGeneration = 0
     @Published private(set) var openRouterModels: [OpenRouter.Model] = []
     @Published private(set) var isRefreshingOpenRouterModels = false
+    @Published private var openRouterZDRCheck: OpenRouterZDRCheck?
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
     @Published var openRouterRequiresZDR = AppModel.storedOpenRouterRequiresZDR {
         didSet { UserDefaults.standard.set(openRouterRequiresZDR, forKey: Self.openRouterZDRKey) }
@@ -430,6 +442,21 @@ final class AppModel: ObservableObject {
         return Ollama.isAtLeast(ollamaVersion, Self.minimumOllama)
     }
 
+    static func minimumOllamaVersion(for name: String) -> String {
+        Ollama.normalizedName(name) == Ollama.nemotronBoltE4B ? "0.40.10" : minimumOllama
+    }
+
+    func ollamaUpgradeMessage(for name: String) -> String? {
+        guard let ollamaVersion else { return nil }
+        let minimum = Self.minimumOllamaVersion(for: name)
+        guard !Ollama.isAtLeast(ollamaVersion, minimum) else { return nil }
+        return "Update Ollama to \(minimum) or later to use \(Ollama.displayName(for: name))."
+    }
+
+    func ollamaReady(for name: String) -> Bool {
+        ollamaVersion != nil && ollamaUpgradeMessage(for: name) == nil
+    }
+
     var hasAgentModel: Bool { hasOllamaModel(agentModel) }
 
     func hasOllamaModel(_ name: String) -> Bool { ollamaModels.contains { $0.matches(name) } }
@@ -505,9 +532,37 @@ final class AppModel: ObservableObject {
     /// The models Ollama has, without the `:latest` tag, plus the current choice if it isn't
     /// downloaded yet (so it can still be picked and downloaded).
     var modelChoices: [String] {
-        var names = ollamaModels.map { Ollama.normalizedName($0.name) }
+        let selected = Ollama.normalizedName(agentModel)
+        var names = ollamaModels.map {
+            let name = Ollama.normalizedName($0.name)
+            return name == selected ? agentModel : name
+        }
         if !names.contains(agentModel) { names.insert(agentModel, at: 0) }
         return names
+    }
+
+    func ollamaInputCapability(for name: String) -> ModelInputCapability? {
+        if let installed = ollamaModels.first(where: { $0.matches(name) }) {
+            return installedOllamaInputs[installed]
+        }
+        return libraryOllamaInputs[Ollama.normalizedName(name)] ?? Ollama.suggestedModelInput(for: name)
+    }
+
+    func rememberOllamaInput(_ capability: ModelInputCapability?, for name: String) {
+        guard let capability else { return }
+        let normalized = Ollama.normalizedName(name)
+        if libraryOllamaInputs[normalized] != capability { libraryOllamaInputs[normalized] = capability }
+    }
+
+    func ollamaOptionTitle(_ name: String) -> String {
+        let title = Ollama.displayName(for: name)
+        return ollamaInputCapability(for: name).map { "\(title) · \($0.label)" } ?? title
+    }
+
+    func openRouterOptionTitle(_ id: String) -> String {
+        let input = openRouterModels.first { $0.id == id }?.inputCapability?.label
+        let zdr = openRouterZDRAvailability(for: id).label
+        return [id, input, zdr].compactMap { $0 }.joined(separator: " · ")
     }
 
     // MARK: Actions
@@ -601,7 +656,8 @@ final class AppModel: ObservableObject {
                 }
                 guard vm.machine === machine, vm.state == .running else { return }
                 sandboxNeedsFullToolInstall = true
-                install = (GuestTools.installCommand, "Installing the sandbox tools…")
+                let minutes = (GuestTools.installTimeoutSeconds + 59) / 60
+                install = (GuestTools.installCommand, "Installing the sandbox tools… Allow about \(minutes) minutes")
             }
         } catch {
             guard vm.machine === machine, vm.state == .running else { return }
@@ -712,16 +768,36 @@ final class AppModel: ObservableObject {
         if !Task.isCancelled, generation > appliedOllamaRefreshGeneration {
             appliedOllamaRefreshGeneration = generation
             ollamaVersion = checkedVersion
-            ollamaModels = checkedModels
+            if ollamaModels != checkedModels {
+                ollamaModels = checkedModels
+                refreshInstalledOllamaInputs()
+            }
             ollamaChecked = true
         }
         return checkedModels
     }
 
+    private func refreshInstalledOllamaInputs() {
+        ollamaInputsTask?.cancel()
+        let local = ollamaModels.filter { !$0.usesRemoteInference && !Ollama.isCloudReference($0.name) }
+        let current = Set(local)
+        installedOllamaInputs = installedOllamaInputs.filter { current.contains($0.key) }
+        let missing = local.filter { installedOllamaInputs[$0] == nil }
+        ollamaInputsTask = Task { [weak self] in
+            for installed in missing {
+                guard !Task.isCancelled else { return }
+                let capability = await Ollama.inputCapability(for: installed.name)
+                guard !Task.isCancelled else { return }
+                if let capability { self?.installedOllamaInputs[installed] = capability }
+            }
+        }
+    }
+
     func downloadOllamaModel(_ name: String) async {
         guard !Task.isCancelled, !isDownloading else { return }
-        guard ollamaReady else {
-            ollamaDownload = .failed(name: name, message: "Open Ollama and check the connection before downloading a model.")
+        guard ollamaReady(for: name) else {
+            let message = ollamaUpgradeMessage(for: name) ?? "Open Ollama and check the connection before downloading a model."
+            ollamaDownload = .failed(name: name, message: message)
             return
         }
         ollamaDownload = .downloading(name: name, progress: nil)
@@ -788,8 +864,9 @@ final class AppModel: ObservableObject {
         }
         if provider == .ollama {
             if !ollamaChecked { return "Checking Ollama…" }
+            if let message = ollamaUpgradeMessage(for: config.ollamaModel) { return message }
             if !hasOllamaModel(config.ollamaModel) {
-                return ollamaReady ? "Download \(config.ollamaModel) to chat" : "Connect Ollama to chat"
+                return ollamaReady ? "Download \(Ollama.displayName(for: config.ollamaModel)) to chat" : "Connect Ollama to chat"
             }
         }
         if provider == .openRouter {
@@ -942,12 +1019,30 @@ final class AppModel: ObservableObject {
         hasOpenRouterKey = false
     }
 
-    func refreshOpenRouterModels() async {
-        guard openRouterModels.isEmpty, !isRefreshingOpenRouterModels else { return }
+    var openRouterZDRNeedsRefresh: Bool {
+        guard let check = openRouterZDRCheck else { return true }
+        return !check.isFresh || check.publicModelIDs == nil
+    }
+
+    func openRouterZDRAvailability(for id: String) -> OpenRouterZDRAvailability {
+        guard let check = openRouterZDRCheck, check.isFresh else { return .unknown }
+        return check.catalog.availability(for: id, isPublicModel: check.publicModelIDs?.contains(id) == true)
+    }
+
+    func refreshOpenRouterModels(force: Bool = false) async {
+        guard !isRefreshingOpenRouterModels, force || openRouterModels.isEmpty || openRouterZDRNeedsRefresh else { return }
         isRefreshingOpenRouterModels = true
         defer { isRefreshingOpenRouterModels = false }
-        let models = await OpenRouter.models()
-        if !Task.isCancelled { openRouterModels = models }
+
+        async let models = OpenRouter.models()
+        async let zdrCatalog = OpenRouter.zdrCatalog()
+        let (loadedModels, loadedZDRCatalog) = await (models, zdrCatalog)
+        guard !Task.isCancelled else { return }
+
+        if let loadedModels { openRouterModels = loadedModels }
+        openRouterZDRCheck = loadedZDRCatalog.map { catalog in
+            OpenRouterZDRCheck(catalog: catalog, publicModelIDs: loadedModels.map { Set($0.map(\.id)) })
+        }
     }
 
     // MARK: Harness accounts

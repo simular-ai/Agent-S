@@ -44,6 +44,23 @@ struct OllamaCatalogTests {
         #expect(models.map(\.size) == ["2.8 GB – 2.9 GB", "420 MB"])
     }
 
+    @Test func readsInputCapabilityFromIndividualVariants() throws {
+        let html = """
+        <p>3 models</p>
+        <span>vision</span>
+        <a href="/library/model:one" class="md:hidden flex group">
+          <span>0123456789ab</span> • 2.8GB • 128K context window •
+          <span class="hidden sm:inline">
+            Text, Image input • 1 month ago
+          </span>
+        </a>
+        <a href="/library/model:two" class="md:hidden flex group"> • 2.9GB • Text input • 2 months ago</a>
+        <a href="/library/model:three" class="md:hidden flex group">Missing input information</a>
+        """
+        let models = try OllamaCatalog.parseVariants(html, family: "model")
+        #expect(models.map(\.inputCapability) == [.multimodal, .textOnly, nil])
+    }
+
     @Test func distinguishesHostedOnlyFromAnUnreadablePage() throws {
         let html = """
         <p class="block col-span-6 md:hidden">3 models</p>

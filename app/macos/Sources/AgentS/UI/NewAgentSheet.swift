@@ -207,24 +207,24 @@ struct NewAgentSheet: View {
                             LabeledContent("Provider", value: onlyProvider.displayName)
                         }
                         if selectedProvider == .ollama {
-                            Text("Choose a local Ollama model for private inference on this Mac.")
+                            Text("Ollama runs the model on this Mac.")
                                 .font(.caption).foregroundStyle(.secondary)
                             Picker("Model", selection: Binding(
                                 get: { ollamaModel }, set: { selectedOllamaModel = $0 }
                             )) {
                                 ForEach(ollamaChoices, id: \.self) { name in
-                                    Text(OllamaModelSetup.title(for: name)).tag(name)
+                                    Text(model.ollamaOptionTitle(name)).tag(name)
                                 }
                             }
                             if isFirstAgent {
-                                HStack {
-                                    OllamaModelSize(name: ollamaModel)
+                                HStack(alignment: .top) {
+                                    OllamaModelDetails(name: ollamaModel, sandboxMemory: localSandboxMemoryBytes)
                                     Spacer()
                                     Button("Browse models…") { showsOllamaCatalog = true }
                                 }
                             } else {
                                 Button("Browse Ollama models…") { showsOllamaCatalog = true }
-                                OllamaModelSetup(name: ollamaModel)
+                                OllamaModelSetup(name: ollamaModel, sandboxMemory: localSandboxMemoryBytes)
                                 if model.ollamaReady {
                                     Button("Refresh model list") { Task { await model.refreshOllama() } }
                                 }
@@ -235,11 +235,7 @@ struct NewAgentSheet: View {
                             OpenRouterZDRSetting(isOn: Binding(
                                 get: { openRouterZDR ?? model.openRouterRequiresZDR }, set: { openRouterZDR = $0 }
                             ), appliesOnCreate: true)
-                            OpenRouterModelSearch(selection: $openRouterModel)
-                            Picker("Suggested models", selection: $openRouterModel) {
-                                ForEach(OpenRouter.suggested, id: \.self) { Text($0).tag($0) }
-                                if !OpenRouter.suggested.contains(openRouterModel) { Text(openRouterModel).tag(openRouterModel) }
-                            }
+                            OpenRouterModelSearch(selection: $openRouterModel, showsSelectedInput: false)
                             if !isFirstAgent { KeySetup.openRouter(model) }
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
@@ -296,11 +292,6 @@ struct NewAgentSheet: View {
         .onChange(of: model.saiMachines) { _, machines in
             if saiMachine.isEmpty { saiMachine = machines.first(where: \.online)?.id ?? machines.first?.id ?? "" }
         }
-        .task {
-            if !isFirstAgent, selectedOllamaModel == nil {
-                selectedOllamaModel = model.modelChoices.first ?? AppModel.defaultAgentModel
-            }
-        }
         .task(id: harness != .sai && selectedProvider == .ollama) {
             if harness != .sai, selectedProvider == .ollama { await model.refreshOllama() }
         }
@@ -346,21 +337,30 @@ struct NewAgentSheet: View {
         return model.hasSaiKey && model.saiMachines.contains { $0.id == saiMachine }
     }
 
+    private var localSandboxMemoryBytes: UInt64 {
+        location == .linuxVM ? (sandboxMemory ?? model.computerMemory).bytes : 0
+    }
+
     private var localOllamaNames: [String] {
         model.ollamaModels.filter { !$0.usesRemoteInference && !Ollama.isCloudReference($0.name) }
             .map { Ollama.normalizedName($0.name) }
     }
 
     private var ollamaModel: String {
-        selectedOllamaModel ?? (isFirstAgent ? OllamaModelSetup.nemotron : model.modelChoices.first) ?? AppModel.defaultAgentModel
+        selectedOllamaModel ?? AppModel.defaultAgentModel
     }
 
     private var ollamaChoices: [String] {
         var choices = isFirstAgent ? localOllamaNames : model.modelChoices
-        for name in [AppModel.defaultAgentModel, OllamaModelSetup.nemotron] where !choices.contains(name) {
+        for name in [AppModel.defaultAgentModel, Ollama.nemotronBoltE4B, "gemma4"]
+        where !choices.contains(where: { Ollama.normalizedName($0) == name }) {
             choices.append(name)
         }
-        if !choices.contains(ollamaModel) { choices.append(ollamaModel) }
+        if let index = choices.firstIndex(where: { Ollama.normalizedName($0) == Ollama.normalizedName(ollamaModel) }) {
+            choices[index] = ollamaModel
+        } else {
+            choices.append(ollamaModel)
+        }
         return choices
     }
 

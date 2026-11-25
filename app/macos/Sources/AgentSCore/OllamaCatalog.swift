@@ -11,6 +11,7 @@ public actor OllamaCatalog {
     public struct Variant: Identifiable, Hashable, Sendable {
         public let name: String
         public let size: String?
+        public let inputCapability: ModelInputCapability?
         public var id: String { name }
     }
 
@@ -129,7 +130,7 @@ public actor OllamaCatalog {
             guard seen.insert(name).inserted else { continue }
             let body = link.2
             guard !tag.lowercased().split(separator: "-").contains("cloud"), !isHosted(body) else { continue }
-            variants.append(Variant(name: name, size: modelSize(in: body)))
+            variants.append(Variant(name: name, size: modelSize(in: body), inputCapability: inputCapability(in: body)))
         }
 
         // A verified page with only hosted entries legitimately has no downloadable variants.
@@ -151,5 +152,14 @@ public actor OllamaCatalog {
         let first = "\(match.1) \(match.2)"
         guard let last = match.3, let unit = match.4 else { return first }
         return "\(first) – \(last) \(unit)"
+    }
+
+    private static func inputCapability(in body: Substring) -> ModelInputCapability? {
+        // Read the explicit input list for this tag, optionally wrapped for small displays.
+        guard let inputs = body.firstMatch(of: #/•\s*(?:<span\b[^>]*>\s*)?([A-Za-z]+(?:\s*,\s*[A-Za-z]+)*)\s+input\s*•/#)?.1 else {
+            return nil
+        }
+        let modalities = inputs.split(separator: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return ModelInputCapability.fromInputModalities(modalities)
     }
 }

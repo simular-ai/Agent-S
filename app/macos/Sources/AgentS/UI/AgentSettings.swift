@@ -51,7 +51,7 @@ struct AgentSettings: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Picker("Model", selection: $model.agentModel) {
-                            ForEach(model.modelChoices, id: \.self) { Text($0).tag($0) }
+                            ForEach(model.modelChoices, id: \.self) { Text(model.ollamaOptionTitle($0)).tag($0) }
                         }
                         Button("Browse Ollama models…") { showsOllamaCatalog = true }
                         OllamaModelSetup(name: model.agentModel)

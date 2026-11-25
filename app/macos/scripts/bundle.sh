@@ -7,6 +7,11 @@ set -e
 cd "$(dirname "$0")/.."
 CONFIG=${1:-release}
 if [ "$#" -gt 0 ]; then shift; fi
+# Keep the linked SDK version so macOS uses the native appearance of the selected SDK.
+# SwiftPM's Swift Build engine can otherwise record the minimum OS as the SDK.
+SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
+MINIMUM_OS=$(plutil -extract LSMinimumSystemVersion raw -o - Resources/Info.plist)
+set -- "$@" -Xlinker -platform_version -Xlinker macos -Xlinker "$MINIMUM_OS" -Xlinker "$SDK_VERSION"
 swift build -c "$CONFIG" "$@"
 BIN=$(swift build -c "$CONFIG" "$@" --show-bin-path)/AgentS
 APP="build/Agent S.app"

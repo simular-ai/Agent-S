@@ -13,6 +13,7 @@ struct ChatView: View {
     @ScaledMetric(relativeTo: .callout) private var followUpRowHeight: CGFloat = 26
     @State private var followsLatest = true
     @State private var transcriptViewport: CGSize?
+    @State private var showsOpenRouterCatalog = false
     @State private var showsOpenRouterSettings = false
     @State private var showsOllamaCatalog = false
 
@@ -37,6 +38,9 @@ struct ChatView: View {
             .task(id: model.shouldCheckOllamaForChat ? agent.id : nil) {
                 if model.shouldCheckOllamaForChat { await model.refreshOllama() }
             }
+            .task(id: model.provider == .openRouter) {
+                if model.provider == .openRouter { await model.refreshOpenRouterModels() }
+            }
             .task(id: accountSelection) {
                 if accountSelection != nil { await model.refreshAccountStatus() }
             }
@@ -51,6 +55,9 @@ struct ChatView: View {
             }
             .sheet(isPresented: $showsOllamaCatalog) {
                 OllamaCatalogView(selection: $model.agentModel)
+            }
+            .sheet(isPresented: $showsOpenRouterCatalog) {
+                OpenRouterCatalogView(selection: $model.openRouterModel)
             }
             .sheet(isPresented: $showsOpenRouterSettings) {
                 VStack(spacing: 0) {
@@ -277,18 +284,21 @@ struct ChatView: View {
                     if model.provider == .ollama {
                         ForEach(model.modelChoices, id: \.self) { name in
                             Button { model.agentModel = name } label: {
-                                if name == model.agentModel { Label(name, systemImage: "checkmark") } else { Text(name) }
+                                let title = model.ollamaOptionTitle(name)
+                                if name == model.agentModel { Label(title, systemImage: "checkmark") } else { Text(title) }
                             }
                         }
                         Button("Browse Ollama models…") { showsOllamaCatalog = true }
                         Button("Refresh model list") { Task { await model.refreshOllama() } }
                     } else if model.provider == .openRouter {
+                        Button("Browse OpenRouter models…") { showsOpenRouterCatalog = true }
                         ForEach(openRouterChoices, id: \.self) { name in
                             Button { model.openRouterModel = name } label: {
-                                if name == model.openRouterModel { Label(name, systemImage: "checkmark") } else { Text(name) }
+                                let title = model.openRouterOptionTitle(name)
+                                if name == model.openRouterModel { Label(title, systemImage: "checkmark") } else { Text(title) }
                             }
                         }
-                        Button("Search OpenRouter models…") { showsOpenRouterSettings = true }
+                        Button("OpenRouter settings…") { showsOpenRouterSettings = true }
                         Toggle("Request Zero Data Retention (ZDR)", isOn: $model.openRouterRequiresZDR)
                     } else if let notice = model.provider.accountDataNotice {
                         Text("Automatic")

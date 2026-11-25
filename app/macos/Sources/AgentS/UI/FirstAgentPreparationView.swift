@@ -62,7 +62,7 @@ struct FirstAgentPreparationView: View {
                 Text("Get your agent ready")
                     .font(.title2.weight(.semibold))
                     .accessibilityAddTraits(.isHeader)
-                if model.usesOllama {
+                if model.usesOllama, !modelIsReady {
                     Text("You can download the model while the sandbox sets up.")
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -80,18 +80,15 @@ struct FirstAgentPreparationView: View {
                 Text(finishError).font(.callout).foregroundStyle(.red)
             }
             HStack(spacing: 12) {
-                if !readyToChat {
-                    Button("Finish later") { finish() }
-                }
                 if offersCloudStep {
-                    Button("Continue") { page = .cloud }
-                        .buttonStyle(.borderedProminent)
-                        .keyboardShortcut(.defaultAction)
-                } else {
+                    Button("Set up a cloud agent…") { page = .cloud }
+                }
+                if readyToChat {
                     Button("Open chat") { finish() }
                         .buttonStyle(.borderedProminent)
                         .keyboardShortcut(.defaultAction)
-                        .disabled(!readyToChat)
+                } else {
+                    Button("Finish later") { finish() }
                 }
             }
         }
@@ -101,8 +98,12 @@ struct FirstAgentPreparationView: View {
         !finishedCloudStep && !model.agents.contains { $0.config.privacy.location == .cloud }
     }
 
+    private var modelIsReady: Bool {
+        model.ollamaReady(for: model.agentModel) && model.hasAgentModel
+    }
+
     private var readyToChat: Bool {
-        model.canChat && (!model.usesOllama || model.ollamaReady)
+        model.canChat && (!model.usesOllama || modelIsReady)
     }
 
     private func finishCloudStep() {
@@ -139,12 +140,13 @@ struct FirstAgentPreparationView: View {
 
     @ViewBuilder private var modelCard: some View {
         if model.usesOllama {
-            let name = OllamaModelSetup.title(for: model.agentModel)
+            let name = Ollama.displayName(for: model.agentModel)
             setupCard(name, symbol: "laptopcomputer") {
                 Text("Ollama downloads and runs this model on your Mac.")
                     .font(.callout).foregroundStyle(.secondary)
-                if model.ollamaReady, model.hasAgentModel {
+                if modelIsReady {
                     Label("Model ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    OllamaModelDetails(name: model.agentModel, sandboxMemory: model.computerMemory.bytes)
                 } else {
                     OllamaModelSetup(name: model.agentModel)
                 }

@@ -1,18 +1,39 @@
 import Foundation
+import AgentSCore
 
 /// The host's Ollama: whether it is up, which models it has, pulling the ones the app needs.
 struct Ollama {
     static let base = URL(string: "http://127.0.0.1:11434")!
     static let port: UInt16 = 11434
+    static let nemotronNano4B = "nemotron-3-nano:4b"
+    static let nemotronBoltE4B = "nemotron-3.5-bolt:e4b"
 
     struct Model: Identifiable, Hashable {
         let name: String
         let size: Int64
+        let digest: String?
         let usesRemoteInference: Bool
         var id: String { name }
 
         func matches(_ model: String) -> Bool {
             Ollama.normalizedName(name) == Ollama.normalizedName(model)
+        }
+    }
+
+    static func displayName(for name: String) -> String {
+        switch Ollama.normalizedName(name) {
+        case "gemma4": "Gemma 4"
+        case Ollama.nemotronBoltE4B: "Nemotron 3.5 Bolt E4B"
+        case Ollama.nemotronNano4B: "Nemotron 3 Nano 4B"
+        default: name
+        }
+    }
+
+    static func suggestedModelInput(for name: String) -> ModelInputCapability? {
+        switch normalizedName(name) {
+        case nemotronNano4B: .textOnly
+        case nemotronBoltE4B, "gemma4": .multimodal
+        default: nil
         }
     }
 
@@ -49,8 +70,24 @@ struct Ollama {
         return list.compactMap { item in
             guard let name = item["name"] as? String else { return nil }
             let isRemote = ["remote_model", "remote_host"].contains { (item[$0] as? String)?.isEmpty == false }
-            return Model(name: name, size: (item["size"] as? NSNumber)?.int64Value ?? 0, usesRemoteInference: isRemote)
+            return Model(name: name, size: (item["size"] as? NSNumber)?.int64Value ?? 0,
+                         digest: item["digest"] as? String, usesRemoteInference: isRemote)
         }
+    }
+
+    /// Installed variants can have different capabilities from the public model with the same name.
+    static func inputCapability(for name: String) async -> ModelInputCapability? {
+        var request = URLRequest(url: base.appendingPathComponent("api/show"))
+        request.httpMethod = "POST"
+        request.timeoutInterval = 5
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try? JSONEncoder().encode(["model": name])
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let capabilities = json["capabilities"] as? [String],
+              capabilities.contains("completion") else { return nil }
+        return capabilities.contains("vision") || capabilities.contains("audio") ? .multimodal : .textOnly
     }
 
     /// Pulls a model, reporting Ollama's status and the fraction of reported bytes downloaded.
