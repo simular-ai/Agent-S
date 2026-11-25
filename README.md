@@ -4,7 +4,16 @@
 </h1>
 
 <p align="center">
-  <b>An open-source computer use agent that can operate a real GUI like a human or work in the way beyond human capacity.</b>
+  <b>An open-source computer-use agent with a fully private on-device mode.</b><br>
+  Choose Sandbox on This Mac and a local Ollama model to run the agent and model inference on your Mac.
+</p>
+
+<p align="center">
+  <a href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.3/Agent-S-macOS-0.1.0-arm64.dmg">
+    <img src="https://img.shields.io/badge/Download%20Agent%20S-0969da?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Agent S for Mac">
+  </a>
+  <br>
+  Apple Silicon · macOS 14 or later
 </p>
 
 <p align="center">
@@ -44,6 +53,7 @@
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
 ## 🥳 Updates
+- [x] **2026/11/24** — Released **[Agent S v0.3.3](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.3)** with a notarized desktop installer and fully private on-device computer use through a local sandbox and a local Ollama model.
 - [x] **2026/10/20**: Released **[Agent S4](./agent_s4/README.md)** and its paper ["Evolving Agent Interfaces"](https://arxiv.org/abs/2610.28601): an autonomous computer-use scientist that evolves the interfaces its agents work through from task experience. With Qwen3.8-27B, Agent S4 sets a new open-source state of the art on OSWorld V2 at **21.3%**, 3.8 times the same model with fixed interfaces and above GPT-5.5 (13.0%) and Claude Opus 4.8 (20.6%) at a fraction of their cost. *(OSWorld V2 is scored as a strict binary pass/fail with no partial credit, so 21.3% reflects benchmark difficulty, not low reliability — see the [Agent S4 README](./agent_s4/README.md) for details.)*
 - [x] **2026/10/01**: The **[Simular API](https://platform.simular.ai/)** is live. Build your always-on computer agents in a minute. Simular Platform is an autonomous computer API for building always-on agents that fit your needs. World-leading agent infrastructure, 90% token saving. [Get an API key →](https://platform.simular.ai/)
 
@@ -68,7 +78,7 @@
 
 ## 🚀 Quick Start
 
-- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. Build [Agent S for Mac](./app/macos/README.md) from source on an Apple Silicon Mac running macOS 14 or later.
+- **[Agent S desktop apps](./app/README.md)** run computer-use agents on your own machine or on a cloud computer. On Apple Silicon Macs running macOS 14 or later, install Agent S from [GitHub Releases](https://github.com/simular-ai/Agent-S/releases/latest) or [build from source](./app/macos/README.md).
   - **Sandbox on This Mac** runs tools in a Linux VM. Choose Ollama for on-device inference with a local model or OpenRouter for hosted inference.
   - **This Mac** works in your apps, Terminal, and files with approvals for actions. Choose Claude Code or DeepSeek with a local Ollama model for on-device inference.
   - **Cloud Computer** works on a Sai computer or Simular Box.
