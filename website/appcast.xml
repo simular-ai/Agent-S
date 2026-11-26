@@ -4,22 +4,22 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.4</title>
-            <pubDate>Wed, 25 Nov 2026 21:44:21 -0800</pubDate>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
+            <title>0.3.5</title>
+            <pubDate>Thu, 26 Nov 2026 00:16:11 -0800</pubDate>
+            <sparkle:version>3</sparkle:version>
+            <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<ul>
-  <li>Reorder agents within their sidebar groups by dragging or using the available move actions.</li>
-  <li>Check for updates automatically or from the Agent S menu. Agent S saves the sandbox before restarting for an update.</li>
-  <li>Use the bundled DeepSeek Harness runtime, with a separate runtime per agent.</li>
-</ul>
+            <description sparkle:format="markdown"><![CDATA[## Sandbox VPN support
+
+- The sandbox now follows your Mac’s IPv4 routes and DNS by default, including VPN routes, so agents can reach resources available through your VPN.
+- Use **Settings → Sandbox Network** to switch to **Standard sandbox network**. The setting applies after you restart the sandbox.
+- To resume a sandbox session saved before the update, select **Standard sandbox network** first. Starting a fresh session in the new mode keeps files on the sandbox disk.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.4/Agent-S-macOS-0.3.4-arm64.dmg" length="178652428" type="application/octet-stream" sparkle:edSignature="uRPfBp30YIpd5VBsSA52+lJ/a2yLil58CX4TsOMr5r1uQ78WP/hNf5bAMym0tD99XzQOGo8HjGAlIwHS+bwlBQ=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.5/Agent-S-macOS-0.3.5-arm64.dmg" length="190304126" type="application/octet-stream" sparkle:edSignature="nk+Yn0KzyByYn5VjFfssn+7VgyeUA3BSH0mmyv3noLdFVP93IBVPE1gqXkP0p4ubI2MOoWTQ3Ye4qGOmbRtnBA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: cNHHTLwvWT+VWxl8BpFROLuS+HwYw7FxtvOW0lhMZYYD1Ytp1RJ5JTaR/ljgoSVuMhXMw2TA781gCrZWUB1tDQ==
-length: 1515
+edSignature: AcyihPgl5pN58d3rWdTFp/RZeKYTPUD66L9g2vXouTwxavEPnFeiYydL6q/iU4R5nGCz2UguyUqooZ/bProNDQ==
+length: 1691
 -->
