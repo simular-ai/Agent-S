@@ -35,7 +35,7 @@ struct AgentSettings: View {
                     Picker("Harness", selection: $model.harness) {
                         ForEach(Harness.allowed(in: model.privacy, computer: model.computer)) { Text($0.displayName).tag($0) }
                     }
-                    if !model.agent.config.usesLocalComputer, model.harness == .deepSeek, DeepSeekTurn.executable == nil {
+                    if !model.agent.config.usesLocalComputer, model.harness == .deepSeek, !DeepSeekTurn.isAvailable {
                         DeepSeekInstallHelp()
                     }
                     if model.harness != .sai, model.availableProviders.count > 1 {

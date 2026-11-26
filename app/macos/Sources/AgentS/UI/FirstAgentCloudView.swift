@@ -117,7 +117,7 @@ struct FirstAgentCloudView: View {
         installedHarnesses = [
             BoxAccount.claude == nil ? nil : .claudeCode,
             CodexAccount.executable == nil ? nil : .codex,
-            DeepSeekTurn.executable == nil ? nil : .deepSeek,
+            !DeepSeekTurn.isAvailable ? nil : .deepSeek,
         ].compactMap { $0 }
     }
 }

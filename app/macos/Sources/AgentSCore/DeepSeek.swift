@@ -87,34 +87,39 @@ public struct DeepSeekCommand: Equatable, Sendable {
     }
 }
 
-/// The Box profile layers over the pinned standalone SDK profile. It exposes only the remote
-/// Box bridge rather than the SDK's local filesystem, shell, or working-directory tools.
+/// The Box profile runs the pinned SDK runtime with only the remote Box bridge rather than the
+/// SDK's local filesystem, shell, or working-directory tools.
 public enum DeepSeekBoxProfile {
-    public static let patch = DeepSeekMCPProfile.patch(server: "box", environmentPrefix: "AGENT_S_BOX")
-
-    public static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
-        DeepSeekMCPProfile.arguments(prompt: prompt, resume: resume, patchPath: patchPath)
-    }
+    public static let patch = DeepSeekSDKProfile.patch(server: "box", environmentPrefix: "AGENT_S_BOX")
 }
 
 /// The Mac profile uses the same restricted runtime with the app's approval-gated Mac bridge.
 public enum DeepSeekMacProfile {
-    public static let patch = DeepSeekMCPProfile.patch(server: "agent_s", environmentPrefix: "AGENT_S_MAC",
+    public static let patch = DeepSeekSDKProfile.patch(server: "agent_s", environmentPrefix: "AGENT_S_MAC",
                                                       toolCallTimeoutMs: 1_800_000)
-
-    public static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
-        DeepSeekMCPProfile.arguments(prompt: prompt, resume: resume, patchPath: patchPath)
-    }
 }
 
-private enum DeepSeekMCPProfile {
+/// DeepSeek Harness's SDK runtime: one long-lived `dsh --profile sdk-minimal` process per agent,
+/// driven over newline-delimited JSON-RPC on stdio. Every turn is a `session/prompt` on it.
+public enum DeepSeekSDKProfile {
+    /// The model route the patch registers. `initialize` selects it with the agent's model.
+    public static let provider = "agent-s"
+
+    public static func arguments(entry: String?, patchPath: String) -> [String] {
+        (entry.map { [$0] } ?? []) + ["--profile", "sdk-minimal", "--patch", patchPath]
+    }
+
+    /// A new client-chosen session identity in the form dsh's persistence uses.
+    public static func newSessionID() -> String { "session-" + UUID().uuidString.lowercased() }
+
+    /// Whether `id` is a session identity this app created or dsh reported.
+    public static func isSessionID(_ id: String) -> Bool {
+        id.hasPrefix("session-") && UUID(uuidString: String(id.dropFirst("session-".count))) != nil
+    }
+
     static func patch(server: String, environmentPrefix: String, toolCallTimeoutMs: Int? = nil) -> String {
         let timeout = toolCallTimeoutMs.map { "\n        toolCallTimeoutMs: \($0)" } ?? ""
         return """
-        - id: sdk-app-startup
-          disabled: true
-        - id: sdk-jsonrpc-server
-          disabled: true
         - id: llm-deepseek
           disabled: true
         - id: session-log-deepseek
@@ -152,7 +157,7 @@ private enum DeepSeekMCPProfile {
               name: '@deepseek-ai/dsh-llm-pi-ai'
               config:
                 providers:
-                  agent-s:
+                  \(provider):
                     api: openai-completions
                     apiKeyEnv: AGENT_S_MODEL_TOKEN
                     baseURL: !!js process.env.AGENT_S_MODEL_URL
@@ -160,24 +165,6 @@ private enum DeepSeekMCPProfile {
                       - id: !!js process.env.AGENT_S_MODEL
                         contextWindow: !!js Number(process.env.AGENT_S_MODEL_CONTEXT)
                         maxTokens: !!js Number(process.env.AGENT_S_MODEL_OUTPUT)
-            - id: agent-default-model
-              name: '@deepseek-ai/dsh-agent-default-model'
-              config:
-                provider: agent-s
-                model: !!js process.env.AGENT_S_MODEL
-            - id: session-query-sqlite
-              name: '@deepseek-ai/dsh-session-query-sqlite'
-              config:
-                path: ':memory:'
-            - id: headless-startup
-              name: '@deepseek-ai/dsh-headless/startup'
-            - id: headless-runner
-              name: '@deepseek-ai/dsh-headless'
-              inject: [headlessStartup]
-              config:
-                task: !!js ctx.headlessStartup.task
-                sessionId: !!js ctx.headlessStartup.sessionId
-                json: !!js ctx.headlessStartup.json
             - id: mcp-\(server)
               name: '@deepseek-ai/dsh-mcp-client'
               config:
@@ -191,16 +178,6 @@ private enum DeepSeekMCPProfile {
                   enabled: false
                 failOnStartupError: true
         """
-    }
-
-    static func arguments(prompt: String, resume: String?, patchPath: String) -> [String] {
-        var args = ["--profile", "sdk-minimal", "--patch", patchPath, "--json"]
-        if let resume, resume.hasPrefix("session-"),
-           UUID(uuidString: String(resume.dropFirst("session-".count))) != nil {
-            args += ["--session-id", resume]
-        }
-        args += ["--", prompt]
-        return args
     }
 }
 
@@ -217,9 +194,14 @@ public struct DeepSeekStream {
 
     public mutating func consume(line: String) -> [ClaudeEvent] {
         guard let data = line.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let type = object["type"] as? String
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return [] }
+        return consume(object: object)
+    }
+
+    /// One event in the headless line format, from either harness mode.
+    public mutating func consume(object: [String: Any]) -> [ClaudeEvent] {
+        guard let type = object["type"] as? String else { return [] }
         switch type {
         case "agent_s_steer_ready":
             return [.steeringReady]

@@ -937,13 +937,11 @@ final class AgentSession: ObservableObject, Identifiable {
                               memoryRoute: AgentMemoryRoute? = nil) {
         let runner = DeepSeekTurn()
         let config = config
-        let steering = DeepSeekSteering()
         runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped,
-                      steer: steering.send, deepSeekInput: steering,
-                      memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
+                      steer: runner.steer, memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
                                  dataFolder: dataFolder, agentID: config.id, target: .box(config.boxName),
-                                 standardInput: steering.input, onEvent: onEvent)
+                                 onEvent: onEvent)
         }
     }
 
@@ -952,17 +950,14 @@ final class AgentSession: ObservableObject, Identifiable {
                                verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
         let runner = DeepSeekTurn()
         let agentID = config.id
-        let steering = DeepSeekSteering()
         let target = DeepSeekTurn.Target.mac { [weak self] command in
             guard let self else { return false }
             return await self.requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool)
         }
         runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped,
-                      steer: steering.send, deepSeekInput: steering,
-                      memoryRoute: memoryRoute, verifyRoute: verifyRoute) { promptForModel, resume, onEvent in
+                      steer: runner.steer, memoryRoute: memoryRoute, verifyRoute: verifyRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
-                                 dataFolder: dataFolder, agentID: agentID, target: target,
-                                 standardInput: steering.input, onEvent: onEvent)
+                                 dataFolder: dataFolder, agentID: agentID, target: target, onEvent: onEvent)
         }
     }
 

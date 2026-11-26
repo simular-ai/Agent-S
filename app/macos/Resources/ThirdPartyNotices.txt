@@ -469,3 +469,17 @@ DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
 THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+========================================================================
+
+Node.js 24.22.3 and DeepSeek Harness 0.2.2-rc.5
+
+Agent S bundles the Node.js runtime and the DeepSeek Harness packages that
+its DeepSeek agents use. Node.js's license, including the notices for the
+libraries Node.js contains, is in Contents/Resources/DeepSeek/NODE-LICENSE.
+DeepSeek Harness (MIT License, Copyright (c) 2026 DeepSeek) and each package
+it depends on keep their license files in their folders under
+Contents/Resources/DeepSeek/node_modules. These packages are distributed
+under the MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, and Python-2.0
+licenses, and libvips (in @img/sharp-libvips-darwin-arm64) under the GNU
+Lesser General Public License, version 3 or later.
