@@ -311,6 +311,8 @@ struct AgentSection: View {
     @Binding var renaming: AgentSession?
     @Binding var newName: String
     @Binding var agentSettings: Bool
+    /// The agent being dragged in this section; drags from other sections or apps leave it nil.
+    @State private var dragging: UUID?
 
     var body: some View {
         SideHeader(title: location.displayName, symbol: location.symbol)
@@ -324,6 +326,13 @@ struct AgentSection: View {
         ForEach(list) { session in
             ConversationRow(session: session, selected: session.id == model.selectedAgentID) { model.select(session) }
                 .contextMenu { menu(for: session) }
+                .onDrag {
+                    dragging = session.id
+                    return NSItemProvider(object: session.id.uuidString as NSString)
+                }
+                .onDrop(of: [.text], delegate: AgentDrop(target: session.id, dragging: $dragging, model: model))
+                .accessibilityAction(named: "Move up") { withAnimation { model.moveAgent(session, by: -1) } }
+                .accessibilityAction(named: "Move down") { withAnimation { model.moveAgent(session, by: 1) } }
         }
     }
 
@@ -353,6 +362,31 @@ struct AgentSection: View {
         Divider()
         Button("Delete", role: .destructive) { model.delete(session) }
             .disabled(model.agents.count < 2)
+    }
+}
+
+/// Reorders a section's agents live as a dragged row passes over the others, and saves on drop.
+struct AgentDrop: DropDelegate {
+    let target: UUID
+    @Binding var dragging: UUID?
+    let model: AppModel
+
+    func validateDrop(info: DropInfo) -> Bool { dragging != nil }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragging, dragging != target else { return }
+        withAnimation(.easeInOut(duration: 0.15)) { model.moveAgent(dragging, to: target) }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: dragging == nil ? .forbidden : .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard dragging != nil else { return false }
+        dragging = nil
+        model.saveAgents()
+        return true
     }
 }
 

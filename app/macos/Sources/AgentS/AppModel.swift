@@ -128,6 +128,23 @@ final class AppModel: ObservableObject {
         agents.filter { $0.config.privacy.location == location }
     }
 
+    /// Puts an agent in another's place in the sidebar. Agents stay in their own section; call
+    /// `saveAgents()` once the move is done to keep the order.
+    func moveAgent(_ id: UUID, to target: UUID) {
+        guard let from = agents.first(where: { $0.id == id }), let to = agents.first(where: { $0.id == target }),
+              from.config.privacy.location == to.config.privacy.location,
+              let reordered = agents.moving({ $0.id == id }, to: { $0.id == target }) else { return }
+        agents = reordered
+    }
+
+    /// Moves an agent one place up or down within its section, for VoiceOver and keyboard users.
+    func moveAgent(_ session: AgentSession, by offset: Int) {
+        let list = agents(at: session.config.privacy.location)
+        guard let index = list.firstIndex(where: { $0.id == session.id }), list.indices.contains(index + offset) else { return }
+        moveAgent(session.id, to: list[index + offset].id)
+        saveAgents()
+    }
+
     // The selected agent's settings, so views keep binding to `model.harness` and friends.
     private func update(_ change: (inout AgentConfig) -> Void) {
         objectWillChange.send()
