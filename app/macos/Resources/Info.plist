@@ -13,5 +13,20 @@
 	<key>LSMinimumSystemVersion</key><string>14.0</string>
 	<key>NSHighResolutionCapable</key><true/>
 	<key>NSPrincipalClass</key><string>NSApplication</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key><string>ai.simular.agent-s.sidebar-agent.linuxvm</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>ai.simular.agent-s.sidebar-agent.thismac</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+		</dict>
+		<dict>
+			<key>UTTypeIdentifier</key><string>ai.simular.agent-s.sidebar-agent.cloud</string>
+			<key>UTTypeConformsTo</key><array><string>public.data</string></array>
+		</dict>
+	</array>
 </dict>
 </plist>

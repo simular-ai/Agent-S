@@ -275,6 +275,33 @@ final class AppModel: ObservableObject {
 
     func select(_ session: AgentSession) { selectedAgentID = session.id }
 
+    /// Reorder within the agent's computer group and save the new sidebar order.
+    func moveAgent(_ sourceID: UUID, relativeTo target: AgentSession, after: Bool) {
+        guard sourceID != target.id, !needsFirstAgentSetup, !GuestFiles.legacyAppRunning else { return }
+
+        let slots = agents.indices.filter { agents[$0].config.privacy.location == target.config.privacy.location }
+        var group = slots.map { agents[$0] }
+        guard let sourceIndex = group.firstIndex(where: { $0.id == sourceID }),
+              let targetIndex = group.firstIndex(where: { $0 === target }) else { return }
+
+        var destination = targetIndex + (after ? 1 : 0)
+        if sourceIndex < targetIndex { destination -= 1 }
+        guard destination != sourceIndex else { return }
+
+        let source = group.remove(at: sourceIndex)
+        group.insert(source, at: destination)
+        var reordered = agents
+        for (slot, session) in zip(slots, group) { reordered[slot] = session }
+
+        do {
+            try files.ensureFolders()
+            try writeAgents(reordered.map(\.saved), to: agentsFile)
+            agents = reordered
+        } catch {
+            NSLog("Agent S: couldn't save the sidebar order: %@", error.localizedDescription)
+        }
+    }
+
     func revealChatItem(_ id: String, in session: AgentSession) {
         guard agents.contains(where: { $0 === session }) else { return }
         select(session)
