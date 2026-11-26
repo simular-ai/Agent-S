@@ -1,0 +1,296 @@
+<Window x:Class="AgentS.Windows.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:AgentS.Windows"
+        Title="Agent S">
+  <Grid x:Name="Root" Loaded="OnLoaded" Background="{ThemeResource ChatBackground}">
+    <Grid.ColumnDefinitions>
+      <ColumnDefinition x:Name="SidebarColumn" Width="260" />
+      <ColumnDefinition x:Name="ChatColumn" Width="*" MinWidth="360" />
+      <ColumnDefinition x:Name="ComputerColumn" Width="520" />
+    </Grid.ColumnDefinitions>
+
+    <!-- Left: agents grouped by where they work -->
+    <Grid x:Name="SidebarPane" Background="{ThemeResource SidebarBackground}" BorderBrush="{ThemeResource DividerBrush}" BorderThickness="0,0,1,0">
+      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+      <Grid Padding="16,12,12,4">
+        <TextBlock Text="Agent S" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="15" />
+        <Button x:Name="NewAgentButton" AutomationProperties.AutomationId="NewAgentButton" AutomationProperties.Name="New agent"
+                ToolTipService.ToolTip="New agent" Style="{StaticResource CircleButton}" HorizontalAlignment="Right" Click="NewAgent">
+          <FontIcon Glyph="&#xE710;" FontSize="14" />
+        </Button>
+      </Grid>
+      <ListView x:Name="Agents" Grid.Row="1" SelectionMode="Single" CanDragItems="True" DragItemsStarting="AgentDragStarting"
+                SelectionChanged="SelectAgent" Padding="8,0" IsItemClickEnabled="False">
+        <ListView.Resources>
+          <!-- macOS-style rows: soft gray selection, no accent bar. -->
+          <SolidColorBrush x:Key="ListViewItemSelectionIndicatorBrush" Color="Transparent" />
+          <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPointerOverBrush" Color="Transparent" />
+          <SolidColorBrush x:Key="ListViewItemSelectionIndicatorPressedBrush" Color="Transparent" />
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#14000000" />
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#1C000000" />
+          <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#22000000" />
+        </ListView.Resources>
+        <ListView.GroupStyle>
+          <GroupStyle>
+            <GroupStyle.HeaderContainerStyle>
+              <Style TargetType="ListViewHeaderItem">
+                <Setter Property="Padding" Value="8,0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Template">
+                  <Setter.Value>
+                    <ControlTemplate TargetType="ListViewHeaderItem">
+                      <ContentPresenter Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" />
+                    </ControlTemplate>
+                  </Setter.Value>
+                </Setter>
+              </Style>
+            </GroupStyle.HeaderContainerStyle>
+            <GroupStyle.HeaderTemplate>
+              <DataTemplate x:DataType="local:AgentGroup">
+                <StackPanel Margin="0,16,0,6" Spacing="2">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="{x:Bind Glyph}" FontSize="13" Foreground="{ThemeResource MutedText}" />
+                    <TextBlock Text="{x:Bind Title}" FontSize="13" FontWeight="SemiBold" Foreground="{ThemeResource MutedText}" />
+                  </StackPanel>
+                  <!-- As on macOS, an empty section offers to create an agent there. -->
+                  <HyperlinkButton Content="{x:Bind EmptyLink}" Visibility="{x:Bind EmptyVisibility}" Tag="{x:Bind Kind}" Click="NewAgentForGroup" Padding="0,4" FontSize="13" />
+                </StackPanel>
+              </DataTemplate>
+            </GroupStyle.HeaderTemplate>
+          </GroupStyle>
+        </ListView.GroupStyle>
+        <ListView.ItemContainerStyle>
+          <Style TargetType="ListViewItem" BasedOn="{StaticResource DefaultListViewItemStyle}">
+            <Setter Property="Padding" Value="8,8" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="CornerRadius" Value="10" />
+          </Style>
+        </ListView.ItemContainerStyle>
+        <ListView.ItemTemplate>
+          <DataTemplate x:DataType="local:AgentRow">
+            <!-- Rows reorder by dragging within their section, as on macOS. -->
+            <Grid ColumnSpacing="12" AllowDrop="True" DragOver="RowDragOver" Drop="RowDrop" Tag="{x:Bind}">
+              <Grid.ContextFlyout>
+                <MenuFlyout>
+                  <MenuFlyoutItem Text="Agent Settings…" Click="AgentSettingsFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                  <MenuFlyoutItem Text="Rename…" Click="RenameFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AC;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                  <MenuFlyoutSubItem Text="Color">
+                    <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE790;" /></MenuFlyoutSubItem.Icon>
+                    <MenuFlyoutItem Text="Black" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Blue" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Green" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Orange" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Purple" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Red" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutItem Text="Teal" Click="ColorFromMenu" Tag="{x:Bind}" />
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Text="Use default color" Click="ColorFromMenu" Tag="{x:Bind}" />
+                  </MenuFlyoutSubItem>
+                  <MenuFlyoutItem Text="New conversation" Click="NewConversationFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8BD;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                  <MenuFlyoutSeparator />
+                  <MenuFlyoutItem Text="Move up" Click="MoveFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74A;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                  <MenuFlyoutItem Text="Move down" Click="MoveFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74B;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                  <MenuFlyoutSeparator />
+                  <MenuFlyoutItem Text="Delete" Click="DeleteAgentFromMenu" Tag="{x:Bind}"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                </MenuFlyout>
+              </Grid.ContextFlyout>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Border Width="36" Height="36" CornerRadius="18" Background="{x:Bind Avatar, Mode=OneWay}">
+                <TextBlock Text="{x:Bind Initial, Mode=OneWay}" Foreground="White" FontWeight="SemiBold" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <Grid ColumnSpacing="6">
+                  <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" MaxWidth="150" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="{x:Bind Name, Mode=OneWay}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <!-- Where the model runs: local, hosted, or unconfirmed (as on macOS). -->
+                  <Border Grid.Column="1" CornerRadius="8" Padding="5,1" Background="{ThemeResource ChipBackground}" VerticalAlignment="Center"
+                          Visibility="{x:Bind BadgeVisibility, Mode=OneWay}" ToolTipService.ToolTip="{x:Bind BadgeTip, Mode=OneWay}"
+                          AutomationProperties.Name="{x:Bind BadgeTip, Mode=OneWay}">
+                    <FontIcon Glyph="{x:Bind BadgeGlyph, Mode=OneWay}" FontSize="10" Foreground="{ThemeResource MutedText}" />
+                  </Border>
+                </Grid>
+                <TextBlock Text="{x:Bind Preview, Mode=OneWay}" Foreground="{ThemeResource MutedText}" FontSize="13" TextTrimming="CharacterEllipsis" MaxLines="1" />
+              </StackPanel>
+              <ProgressRing Grid.Column="2" Width="16" Height="16" IsActive="{x:Bind Working, Mode=OneWay}" />
+            </Grid>
+          </DataTemplate>
+        </ListView.ItemTemplate>
+      </ListView>
+      <StackPanel x:Name="EmptyAgents" Grid.Row="1" Spacing="6" Padding="20,16" Visibility="Collapsed">
+        <TextBlock Text="No agents yet" FontWeight="SemiBold" />
+        <TextBlock Text="Choose + to create one on this PC or in the cloud." TextWrapping="Wrap" Foreground="{ThemeResource MutedText}" FontSize="13" />
+      </StackPanel>
+      <Grid Grid.Row="2" Padding="12">
+        <Button x:Name="AccountsButton" AutomationProperties.AutomationId="AccountsButton" AutomationProperties.Name="Settings"
+                ToolTipService.ToolTip="Settings" Style="{StaticResource CircleButton}" HorizontalAlignment="Right" Click="Accounts">
+          <FontIcon Glyph="&#xE713;" FontSize="15" />
+        </Button>
+      </Grid>
+    </Grid>
+
+    <!-- Middle: chat -->
+    <Grid x:Name="ChatPane" Grid.Column="1" Padding="24,12,24,20" RowSpacing="12">
+      <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+      <Grid>
+        <Button x:Name="ModelPill" HorizontalAlignment="Center" CornerRadius="20" Padding="16,8" Background="{ThemeResource CardBackground}"
+                BorderBrush="{ThemeResource CardBorder}" AutomationProperties.Name="Model" Click="OpenModelMenu">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <FontIcon x:Name="ModelPillIcon" Glyph="&#xE753;" FontSize="14" Foreground="{ThemeResource MutedText}" />
+            <TextBlock x:Name="ModelPillText" Text="Choose an agent" />
+            <FontIcon Glyph="&#xE70D;" FontSize="11" />
+          </StackPanel>
+        </Button>
+        <Button x:Name="PanelToggle" HorizontalAlignment="Right" Style="{StaticResource CircleButton}" Click="TogglePanel"
+                ToolTipService.ToolTip="Show or hide the computer" AutomationProperties.Name="Show or hide the computer">
+          <FontIcon Glyph="&#xE8A0;" FontSize="14" />
+        </Button>
+      </Grid>
+      <InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" MaxWidth="760" />
+      <ScrollViewer x:Name="Transcript" Grid.Row="2" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel MaxWidth="820" Padding="0,8,8,8">
+          <StackPanel x:Name="Messages" Spacing="18" />
+          <StackPanel x:Name="EmptyChat" Spacing="8" Margin="0,80,0,0" HorizontalAlignment="Center" Visibility="Collapsed">
+            <Image x:Name="EmptyChatLogo" Width="56" Height="56" />
+            <TextBlock x:Name="EmptyChatTitle" Text="Create an agent to get started" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" />
+            <TextBlock x:Name="EmptyChatText" FontSize="16" Text="Agents work on a private computer on this PC or on a Sai computer in the cloud." Foreground="{ThemeResource MutedText}" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
+            <StackPanel x:Name="SamplePrompts" Spacing="6" MaxWidth="420" Margin="0,8,0,0" />
+          </StackPanel>
+          <Border x:Name="WorkingChip" Visibility="Collapsed" Margin="0,18,0,0" HorizontalAlignment="Left" CornerRadius="20" Padding="16,10" Background="{ThemeResource ChipBackground}">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <ProgressRing Width="16" Height="16" IsActive="True" />
+              <TextBlock Text="Working…" Foreground="{ThemeResource MutedText}" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+      </ScrollViewer>
+      <!-- As on macOS: a round ↓ when you've scrolled up from the newest message. -->
+      <Button x:Name="JumpButton" Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,12"
+              Style="{StaticResource CircleButton}" Visibility="Collapsed" Click="JumpToLatest"
+              ToolTipService.ToolTip="Jump to latest message" AutomationProperties.Name="Jump to latest message">
+        <FontIcon Glyph="&#xE74B;" FontSize="14" />
+      </Button>
+      <StackPanel Grid.Row="3" Spacing="8">
+      <!-- Follow-ups sent while a turn runs (FollowUps.cs). -->
+      <StackPanel x:Name="QueueStrip" Spacing="6" Visibility="Collapsed" MaxWidth="760" />
+      <!-- Status above the composer, as on macOS: the computer is off, needs setup, or a model is missing. -->
+      <Border x:Name="StatusBanner" MaxWidth="760" CornerRadius="14" Padding="14,8,8,8" Background="{ThemeResource ChipBackground}" Visibility="Collapsed">
+        <Grid ColumnSpacing="10">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <FontIcon x:Name="StatusBannerIcon" Glyph="&#xE7E8;" FontSize="14" VerticalAlignment="Center" Foreground="{ThemeResource MutedText}" />
+          <TextBlock x:Name="StatusBannerText" Grid.Column="1" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="13" />
+          <Button x:Name="StatusBannerAction" Grid.Column="2" Click="StatusBannerClick" Padding="12,4" />
+        </Grid>
+      </Border>
+      <Border MaxWidth="760" CornerRadius="24" BorderThickness="1" BorderBrush="{ThemeResource CardBorder}"
+              Background="{ThemeResource CardBackground}" Padding="20,6,8,6">
+        <Grid ColumnSpacing="8">
+          <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+          <TextBox x:Name="Composer" PlaceholderText="Ask this agent to do something…" AcceptsReturn="True" TextWrapping="Wrap"
+                   MaxHeight="160" FontSize="16" BorderThickness="0" Background="Transparent" VerticalAlignment="Center" Padding="0,8"
+                   AutomationProperties.Name="Message" PreviewKeyDown="ComposerPreviewKeyDown" TextChanged="ComposerChanged">
+            <TextBox.Resources>
+              <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent" />
+              <SolidColorBrush x:Key="TextControlBackgroundPointerOver" Color="Transparent" />
+              <Thickness x:Key="TextControlBorderThemeThicknessFocused">0</Thickness>
+            </TextBox.Resources>
+          </TextBox>
+          <Grid Grid.Column="1" VerticalAlignment="Bottom">
+            <Button x:Name="SendButton" AutomationProperties.AutomationId="SendButton" AutomationProperties.Name="Send" ToolTipService.ToolTip="Send (Enter)"
+                    Width="34" Height="34" CornerRadius="17" Padding="0" Click="Send" IsEnabled="False"
+                    Background="{ThemeResource BubbleBackground}" Foreground="{ThemeResource BubbleForeground}">
+              <FontIcon Glyph="&#xE74A;" FontSize="15" />
+            </Button>
+            <Button x:Name="StopButton" AutomationProperties.AutomationId="StopButton" AutomationProperties.Name="Stop" ToolTipService.ToolTip="Stop"
+                    Width="34" Height="34" CornerRadius="17" Padding="0" Click="StopTurn" IsEnabled="False" Visibility="Collapsed"
+                    Background="{ThemeResource BubbleBackground}" Foreground="{ThemeResource BubbleForeground}">
+              <FontIcon Glyph="&#xE71A;" FontSize="13" />
+            </Button>
+          </Grid>
+        </Grid>
+      </Border>
+      </StackPanel>
+    </Grid>
+
+    <!-- Right: the agent's computer and context -->
+    <Grid x:Name="ComputerPanel" Grid.Column="2" Background="{ThemeResource SidebarBackground}" BorderBrush="{ThemeResource DividerBrush}" BorderThickness="1,0,0,0">
+      <ScrollViewer x:Name="PanelScroll" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel>
+          <StackPanel x:Name="ScreenSection" Padding="20,12,20,20" Spacing="14">
+            <Grid ColumnSpacing="12">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Grid Width="40" Height="40">
+                <Border CornerRadius="20" Background="{ThemeResource ChipBackground}" BorderBrush="{ThemeResource CardBorder}" BorderThickness="1">
+                  <FontIcon Glyph="&#xE7F4;" FontSize="16" />
+                </Border>
+                <Ellipse x:Name="StatusDot" Width="10" Height="10" Fill="#9A9A9A" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,1,1,0" />
+              </Grid>
+              <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <TextBlock x:Name="ComputerName" Text="No computer" TextTrimming="CharacterEllipsis" />
+                <TextBlock x:Name="ComputerState" Text="" FontSize="12" Foreground="{ThemeResource MutedText}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <ToggleButton x:Name="TakeOverButton" Style="{StaticResource CircleToggleButton}" Click="ToggleTakeOver" Visibility="Collapsed"
+                              AutomationProperties.AutomationId="TakeOverButton" AutomationProperties.Name="Take over the private computer"
+                              ToolTipService.ToolTip="Control the private computer with your keyboard and mouse">
+                  <FontIcon Glyph="&#xE7C9;" FontSize="14" />
+                </ToggleButton>
+                <Button x:Name="MaximizeButton" Style="{StaticResource CircleButton}" Click="ToggleMaximized"
+                        AutomationProperties.AutomationId="MaximizeButton" AutomationProperties.Name="Fill the window with the computer"
+                        ToolTipService.ToolTip="Fill the window with the computer">
+                  <FontIcon x:Name="MaximizeIcon" Glyph="&#xE740;" FontSize="14" />
+                </Button>
+                <Button x:Name="ScreenButton" Visibility="Collapsed" Style="{StaticResource CircleButton}" Click="OpenComputer" ToolTipService.ToolTip="Open in browser" AutomationProperties.Name="Open computer">
+                  <FontIcon x:Name="ScreenButtonIcon" Glyph="&#xE8A7;" FontSize="14" />
+                </Button>
+                <Button x:Name="MoreButton" Style="{StaticResource CircleButton}" ToolTipService.ToolTip="More" AutomationProperties.Name="More computer actions">
+                  <FontIcon Glyph="&#xE712;" FontSize="14" />
+                  <Button.Flyout>
+                    <MenuFlyout Placement="BottomEdgeAlignedRight">
+                      <MenuFlyoutItem x:Name="ScreenMenuItem" Text="Refresh screen" Click="OpenComputer"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="WakeButton" Text="Wake computer" Click="WakeComputer"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7E8;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                      <MenuFlyoutItem x:Name="RefreshButton" Text="Refresh computers" Click="RefreshComputers"><MenuFlyoutItem.Icon><FontIcon Glyph="&#xE72C;" /></MenuFlyoutItem.Icon></MenuFlyoutItem>
+                    </MenuFlyout>
+                  </Button.Flyout>
+                </Button>
+              </StackPanel>
+            </Grid>
+            <Border x:Name="ScreenCard" CornerRadius="14" BorderThickness="1" BorderBrush="{ThemeResource CardBorder}" Background="{ThemeResource CardBackground}">
+              <Grid>
+                <!-- Focusable, so a take-over can receive the keyboard. -->
+                <ContentControl x:Name="ScreenSurface" IsTabStop="False" UseSystemFocusVisuals="False" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                HorizontalAlignment="Stretch" VerticalAlignment="Stretch" AutomationProperties.AutomationId="ScreenSurface">
+                  <Image x:Name="PrivateScreen" Stretch="Uniform" AutomationProperties.Name="Private computer screen" />
+                </ContentControl>
+                <WebView2 x:Name="LiveView" Height="260" Visibility="Collapsed" />
+                <!-- As on macOS: watching only; Take over sends your input. -->
+                <Border x:Name="WatchingBadge" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10" CornerRadius="10" Padding="8,3"
+                        Background="#99000000" Visibility="Collapsed" IsHitTestVisible="False">
+                  <StackPanel Orientation="Horizontal" Spacing="5">
+                    <FontIcon Glyph="&#xE7B3;" FontSize="11" Foreground="White" />
+                    <TextBlock Text="Watching" FontSize="11" Foreground="White" />
+                  </StackPanel>
+                </Border>
+                <StackPanel x:Name="ScreenPlaceholder" Spacing="10" Padding="24,40" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <FontIcon x:Name="PlaceholderIcon" Glyph="&#xE7F4;" FontSize="28" Foreground="{ThemeResource MutedText}" />
+                  <TextBlock x:Name="PlaceholderTitle" Text="No computer yet" FontWeight="SemiBold" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+                  <TextBlock x:Name="PlaceholderText" Text="Create an agent to see its computer here." Foreground="{ThemeResource MutedText}" FontSize="13" TextWrapping="Wrap" TextAlignment="Center" />
+                  <Button x:Name="PlaceholderAction" HorizontalAlignment="Center" Visibility="Collapsed" Click="PlaceholderActionClick" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+          <Border x:Name="ContextDivider" Height="1" Background="{ThemeResource DividerBrush}" />
+          <StackPanel x:Name="ContextPanel" Padding="20" Spacing="10">
+            <TextBlock Text="Context" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,4" />
+            <!-- As on macOS: Action items, Memory, then Session and instructions (ContextPanel.cs). -->
+            <StackPanel x:Name="ContextSections" Spacing="10" />
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+
+    <!-- First launch, as on macOS: set up the first agent, then get its computer and model ready. -->
+    <Grid x:Name="Onboarding" Grid.ColumnSpan="3" Visibility="Collapsed" Background="{ThemeResource ChatBackground}" />
+  </Grid>
+</Window>

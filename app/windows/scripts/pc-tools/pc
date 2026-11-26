@@ -1,0 +1,4 @@
+#!/bin/bash
+# The agent's way to use this PC's apps (Claude Code's Bash tool runs in Git Bash). See pc.ps1.
+here="$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))"
+exec powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$here/pc.ps1" "$@"

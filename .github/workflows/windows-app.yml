@@ -1,0 +1,51 @@
+name: Windows app
+on:
+  pull_request:
+    paths: ['app/windows/**', '.github/workflows/windows-app.yml']
+  push:
+    branches: [main]
+    paths: ['app/windows/**', '.github/workflows/windows-app.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: API and stream contract tests (no credentials)
+        run: dotnet run --project app/windows/AgentS.Core.Tests -c Release
+      - name: Publish native WinUI app
+        run: |
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "${{ runner.temp }}/agent-s-windows"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "${{ runner.temp }}/agent-s-windows/resources.pri")) {
+            Get-ChildItem app/windows/AgentS.Windows -Recurse -Include *.pri,*.xbf | Select-Object FullName
+            dotnet msbuild app/windows/AgentS.Windows -p:Configuration=Release -p:Platform=x64 -p:RuntimeIdentifier=win-x64 -getProperty:AppxGeneratePriEnabled,EnablePriGenTooling,EnableCoreMrtTooling,ProjectPriFullPath,ProjectPriFileName,MsixPackageSupport,ShouldImportMsixCommonTargets,TargetPlatformIdentifier -getItem:Page,ApplicationDefinition
+            throw "Published XAML resource index is missing."
+          }
+      - name: Native startup and Accounts smoke test (no credentials)
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          & powershell.exe -NoProfile -STA -File app/windows/scripts/smoke.ps1 -Executable "${{ runner.temp }}/agent-s-windows/AgentS.Windows.exe" -EvidenceDirectory "${{ runner.temp }}/agent-s-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent-s-windows-x64
+          path: ${{ runner.temp }}/agent-s-windows/
+          retention-days: 7
+          if-no-files-found: error
+      - name: Upload smoke report and real window captures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-smoke-evidence
+          path: ${{ runner.temp }}/agent-s-evidence/
+          retention-days: 7
+          if-no-files-found: warn

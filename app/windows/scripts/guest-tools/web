@@ -1,0 +1,28 @@
+#!/bin/bash
+# The agent's browser: drives the Private computer's Chromium through its debugging port.
+#   web open <url>                   go to a page (opens Chromium if needed)
+#   web snapshot                     the page with [ref=eN] for every element you can use
+#   web click <ref>                  click an element
+#   web type <ref> <text> [--enter]  fill a text field, optionally press Enter
+#   web read                         the page's visible text
+#   web key <key> | web back | web scroll [down|up] | web tabs
+. /usr/local/lib/sai/agent-s-env.sh
+
+# Chromium with its debugging port open, on the computer's loopback only.
+if ! curl -s -m 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1; then
+  if [ "$1" != open ]; then
+    echo "The browser is not open. Run web open <url> first (for example: web open https://example.com)." >&2
+    exit 1
+  fi
+  pkill -x chromium 2>/dev/null; sleep 0.5
+  ACCESSIBILITY_ENABLED=1 setsid -f chromium --user-data-dir="$HOME/.local/state/agent-s/chromium" \
+    --no-first-run --no-default-browser-check --start-maximized --disable-sync --hide-crash-restore-bubble \
+    --force-renderer-accessibility --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1 \
+    about:blank >/dev/null 2>&1
+  # Chromium's first start in WSL can take well over ten seconds.
+  for _ in $(seq 1 120); do curl -s -m 1 http://127.0.0.1:9222/json/version >/dev/null 2>&1 && break; sleep 0.25; done
+fi
+
+args=()
+for a in "$@"; do case "$a" in --enter) args+=(+enter) ;; --all) args+=(+all) ;; *) args+=("$a") ;; esac; done
+exec node /usr/local/lib/sai/web.mjs "${args[@]}"
