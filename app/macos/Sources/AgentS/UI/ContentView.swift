@@ -453,7 +453,9 @@ struct ConversationRow: View {
     var body: some View {
         let inference = model.sidebarInference(for: session.config)
         let preview = session.lastLine ?? summary
-        let detail = "\(inference.label) · \(inference.help)"
+        let spend = session.openRouterSpendUSD
+        let route = "\(inference.label) · \(inference.help)"
+        let detail = spend.map { "\(route) · \(OpenRouter.formattedSpend($0)) tracked OpenRouter spend" } ?? route
         let status = session.isRunning ? "\(detail), Working" : detail
         return Button(action: select) {
             HStack(spacing: 12) {
@@ -474,6 +476,14 @@ struct ConversationRow: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if let spend {
+                    let cent = Decimal(1) / 100
+                    let label = spend > 0 && spend < cent
+                        ? "<\(cent.formatted(.currency(code: "USD")))"
+                        : spend.formatted(.currency(code: "USD"))
+                    Text(label).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                        .fixedSize().accessibilityHidden(true)
+                }
                 if session.isRunning { ProgressView().controlSize(.small) }
             }
             .padding(.horizontal, 10).padding(.vertical, 8)

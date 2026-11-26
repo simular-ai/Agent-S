@@ -48,6 +48,7 @@ struct SavedAgent: Codable {
     var config: AgentConfig
     var items: [ChatItem]
     var sessions: [String: String]
+    var openRouterSpendUSD: Decimal? = nil
 }
 
 /// One item in the chat: what the user asked, what the agent said, a step it took.
@@ -90,6 +91,7 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var memory = AgentMemory()
     @Published private(set) var memoryError: String?
     @Published private(set) var chatItemRequest: ChatItemRequest?
+    @Published private(set) var openRouterSpendUSD: Decimal?
     @Published private(set) var sessions: [Harness: String] = [:]
     @Published private var sandboxSessions: [String: String] = [:]
     private var accountSessions: [ModelProvider: String] = [:]
@@ -126,6 +128,7 @@ final class AgentSession: ObservableObject, Identifiable {
             accountSessions[provider] = stored[provider.rawValue]
         }
         boxSessions = stored.filter { $0.key.hasPrefix("box/") }
+        openRouterSpendUSD = saved.openRouterSpendUSD
     }
 
     var saved: SavedAgent {
@@ -133,7 +136,12 @@ final class AgentSession: ObservableObject, Identifiable {
         for (key, id) in sandboxSessions { savedSessions[key] = id }
         for (provider, id) in accountSessions { savedSessions[provider.rawValue] = id }
         for (key, id) in boxSessions { savedSessions[key] = id }
-        return SavedAgent(config: config, items: items, sessions: savedSessions)
+        return SavedAgent(config: config, items: items, sessions: savedSessions, openRouterSpendUSD: openRouterSpendUSD)
+    }
+
+    func recordOpenRouterSpend(_ amount: Decimal) {
+        openRouterSpendUSD = (openRouterSpendUSD ?? 0) + amount
+        onChange?()
     }
 
     var currentSessionID: String? {

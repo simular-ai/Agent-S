@@ -57,6 +57,7 @@ struct SetupView: View {
                 KeySetup.sai(model)
                 KeySetup.box(model)
                 KeySetup.openRouter(model)
+                if model.hasOpenRouterKey { OpenRouterKeyUsageRows() }
                 OpenRouterZDRSetting(isOn: $model.openRouterRequiresZDR)
                 Text("Keys stay in this Mac's Keychain and are shared by all your agents. They never enter the computer.")
                     .font(.caption).foregroundStyle(.secondary)

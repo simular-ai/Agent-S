@@ -29,6 +29,11 @@ struct AgentSettings: View {
                                    ? "A Linux VM on this Mac"
                                    : model.privacy == .thisMac ? "This Mac itself (asks before each step)"
                                    : "The cloud: \(model.computer?.displayName ?? "a cloud computer")")
+                    if let spend = model.agent.openRouterSpendUSD {
+                        LabeledContent("Tracked OpenRouter spend", value: OpenRouter.formattedSpend(spend))
+                    } else if model.harness != .sai, model.provider == .openRouter {
+                        LabeledContent("Tracked OpenRouter spend", value: "No usage recorded yet")
+                    }
                 }
 
                 Section("Model") {
