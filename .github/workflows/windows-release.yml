@@ -1,0 +1,119 @@
+name: Windows release
+
+# Manual only: the `release` environment requires a human to approve each run,
+# and signing keys should never be spent on an unattended push.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # create/update the GitHub release
+  id-token: write   # OIDC -> Entra federated credential
+
+jobs:
+  release:
+    runs-on: windows-latest
+    # Federated credential subject is pinned to this environment:
+    # repo:simular-ai@99358647/Agent-S@870189331:environment:release
+    environment: release
+    timeout-minutes: 40
+
+    env:
+      OUT_DIR: ${{ runner.temp }}/agent-s-windows
+      ZIP_NAME: AgentS-Windows-x64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: API and stream contract tests (no credentials)
+        run: dotnet run --project app/windows/AgentS.Core.Tests -c Release
+
+      - name: Publish native WinUI app
+        shell: pwsh
+        run: |
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "$env:OUT_DIR"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:OUT_DIR/resources.pri")) {
+            throw "Published XAML resource index is missing."
+          }
+
+      - name: Native startup smoke test (no credentials)
+        shell: powershell
+        timeout-minutes: 3
+        run: |
+          & powershell.exe -NoProfile -STA -File app/windows/scripts/smoke.ps1 `
+            -Executable "${{ runner.temp }}/agent-s-windows/AgentS.Windows.exe" `
+            -EvidenceDirectory "${{ runner.temp }}/agent-s-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # --- Signing -------------------------------------------------------
+      # Requires: certificate profile exists, and this app has the
+      # "Artifact Signing Certificate Profile Signer" role on it.
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign exe and native DLLs
+        uses: azure/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ runner.temp }}/agent-s-windows
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signatures
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:OUT_DIR 'AgentS.Windows.exe'
+          $sig = Get-AuthenticodeSignature $exe
+          if ($sig.Status -ne 'Valid') { throw "Signature not valid on exe: $($sig.Status)" }
+          Write-Host "exe signed by: $($sig.SignerCertificate.Subject)"
+
+      # --- Package -------------------------------------------------------
+      - name: Zip and checksum
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "$env:ZIP_NAME.zip"
+          Compress-Archive -Path "$env:OUT_DIR/*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:ZIP_NAME.zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii -NoNewline
+          Write-Host "SHA256: $hash"
+
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "$env:ZIP_NAME.zip"
+          gh release view $env:TAG 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --title $env:TAG --generate-notes
+          }
+          gh release upload $env:TAG $zip "$zip.sha256" --clobber
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-smoke-evidence
+          path: ${{ runner.temp }}/agent-s-evidence/
+          retention-days: 7
+          if-no-files-found: warn
