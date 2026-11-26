@@ -173,11 +173,16 @@ private struct OllamaCatalogRow: View {
     var body: some View {
         Button(action: select) {
             HStack(alignment: .firstTextBaseline) {
-                Text(name).lineLimit(1)
-                if let input {
-                    Text(input.label)
-                        .font(.caption).foregroundStyle(.secondary)
-                        .fixedSize()
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(name).lineLimit(1)
+                        if let input {
+                            Text(input.label)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .fixedSize()
+                        }
+                    }
+                    Text(Ollama.Billing.local.label).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Text(detail).font(.caption).foregroundStyle(.secondary)
@@ -200,13 +205,19 @@ struct OllamaModelDetails: View {
     @EnvironmentObject private var model: AppModel
     let name: String
     let sandboxMemory: UInt64
-    @State private var result: (lookup: Lookup, size: String?)?
+    @State private var result: (lookup: Lookup, variant: OllamaCatalog.Variant?)?
 
     var body: some View {
         let lookup = Lookup(name: name, installed: model.ollamaModels.first { $0.matches(name) })
         VStack(alignment: .leading, spacing: 6) {
             Text(description(for: lookup))
                 .foregroundStyle(.secondary)
+            let billing = billing(for: lookup)
+            if billing == .cloud {
+                Link(billing.label, destination: Ollama.cloudPricingURL)
+            } else {
+                Text(billing.label).foregroundStyle(.secondary)
+            }
             if let estimate = memoryEstimate(for: lookup) {
                 TimelineView(.periodic(from: .now, by: 5)) { _ in
                     memoryWarning(for: estimate)
@@ -218,7 +229,7 @@ struct OllamaModelDetails: View {
             guard lookup.installed == nil, presetSize == nil, !Ollama.isCloudReference(name) else { return }
             let variant = try? await publishedVariant()
             guard !Task.isCancelled else { return }
-            result = (lookup, variant?.size)
+            result = (lookup, variant)
             model.rememberOllamaInput(variant?.inputCapability, for: name)
         }
     }
@@ -250,8 +261,13 @@ struct OllamaModelDetails: View {
         let loaded = result?.lookup == lookup ? result : nil
         if let installed = lookup.installed { return installed.sizeLabel }
         if Ollama.isCloudReference(name) { return "Hosted by Ollama" }
-        if let size = presetSize ?? loaded?.size { return "Estimated download · \(size)" }
+        if let size = presetSize ?? loaded?.variant?.size { return "Estimated download · \(size)" }
         return loaded == nil ? "Checking download size…" : "Download size unavailable"
+    }
+
+    private func billing(for lookup: Lookup) -> Ollama.Billing {
+        if lookup.installed == nil, result?.lookup == lookup, result?.variant != nil { return .local }
+        return Ollama.billing(for: name, installed: lookup.installed)
     }
 
     private func memoryEstimate(for lookup: Lookup) -> OllamaMemoryEstimate? {
@@ -259,7 +275,7 @@ struct OllamaModelDetails: View {
         if let installed = lookup.installed, installed.size > 0 {
             return OllamaMemoryEstimate(modelBytes: UInt64(installed.size))
         }
-        if let size = presetSize ?? (result?.lookup == lookup ? result?.size : nil) {
+        if let size = presetSize ?? (result?.lookup == lookup ? result?.variant?.size : nil) {
             return OllamaMemoryEstimate(catalogSize: size)
         }
         return nil
@@ -275,7 +291,8 @@ struct OllamaModelDetails: View {
 
 private extension Ollama.Model {
     var sizeLabel: String {
-        if usesRemoteInference || Ollama.isCloudReference(name) { return "Hosted by Ollama" }
+        if Ollama.billing(for: name, installed: self) == .cloud { return "Hosted by Ollama" }
+        if usesRemoteInference { return "Hosted inference" }
         guard size > 0 else { return "Installed" }
         return "Installed · \(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))"
     }

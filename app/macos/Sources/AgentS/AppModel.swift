@@ -100,6 +100,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isRefreshingOpenRouterModels = false
     @Published private var openRouterZDRCheck: OpenRouterZDRCheck?
     @Published private(set) var hasOpenRouterKey = OpenRouter.hasKey
+    @Published private(set) var openRouterKeyUsage: OpenRouterKeyUsage.State = .idle
+    private var openRouterKeyRevision = 0
     @Published var openRouterRequiresZDR = AppModel.storedOpenRouterRequiresZDR {
         didSet { UserDefaults.standard.set(openRouterRequiresZDR, forKey: Self.openRouterZDRKey) }
     }
@@ -295,6 +297,7 @@ final class AppModel: ObservableObject {
             return
         }
         session.stop()
+        openRouterProxy.revokeToken(for: session.id)
         macTurnPanel.remove(session)
         agents.removeAll { $0.id == session.id }
         if selectedAgentID == session.id { selectedAgentID = agents[0].id }
@@ -488,6 +491,9 @@ final class AppModel: ObservableObject {
             selectedAgentID = agents.first { $0.id == saved }?.id ?? agents[0].id
         }
         vm.onStateChange = { [weak self] state in self?.vmChanged(state) }
+        openRouterProxy.onCharge = { [weak self] agentID, amount in
+            self?.agents.first { $0.id == agentID }?.recordOpenRouterSpend(amount)
+        }
     }
 
     var shell: GuestShell { GuestShell(files: files, mac: vm.macAddress, forwardedSSHPort: vm.forwardedSSHPort) }
@@ -610,14 +616,20 @@ final class AppModel: ObservableObject {
     }
 
     func ollamaOptionTitle(_ name: String) -> String {
-        let title = Ollama.displayName(for: name)
-        return ollamaInputCapability(for: name).map { "\(title) · \($0.label)" } ?? title
+        let installed = ollamaModels.first { $0.matches(name) }
+        let billing = Ollama.billing(for: name, installed: installed)
+        return [Ollama.displayName(for: name), ollamaInputCapability(for: name)?.label, billing.label]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     func openRouterOptionTitle(_ id: String) -> String {
         let input = openRouterModels.first { $0.id == id }?.inputCapability?.label
         let zdr = openRouterZDRAvailability(for: id).label
-        return [id, input, zdr].compactMap { $0 }.joined(separator: " · ")
+        return [id, openRouterPricing(for: id).label, input, zdr].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    func openRouterPricing(for id: String) -> OpenRouterModelPricing {
+        openRouterModels.first { $0.id == id }?.pricing ?? OpenRouterModelPricing(modelID: id)
     }
 
     // MARK: Actions
@@ -1084,14 +1096,48 @@ final class AppModel: ObservableObject {
 
     func saveOpenRouterKey(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, OpenRouter.save(key: trimmed) else { return false }
-        hasOpenRouterKey = true
-        return true
+        guard !trimmed.isEmpty else { return false }
+        let saved = OpenRouter.save(key: trimmed)
+        resetOpenRouterKeyUsage()
+        hasOpenRouterKey = OpenRouter.hasKey
+        return saved
     }
 
     func removeOpenRouterKey() {
         OpenRouter.delete()
+        resetOpenRouterKeyUsage()
         hasOpenRouterKey = false
+    }
+
+    private func resetOpenRouterKeyUsage() {
+        openRouterKeyRevision += 1
+        openRouterKeyUsage = .idle
+    }
+
+    func refreshOpenRouterKeyUsage() async {
+        guard hasOpenRouterKey, !Task.isCancelled else { return }
+        if case .loading = openRouterKeyUsage { return }
+        guard let key = OpenRouter.key() else {
+            openRouterKeyUsage = .failed("Couldn’t read the saved OpenRouter key from Keychain.")
+            return
+        }
+
+        let revision = openRouterKeyRevision
+        openRouterKeyUsage = .loading
+        defer {
+            if revision == openRouterKeyRevision, case .loading = openRouterKeyUsage {
+                openRouterKeyUsage = .idle
+            }
+        }
+        do {
+            let usage = try await OpenRouter.keyUsage(using: key)
+            guard !Task.isCancelled, revision == openRouterKeyRevision else { return }
+            openRouterKeyUsage = .loaded(usage)
+        } catch {
+            guard !Task.isCancelled, revision == openRouterKeyRevision else { return }
+            let failure = error as? OpenRouterKeyUsageError ?? .unavailable
+            openRouterKeyUsage = .failed(failure.localizedDescription)
+        }
     }
 
     var openRouterZDRNeedsRefresh: Bool {
@@ -1516,7 +1562,7 @@ final class AppModel: ObservableObject {
                 session.noticeFromApp("Couldn't start the OpenRouter connection: \(error.localizedDescription)")
                 return nil
             }
-            return ("http://127.0.0.1:\(OpenRouter.proxyPort)", openRouterProxy.token)
+            return ("http://127.0.0.1:\(OpenRouter.proxyPort)", openRouterProxy.token(for: session.id))
         case .claudeAccount, .codexAccount:
             return ("", "")
         }

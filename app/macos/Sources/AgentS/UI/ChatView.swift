@@ -260,10 +260,11 @@ struct ChatView: View {
                     }
                     if model.saiMachines.isEmpty { Text(model.hasSaiKey ? "No Sai computers" : "Add your Sai key in Settings") }
                 }
-                Section("Sai model") {
+                Section("Sai model · relative credit cost") {
                     ForEach(model.saiModels.filter(\.allowed)) { choice in
                         Button { model.saiModel = choice.id } label: {
-                            if choice.id == model.saiModel { Label(choice.name, systemImage: "checkmark") } else { Text(choice.name) }
+                            let title = choice.optionTitle()
+                            if choice.id == model.saiModel { Label(title, systemImage: "checkmark") } else { Text(title) }
                         }
                     }
                 }
@@ -302,6 +303,7 @@ struct ChatView: View {
                         Toggle("Request Zero Data Retention (ZDR)", isOn: $model.openRouterRequiresZDR)
                     } else if let notice = model.provider.accountDataNotice {
                         Text("Automatic")
+                        if let billing = model.provider.accountBillingLabel { Text(billing) }
                         Text(notice)
                     }
                 }

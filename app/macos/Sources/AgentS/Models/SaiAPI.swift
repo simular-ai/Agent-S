@@ -35,9 +35,24 @@ enum SaiAPI {
     }
 
     struct Model: Identifiable, Hashable {
+        enum CostTier: String {
+            case free
+            case low = "$"
+            case medium = "$$"
+            case high = "$$$"
+
+            var label: String { self == .free ? "Free" : rawValue }
+        }
+
         let id: String
         let name: String
         let allowed: Bool
+        let costTier: CostTier?
+
+        func optionTitle(recommended: Bool = false) -> String {
+            let title = recommended ? "\(name) (recommended)" : name
+            return "\(title) · \(costTier?.label ?? "Cost unavailable")"
+        }
     }
 
     struct Failure: LocalizedError {
@@ -116,7 +131,9 @@ enum SaiAPI {
         let list = try await json("/v1/agents/models")["models"] as? [[String: Any]] ?? []
         return list.compactMap { row in
             guard let id = row["id"] as? String else { return nil }
-            return Model(id: id, name: row["name"] as? String ?? id, allowed: row["allowed"] as? Bool ?? true)
+            let costTier = (row["costTier"] as? String).flatMap(Model.CostTier.init(rawValue:))
+            return Model(id: id, name: row["name"] as? String ?? id, allowed: row["allowed"] as? Bool ?? true,
+                         costTier: costTier)
         }
     }
 
@@ -199,7 +216,8 @@ enum SaiAPI {
                     event: @escaping @MainActor ([String: Any]) -> Void) async throws {
         var body: [String: Any] = ["message": message, "machineId": machine]
         if let session { body["sessionId"] = session }
-        if let model, model != "auto" { body["model"] = model }
+        // Sai retains the previous session model unless we send the new choice, including "auto".
+        if let model { body["model"] = model }
         var request = try request("/v1/agents/message", method: "POST", body: body, accept: "text/event-stream")
         request.timeoutInterval = 60 * 60
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
