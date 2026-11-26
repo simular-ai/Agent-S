@@ -3,6 +3,7 @@ import SwiftUI
 @main
 struct AgentSApp: App {
     @StateObject private var model = AppModel()
+    @StateObject private var updater = AppUpdater()
     @NSApplicationDelegateAdaptor private var delegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
 
@@ -15,9 +16,11 @@ struct AgentSApp: App {
                 .frame(minHeight: 560)
                 .onAppear {
                     delegate.model = model
+                    delegate.updater = updater
                     model.openMainWindow = { [openWindow] in openWindow(id: Self.mainWindowID) }
                     model.refreshMacAccess()
                     model.resumeSavedSandboxOnLaunch()
+                    updater.start()
                 }
                 .onChange(of: model.selectedAgentID) { _, _ in
                     if model.privacy == .thisMac { model.refreshMacAccess() }
@@ -26,12 +29,21 @@ struct AgentSApp: App {
         .windowStyle(.hiddenTitleBar)
         // The window is never narrower than its content, so opening the computer panel widens it.
         .windowResizability(.contentMinSize)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                if updater.isConfigured {
+                    Button("Check for Updates…") { updater.checkForUpdates() }
+                        .disabled(!updater.canCheckForUpdates)
+                }
+            }
+        }
     }
 }
 
 /// Lets Agent S finish saving the sandbox before macOS terminates the app.
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var model: AppModel?
+    weak var updater: AppUpdater?
     private var terminationPending = false
 
     /// Two copies of the app must not share one computer: if the earlier "Saige" build is
@@ -55,7 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !terminationPending else { return .terminateLater }
         terminationPending = true
         Task { @MainActor in
-            let shouldQuit = await model.prepareToQuit()
+            let updateAllowsQuit = await updater?.waitBeforeQuitting(model) ?? true
+            let shouldQuit = updateAllowsQuit ? await model.prepareToQuit() : false
             terminationPending = false
             sender.reply(toApplicationShouldTerminate: shouldQuit)
         }

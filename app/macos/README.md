@@ -38,6 +38,10 @@ file and run `./scripts/vendor-deepseek.sh --trace` to update the list of packag
 Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
 the Dock to reopen the window, or use **Quit Agent S** to exit the app.
 
+The distributed app checks for updates automatically. Choose **Agent S → Check for Updates…** to
+check manually. To upgrade from v0.3.3, quit Agent S and use the new DMG to replace the app
+in Applications. Your agents and conversations stay in Application Support.
+
 The Computer panel shows pending requests and open work first. Check items under
 **Open work** to run them together in one chat turn or delete them from memory.
 
@@ -200,26 +204,75 @@ direct distribution as a Developer ID–signed, notarized DMG. A Mac App Store b
 would need to meet Apple's sandbox requirements for its automation features.
 [Apple's macOS distribution options](https://developer.apple.com/macos/distribution/)
 
-1. Install the organization's **Developer ID Application** signing identity and store
-   notarization credentials in a Keychain profile. From `app/macos`, run:
+### Set up the release Mac
 
-   ```sh
-   xcrun notarytool store-credentials agent-s-notary
-   SIGN_IDENTITY='Developer ID Application: Your Organization (TEAMID)' \
-     NOTARY_KEYCHAIN_PROFILE=agent-s-notary ./scripts/release.sh
-   ```
+Install the organization's **Developer ID Application** signing identity, store
+notarization credentials, and generate the Sparkle update key once. Run these commands
+from `app/macos`. The Sparkle tools are under the SwiftPM scratch directory if you use
+`--scratch-path`. [Sparkle setup](https://sparkle-project.org/documentation/)
 
-   The script builds and signs the app and disk image, submits the DMG to Apple, and
-   staples the approved ticket. It writes the versioned DMG and SHA-256 checksum to
-   `build/`. [Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
-2. Verify Gatekeeper on a clean Apple Silicon Mac. Test a fresh install and upgrade,
-   including macOS permissions, sandbox startup, and Sai and Box sign-in. The app
-   verifies the pinned Debian archive before unpacking. Publish a privacy policy that
-   covers the modes shipped in the release.
-3. Verify the account integrations for the intended distribution. OpenAI documents
-   **Sign in with ChatGPT** for commercial or hosted integrations in place of the
-   current Codex App Server authentication. Anthropic's terms govern the use of
-   Claude Code in a product. [Codex authentication](https://learn.chatgpt.com/docs/app-server#auth-endpoints) · [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
-4. Attach the verified DMG and checksum to a GitHub Release for the tested commit.
+```sh
+swift package resolve
+sparkle_bin="$PWD/.build/artifacts/sparkle/Sparkle/bin"
+xcrun notarytool store-credentials agent-s-notary
+"$sparkle_bin/generate_keys" --account agent-s
+```
+
+Keep the Sparkle private key in the release Mac's Keychain and reuse its public key for
+each release. The release script embeds that public key and configures
+`https://agent-s.ai/appcast.xml` as the default update feed.
+
+### Build and verify a release
+
+Set `CFBundleShortVersionString` to the release version and increment `CFBundleVersion`
+in `Resources/Info.plist`. Sparkle compares the build number to find newer releases.
+
+```sh
+sparkle_public_key=$("$sparkle_bin/generate_keys" --account agent-s -p)
+SIGN_IDENTITY='Developer ID Application: Your Organization (TEAMID)' \
+  NOTARY_KEYCHAIN_PROFILE=agent-s-notary \
+  SPARKLE_PUBLIC_ED_KEY="$sparkle_public_key" ./scripts/release.sh
+```
+
+The script builds and signs the app and disk image, submits the DMG to Apple, and staples
+the approved ticket. It writes the versioned DMG and SHA-256 checksum to `build/`.
+[Apple's notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
+
+Verify Gatekeeper on a clean Apple Silicon Mac. Test a fresh install and an upgrade from
+v0.3.3, including macOS permissions, sandbox startup, and Sai and Box sign-in. The app
+verifies the pinned Debian archive before unpacking. Publish a privacy policy that
+covers the modes shipped in the release.
+
+For an in-app update test, build two increasing versions against the same staging HTTPS feed
+using `SPARKLE_FEED_URL`. Publish the newer test DMG and its signed feed to staging,
+then use **Check for Updates…** in the older build. Confirm that the app installs the newer
+build and reopens with its existing agents, chats, and sandbox.
+
+Verify the account integrations for the intended distribution. OpenAI documents
+**Sign in with ChatGPT** for commercial or hosted integrations in place of the current
+Codex App Server authentication. Anthropic's terms govern the use of Claude Code in a product.
+[Codex authentication](https://learn.chatgpt.com/docs/app-server#auth-endpoints) · [Claude Code terms](https://code.claude.com/docs/en/legal-and-compliance)
+
+### Publish the DMG and update feed
+
+Attach the verified DMG and checksum to a GitHub Release for the tested commit. Then
+stage the final stapled DMG and generate the feed. Use the exact GitHub Release tag
+in `tag`. To embed release notes, add an HTML or Markdown file with the DMG's base name
+to the staging directory before running `generate_appcast`.
+
+```sh
+version=$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)
+tag="v$version"
+staging=$(mktemp -d)
+cp "build/Agent-S-macOS-${version}-arm64.dmg" "$staging/"
+"$sparkle_bin/generate_appcast" --account agent-s --maximum-deltas 0 \
+  --download-url-prefix "https://github.com/simular-ai/Agent-S/releases/download/$tag/" \
+  --embed-release-notes -o "$staging/appcast.xml" "$staging"
+```
+
+Publish the generated `appcast.xml` verbatim as `website/appcast.xml`. The Pages workflow
+deploys it when the change reaches `main`. Sparkle signs both the archive and the feed, so
+regenerate the feed if its XML changes. Verify the deployed HTTPS feed and the release
+download before announcing the update. [Sparkle publishing guide](https://sparkle-project.org/documentation/publishing/)
 
 [Repository license](../../LICENSE)
