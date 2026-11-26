@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 
 : "${SIGN_IDENTITY:?Set SIGN_IDENTITY to the Developer ID Application signing identity.}"
 : "${NOTARY_KEYCHAIN_PROFILE:?Set NOTARY_KEYCHAIN_PROFILE to a notarization profile in Keychain.}"
+: "${SPARKLE_PUBLIC_ED_KEY:?Set SPARKLE_PUBLIC_ED_KEY to the public key from Sparkle generate_keys.}"
 
 version=$(plutil -extract CFBundleShortVersionString raw -o - Resources/Info.plist)
 name="Agent-S-macOS-${version}-arm64.dmg"

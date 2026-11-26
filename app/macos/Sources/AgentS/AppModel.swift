@@ -781,6 +781,11 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    var hasWorkToFinishBeforeUpdate: Bool {
+        if case .preparing = phase { return true }
+        return isSavingSandbox || sandboxIsBusyForSave || agents.contains(where: \.isRunning)
+    }
+
     private var sandboxIsBusyForSave: Bool {
         if case .booting = phase { return true }
         return vm.state == .starting || vm.state == .stopping || sandboxHasActiveTurn

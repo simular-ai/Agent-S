@@ -483,3 +483,11 @@ Contents/Resources/DeepSeek/node_modules. These packages are distributed
 under the MIT, Apache-2.0, BSD-3-Clause, ISC, 0BSD, and Python-2.0
 licenses, and libvips (in @img/sharp-libvips-darwin-arm64) under the GNU
 Lesser General Public License, version 3 or later.
+
+========================================================================
+
+Sparkle 2.10.1
+https://github.com/sparkle-project/Sparkle
+
+Sparkle's license and bundled third-party licenses are in
+Contents/Resources/Sparkle-LICENSE.
