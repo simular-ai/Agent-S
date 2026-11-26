@@ -171,6 +171,31 @@ internal static class WslComputer
         }
     }
 
+    private static int dockChecked;
+
+    /// <summary>
+    /// The dock (tint2), as in the macOS sandbox. Guests set up before it was added (or restored by Reset
+    /// computer) get it installed and the current desktop script; then it starts if it isn't running.
+    /// Runs in the background once per app run; a failure (e.g. offline) just leaves the desktop without it.
+    /// </summary>
+    public static void EnsureDock()
+    {
+        if (Interlocked.Exchange(ref dockChecked, 1) == 1) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var install = new StringBuilder("set -e\ncommand -v tint2 >/dev/null || { apt-get update -q && apt-get install -y -q --no-install-recommends tint2 && apt-get clean; }\n");
+                foreach (var (asset, target) in new[] { ("agent-s-desktop.sh", "agent-s-desktop"), ("agent-s-dock.sh", "agent-s-dock") })
+                    install.Append($"echo '{Asset(asset)}' | base64 -d > /usr/local/bin/{target}.new && chmod 0755 /usr/local/bin/{target}.new && mv /usr/local/bin/{target}.new /usr/local/bin/{target}\n");
+                var (exit, _, _) = await Exec(["-d", Distro, "-u", "root", "--cd", "/", "--exec", "/bin/bash", "-s"], TimeSpan.FromMinutes(5), CancellationToken.None, input: install.ToString());
+                if (exit != 0) { dockChecked = 0; return; }
+                await Exec(["-d", Distro, "-u", "agent", "--cd", "~", "--exec", "/usr/local/bin/agent-s-dock"], TimeSpan.FromSeconds(30), CancellationToken.None);
+            }
+            catch (Exception) { dockChecked = 0; }
+        });
+    }
+
     public static async Task WaitForScreenshot(TimeSpan timeout, CancellationToken cancellation)
     {
         var start = Stopwatch.StartNew();
@@ -244,11 +269,12 @@ internal static class WslComputer
         }
     }
 
+    private static string Asset(string name) =>
+        Convert.ToBase64String(Encoding.UTF8.GetBytes(
+            File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Guest", name)).Replace("\r\n", "\n")));
+
     private static string ProvisioningScript()
     {
-        string Asset(string name) =>
-            Convert.ToBase64String(Encoding.UTF8.GetBytes(
-                File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Guest", name)).Replace("\r\n", "\n")));
         return $$"""
             set -euo pipefail
             export DEBIAN_FRONTEND=noninteractive
@@ -269,7 +295,7 @@ internal static class WslComputer
             id agent >/dev/null 2>&1 || useradd -m -s /bin/bash agent
             passwd -l agent >/dev/null
             apt-get update
-            apt-get install -y --no-install-recommends ca-certificates xvfb xauth x11-xserver-utils openbox \
+            apt-get install -y --no-install-recommends ca-certificates xvfb xauth x11-xserver-utils openbox tint2 \
                 chromium xdotool xclip scrot dbus-x11 fonts-dejavu-core
             apt-get clean
             mkdir -p /etc/agent-s /usr/local/share/agent-s
@@ -277,8 +303,9 @@ internal static class WslComputer
             printf '%s\n' 'AGENT_S_DISPLAY=99' 'AGENT_S_XVFB_EXTRA="-nolisten unix"' > /etc/agent-s/env
             echo '{{Asset("agent-s-guest.sh")}}' | base64 -d > /usr/local/bin/agent-s-guest
             echo '{{Asset("agent-s-desktop.sh")}}' | base64 -d > /usr/local/bin/agent-s-desktop
+            echo '{{Asset("agent-s-dock.sh")}}' | base64 -d > /usr/local/bin/agent-s-dock
             echo '{{Asset("agent-s-demo.html")}}' | base64 -d > /usr/local/share/agent-s/demo.html
-            chmod 0755 /usr/local/bin/agent-s-guest /usr/local/bin/agent-s-desktop
+            chmod 0755 /usr/local/bin/agent-s-guest /usr/local/bin/agent-s-desktop /usr/local/bin/agent-s-dock
             chmod 0644 /usr/local/share/agent-s/demo.html /etc/agent-s/env
             """.Replace("\r\n", "\n");
     }

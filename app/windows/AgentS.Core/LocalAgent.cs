@@ -196,6 +196,129 @@ public sealed class LocalAgent : IDisposable
         }
     }
 
+    /// <summary>
+    /// The same bounded desktop turn with a hosted vision model from OpenRouter, through the app's loopback
+    /// proxy (which holds the key and applies Zero Data Retention). Requests use OpenAI chat completions.
+    /// </summary>
+    /// <param name="proxy">The app's OpenRouter proxy base URL (http://127.0.0.1:port) and its per-launch token.</param>
+    public async IAsyncEnumerable<PrivateEvent> RunOpenRouter(
+        string prompt,
+        string model,
+        IReadOnlyList<PrivateMessage> history,
+        IPrivateDesktop desktop,
+        (Uri BaseUrl, string Token) proxy,
+        [EnumeratorCancellation] CancellationToken cancellation = default)
+    {
+        if (string.IsNullOrWhiteSpace(prompt) || prompt.Length > 16_000)
+            throw new LocalAgentException("Enter a message of up to 16,000 characters.");
+        if (model.Length is 0 or > 256 || model.Any(character => char.IsWhiteSpace(character) || char.IsControl(character)))
+            throw new LocalAgentException("Choose an OpenRouter model id, such as one from openrouter.ai/models.");
+        if (!proxy.BaseUrl.IsLoopback)
+            throw new LocalAgentException("OpenRouter requests must go through Agent S's own proxy.");
+
+        var messages = new List<object> { new { role = "system", content = Instructions } };
+        foreach (var previous in history.TakeLast(12))
+        {
+            var role = previous.Role switch
+            {
+                "You" or "User" or "user" => "user",
+                "Agent" or "Sai" or "Assistant" or "assistant" => "assistant",
+                _ => null
+            };
+            if (role is not null && !string.IsNullOrWhiteSpace(previous.Text))
+                messages.Add(new { role, content = Limit(previous.Text, 4_000) });
+        }
+        var lastText = prompt;
+
+        var screenshot = await Capture(desktop, cancellation);
+        yield return new PrivateEvent("Activity", "Private desktop ready.", screenshot);
+
+        for (var actions = 0; actions <= MaximumActions; actions++)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            // Only the newest user message carries a screenshot, as with Ollama.
+            var request = messages.Append(new
+            {
+                role = "user",
+                content = new object[]
+                {
+                    new { type = "text", text = lastText },
+                    new { type = "image_url", image_url = new { url = "data:image/png;base64," + Convert.ToBase64String(screenshot) } },
+                }
+            }).ToArray();
+            using var post = new HttpRequestMessage(HttpMethod.Post, new Uri(proxy.BaseUrl, "v1/chat/completions"))
+            {
+                Content = JsonContent.Create(new { model, messages = request, tools = Tools, tool_choice = "auto", max_tokens = 1024, temperature = 0.1 }, options: Json),
+            };
+            post.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", proxy.Token);
+            using var response = await client.SendAsync(post, cancellation);
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellation);
+            JsonDocument document;
+            try { document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellation); }
+            catch (JsonException error) { throw new LocalAgentException("OpenRouter returned malformed data.", error); }
+            using (document)
+            {
+                var root = document.RootElement;
+                if (!response.IsSuccessStatusCode || Field(root, "error") is { ValueKind: JsonValueKind.Object })
+                {
+                    var detail = Field(root, "error") is { } error ? StringField(error, "message") : null;
+                    throw new LocalAgentException($"OpenRouter returned HTTP {(int)response.StatusCode}{(detail is null ? "." : ": " + Limit(detail, 300))}");
+                }
+                if (Field(root, "choices") is not { ValueKind: JsonValueKind.Array } choices || choices.GetArrayLength() == 0 ||
+                    Field(choices[0], "message") is not { ValueKind: JsonValueKind.Object } reply)
+                    throw new LocalAgentException("OpenRouter did not return an assistant response.");
+
+                var answer = StringField(reply, "content") ?? "";
+                var calls = Field(reply, "tool_calls");
+                if (calls is null or { ValueKind: JsonValueKind.Null } ||
+                    calls is { ValueKind: JsonValueKind.Array } empty && empty.GetArrayLength() == 0)
+                {
+                    if (string.IsNullOrWhiteSpace(answer))
+                        throw new LocalAgentException("The model returned an empty response.");
+                    yield return new PrivateEvent("Agent", answer);
+                    yield break;
+                }
+                if (calls is not { ValueKind: JsonValueKind.Array } toolCalls || toolCalls.GetArrayLength() != 1)
+                    throw new LocalAgentException("The model must request exactly one desktop action at a time.");
+                if (actions == MaximumActions)
+                {
+                    yield return new PrivateEvent("Agent", "I reached the desktop action limit. I stopped before taking another action.");
+                    yield break;
+                }
+
+                var call = toolCalls[0];
+                var id = StringField(call, "id") ?? "call_" + actions;
+                var function = Field(call, "function");
+                var name = function is { } f ? StringField(f, "name") ?? "" : "";
+                var argumentsText = function is { } g ? StringField(g, "arguments") ?? "{}" : "{}";
+                PrivateAction action;
+                try
+                {
+                    using var arguments = JsonDocument.Parse(argumentsText);
+                    using var normalized = JsonDocument.Parse(JsonSerializer.Serialize(new { function = new { name, arguments = arguments.RootElement } }));
+                    action = ParseAction(normalized.RootElement);
+                }
+                catch (JsonException) { throw new LocalAgentException("The model supplied malformed desktop action arguments."); }
+
+                cancellation.ThrowIfCancellationRequested();
+                var result = await desktop.Execute(action, cancellation);
+                cancellation.ThrowIfCancellationRequested();
+                screenshot = await Capture(desktop, cancellation);
+                // The screenshot-less user message becomes history; the next one carries the new screenshot.
+                messages.Add(new { role = "user", content = lastText });
+                messages.Add(new
+                {
+                    role = "assistant",
+                    content = answer,
+                    tool_calls = new[] { new { id, type = "function", function = new { name, arguments = argumentsText } } },
+                });
+                messages.Add(new { role = "tool", tool_call_id = id, content = Limit(result.Length == 0 ? "Done." : result, 1_024) });
+                lastText = "Current private desktop screenshot after the action. Continue the original request.";
+                yield return new PrivateEvent("Activity", Describe(action), screenshot);
+            }
+        }
+    }
+
     public void Dispose() => client.Dispose();
 
     private async Task<JsonDocument> Request(string path, object? body, CancellationToken cancellation)

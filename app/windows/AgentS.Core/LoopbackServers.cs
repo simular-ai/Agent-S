@@ -140,7 +140,7 @@ public sealed class ApprovalServer(Func<ApprovalRequest, CancellationToken, Task
 /// proxy adds it to each request, so the agent (or a page that tricks it) never holds it. Only /v1 API paths
 /// are forwarded, and responses stream back as they arrive.
 /// </summary>
-public sealed class OpenRouterProxy(Func<string?> key, HttpMessageHandler? handler = null) : LoopbackServer
+public sealed class OpenRouterProxy(Func<string?> key, HttpMessageHandler? handler = null, Func<bool>? requiresZdr = null) : LoopbackServer
 {
     public static readonly Uri Api = new("https://openrouter.ai/api");
     private readonly HttpClient http = new(handler ?? new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
@@ -162,14 +162,26 @@ public sealed class OpenRouterProxy(Func<string?> key, HttpMessageHandler? handl
         if (!path.StartsWith("/v1/", StringComparison.Ordinal) || path.Contains("..") || path.Contains("%2e", StringComparison.OrdinalIgnoreCase))
         { await LoopbackRequest.Respond(stream, 404, """{"error":{"message":"Not found"}}""", json, cancellation); return; }
 
-        using var upstream = new HttpRequestMessage(new HttpMethod(request.Method), Api.AbsoluteUri + path);
-        if (request.Body.Length > 0) upstream.Content = new ByteArrayContent(request.Body);
+        var target = new Uri(Api.AbsoluteUri + path);
+        // With Zero Data Retention required (the default, as on macOS), only inference requests pass, each asking for ZDR routing.
+        bool zdr = requiresZdr?.Invoke() ?? true;
+        byte[] forwarded;
+        try { forwarded = OpenRouterRequestPolicy.Body(request.Body, request.Method, target.AbsolutePath, zdr); }
+        catch (OpenRouterPolicyException error)
+        {
+            await LoopbackRequest.Respond(stream, 403, JsonSerializer.Serialize(new { error = new { message = error.Message } }), json, cancellation);
+            return;
+        }
+        using var upstream = new HttpRequestMessage(new HttpMethod(request.Method), target);
+        if (forwarded.Length > 0) upstream.Content = new ByteArrayContent(forwarded);
         foreach (var (name, value) in request.Headers.Where(h => !Dropped.Contains(h.Name)))
         {
             if (!upstream.Headers.TryAddWithoutValidation(name, value)) upstream.Content?.Headers.TryAddWithoutValidation(name, value);
         }
         upstream.Headers.TryAddWithoutValidation("Authorization", "Bearer " + secret);
         upstream.Headers.TryAddWithoutValidation("X-Title", "Agent S");
+        if (zdr && upstream.Content is not null)
+            upstream.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
         HttpResponseMessage response;
         try { response = await http.SendAsync(upstream, HttpCompletionOption.ResponseHeadersRead, cancellation); }
         catch (HttpRequestException) { await LoopbackRequest.Respond(stream, 502, """{"error":{"message":"Could not reach OpenRouter."}}""", json, cancellation); return; }

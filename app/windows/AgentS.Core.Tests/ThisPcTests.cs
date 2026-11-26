@@ -84,7 +84,8 @@ internal static class ThisPcTests
         // ---- OpenRouter proxy ----
         var upstream = new FakeOpenRouter();
         string? key = "sk-or-secret";
-        using var proxy = new OpenRouterProxy(() => key, upstream);
+        bool zdr = false;
+        using var proxy = new OpenRouterProxy(() => key, upstream, () => zdr);
         proxy.Start();
         using var client = new HttpClient(new SocketsHttpHandler { UseProxy = false });
         async Task<HttpResponseMessage> Call(string path, string? token, bool apiKeyHeader = false)
@@ -105,6 +106,17 @@ internal static class ThisPcTests
             check(upstream.Auth == "Bearer sk-or-secret" && upstream.ApiKey is null && upstream.Body == """{"model":"m","stream":true}""",
                 "The proxy swaps the agent's token for the saved key");
         }
+        zdr = true;
+        using (var response = await Call("/v1/messages", proxy.Token))
+        {
+            using var sent = JsonDocument.Parse(upstream.Body!);
+            check(response.StatusCode == HttpStatusCode.OK && sent.RootElement.GetProperty("provider").GetProperty("zdr").GetBoolean()
+                  && sent.RootElement.GetProperty("model").GetString() == "m", "With ZDR required, inference requests ask OpenRouter for ZDR endpoints");
+        }
+        upstream.Url = null;
+        using (var response = await Call("/v1/keys", proxy.Token))
+            check(response.StatusCode == HttpStatusCode.Forbidden && upstream.Url is null, "With ZDR required, non-inference routes are refused");
+        zdr = false;
         upstream.Url = null;
         using (var response = await Call("/v1/messages", "guess")) check(response.StatusCode == HttpStatusCode.Forbidden && upstream.Url is null, "Without the proxy token nothing reaches OpenRouter");
         // Raw requests: HttpClient would tidy these paths before sending them.

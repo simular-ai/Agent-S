@@ -30,7 +30,8 @@ public static class Harnesses
 public abstract record HarnessEvent;
 public sealed record HarnessStarted(string SessionId) : HarnessEvent;
 public sealed record HarnessText(string Text) : HarnessEvent;
-public sealed record HarnessToolCall(string Id, string Name, string Summary) : HarnessEvent;
+/// <param name="Detail">The input worth showing in the step details (command, file, URL, query), as received.</param>
+public sealed record HarnessToolCall(string Id, string Name, string Summary, string? Detail = null) : HarnessEvent;
 public sealed record HarnessToolResult(string Id, string Output, bool IsError) : HarnessEvent;
 public sealed record HarnessFinished(string? Result, bool IsError) : HarnessEvent;
 public sealed record HarnessUsage(int Input, int Output) : HarnessEvent;
@@ -274,7 +275,7 @@ public static class HarnessStream
                         case "tool_use":
                             var name = Str(block, "name") ?? "tool";
                             events.Add(new HarnessToolCall(Str(block, "id") ?? "", name,
-                                Summarize(name, block.TryGetProperty("input", out var input) ? input : default)));
+                                Summarize(name, block.TryGetProperty("input", out var input) ? input : default), ToolActivity.Detail(input)));
                             break;
                     }
                 }
@@ -302,7 +303,7 @@ public static class HarnessStream
             case "item.started" or "item.completed" when root.TryGetProperty("item", out var item) && Str(item, "type") is { } kind:
                 var itemId = Str(item, "id") ?? "";
                 if (type == "item.started" && kind == "command_execution")
-                    events.Add(new HarnessToolCall(itemId, "Shell", ShellSummary(Str(item, "command") ?? "")));
+                    events.Add(new HarnessToolCall(itemId, "Shell", ShellSummary(Str(item, "command") ?? ""), Str(item, "command")));
                 else if (type == "item.completed" && kind == "command_execution")
                     events.Add(new HarnessToolResult(itemId, Clip(Str(item, "aggregated_output") ?? ""),
                         item.TryGetProperty("exit_code", out var exit) && exit.ValueKind == JsonValueKind.Number && exit.GetInt32() != 0));
@@ -335,7 +336,7 @@ public static class HarnessStream
                 var tool = Str(root, "tool") ?? "tool";
                 var input = root.TryGetProperty("input", out var i) ? i : default;
                 var summary = Str(input, "command") is { } command ? Summarize(tool, Json($$"""{"command":{{JsonSerializer.Serialize(command)}}}""")) : Summarize(tool, input);
-                events.Add(new HarnessToolCall(Str(root, "callId") ?? "", tool, summary)); break;
+                events.Add(new HarnessToolCall(Str(root, "callId") ?? "", tool, summary, ToolActivity.Detail(input))); break;
             case "tool_result":
                 var result = root.TryGetProperty("result", out var r) ? r.ValueKind == JsonValueKind.String ? r.GetString()! : r.GetRawText() : "";
                 events.Add(new HarnessToolResult(Str(root, "callId") ?? "", Clip(result), Str(root, "status") != "completed")); break;
@@ -399,7 +400,7 @@ public static class HarnessStream
         int output = Int(usage, "output_tokens");
         return input + output > 0 ? new HarnessUsage(input, output) : null;
     }
-    internal static string Clip(string text) => text.Length > MaxToolOutput ? text[..MaxToolOutput] + "\n…" : text;
+    public static string Clip(string text) => text.Length > MaxToolOutput ? text[..MaxToolOutput] + "\n…" : text;
     private static string? Str(JsonElement value, string field) =>
         value.ValueKind == JsonValueKind.Object && value.TryGetProperty(field, out var found) && found.ValueKind == JsonValueKind.String ? found.GetString() : null;
     private static bool Bool(JsonElement value, string field) =>

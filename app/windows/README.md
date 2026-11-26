@@ -13,7 +13,7 @@ WPF is a reasonable mature alternative, but there is no existing .NET UI to pres
 
 ## Set up the Private computer
 
-The prototype uses Windows 11 x64 Pro or Enterprise with Hyper-V, the Windows OpenSSH Client, and Ollama on the Windows host. Use the same Windows account for setup and for Agent S. The account needs access to manage Hyper-V VMs. Set `OLLAMA_NO_CLOUD=1` for Ollama, restart it, and pull a local vision model with tool calling such as `gemma4`. Keep Ollama listening at `127.0.0.1:11434`. The host runs the model, so its memory is separate from the VM.
+The prototype uses Windows 11 x64 Pro or Enterprise with Hyper-V, the Windows OpenSSH Client, and Ollama on the Windows host. Use the same Windows account for setup and for Agent S. The account needs access to manage Hyper-V VMs. Set `OLLAMA_NO_CLOUD=1` for Ollama, restart it, and pull a local model with tool calling such as `nemotron-3-nano:4b` (the default) or `gemma4`. Keep Ollama listening at `127.0.0.1:11434`. The host runs the model, so its memory is separate from the VM.
 
 Provide a fresh, trusted Debian 13 amd64 generic cloud disk in VHDX format. Verify the original image against Debian’s signed checksums. To convert the Debian QCOW2 disk, run `qemu-img convert -f qcow2 -O vhdx input.qcow2 debian.vhdx`. The setup script uses an app-owned copy of that disk. Run setup from an elevated Windows PowerShell:
 
@@ -50,8 +50,23 @@ Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps
 - **Requirements:** [Claude Code](https://code.claude.com/docs/en/setup) and Git for Windows, whose Git Bash Claude Code uses for its Bash tool. New agent checks for both. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
 - **Approvals:** every tool use waits for you. Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied.
 - **Using apps:** the agent uses `pc`, a PowerShell tool built on Windows UI Automation and the Windows counterpart of the Mac's `mac` tool. It needs nothing installed. Its commands are `pc apps`, `pc open`, `pc focus`, `pc tree` (the front window with refs), `pc click`, `pc type`, `pc key` and `pc screenshot`. The screen panel shows the agent's latest screenshot.
-- **OpenRouter:** add a key in **Accounts** or in New agent. It is stored in Windows Credential Locker. A loopback proxy adds it to requests to `https://openrouter.ai/api/v1` and requires a per-launch token, so the agent never holds the key. Prompts and what the agent reads go to OpenRouter and the model's provider. Pick a suggested model or type any id from openrouter.ai/models; the model menu switches between Ollama and OpenRouter models.
-- **OpenRouter on the Private computer:** Claude Code, Codex and DeepSeek in the Private computer can also use OpenRouter; the built-in loop stays on Ollama. This differs from macOS, where Private is Ollama only. The relay forwards a second guest port, `127.0.0.1:11435`, to the same proxy. The guest gets only the proxy's per-launch token, never the key. With OpenRouter, prompts and what the agent reads leave the PC, so only choose it when that's acceptable.
+- **OpenRouter:** add a key in **Settings** or in New agent. It is stored in Windows Credential Locker. A loopback proxy adds it to requests to `https://openrouter.ai/api/v1` and requires a per-launch token, so the agent never holds the key. Prompts and what the agent reads go to OpenRouter and the model's provider. Pick any model in the model browser or type an id from openrouter.ai/models.
+- **Zero Data Retention:** as on macOS, **Request Zero Data Retention (ZDR)** is on by default and applies to every OpenRouter agent. With it on, the proxy forwards only model requests and adds `"provider": {"zdr": true}` to each, so OpenRouter routes them only to ZDR endpoints. Turn it off in **Settings** or the model browser.
+- **OpenRouter on the Private computer:** every Private harness can use OpenRouter, the built-in Agent S loop included (OpenAI chat completions through the proxy). The relay forwards a second guest port, `127.0.0.1:11435`, to the same proxy. The guest gets only the proxy's per-launch token, never the key. With OpenRouter, prompts and what the agent reads leave the PC, so only choose it when that's acceptable.
+
+## Matching the macOS app
+
+- **First launch:** "Set up your first agent" (harness, provider and model; DeepSeek and Nemotron 3 Nano 4B by default), then "Get your agent ready", where the Private computer sets up while the model downloads. Existing installs skip it.
+- **Models:** one browser for every model choice. The Ollama tab lists the whole ollama.com library (each local variant's download size and inputs, installed models, and "May not fit in memory"); the OpenRouter tab lists every model with its context, price and ZDR availability. Each model shows the agents that use it. Before a download, Agent S checks the Ollama version a model needs and offers to update Ollama.
+- **Chat:** tool steps fold into one row per stretch with plain titles ("Open a webpage") and expandable Tool, Input and Output; code blocks have **Copy code**; a ↓ button jumps to the latest message; new Private chats offer sample tasks; Sai approvals add **Approve for this task**.
+- **Composer:** stays usable while a turn runs. Messages become follow-ups (**Stop & send**, **Send next**, ×); each agent keeps its own draft; a bar above it says when the computer is off, needs setup, or is missing a key.
+- **Agents:** right-click for Agent Settings…, Rename…, Color, New conversation, Move up/down and Delete; drag to reorder within a section; a badge shows local, hosted or unconfirmed inference. Empty sections link to creating an agent there.
+- **Computer panel:** **Take over** (WSL Private computer) sends your mouse and keyboard to the guest's display over a WSL channel and streams the screen at about five frames a second; **Maximize** fills the window with the computer; the split is resizable. The Private desktop has a dock (tint2) with a Chromium launcher.
+- **Context:** Action items (approvals to review, Open work to run or delete), Memory (notes agents save and recall for Claude Code, Codex and DeepSeek turns; add, edit, pin, resolve, share or forget them), and Session and instructions. Memory lives beside the conversations, one file per agent.
+- **Settings:** Computer, Accounts (with "Get a key" and key-prefix checks), ZDR, Ollama status, and **Check for Updates…** (opens the newest GitHub release).
+- **Look:** black/white accent instead of the system blue, and the macOS chat, composer and button sizes.
+
+`AGENT_S_DATA_DIR` points conversations and settings at another folder (used by the smoke test for a fresh install); the Private computer, CLI profiles and keys are unaffected.
 
 ## Sai cloud
 
@@ -66,7 +81,7 @@ Chat history contains the text you send and the agent's responses. It is ordinar
 
 ## Simular Box
 
-Choose **Cloud · Simular Box** in **New agent**. Install the Claude Code CLI on Windows and add a [Simular Box key](https://box.simular.ai/access) in **Accounts**. Leave the box name blank to use your account's default box, or enter a name. Choose a local Ollama model or an OpenRouter model.
+Choose **Cloud · Simular Box** in **New agent**. Install the Claude Code CLI on Windows and add a [Simular Box key](https://box.simular.ai/access) in **Settings**. Leave the box name blank to use your account's default box, or enter a name. Choose a local Ollama model or an OpenRouter model.
 
 Claude Code runs on Windows with only the Box MCP tools. Browser, desktop, shell, and file actions run on the selected Box. The app saves the Box key in Windows Credential Locker and passes it to the CLI through its environment. With OpenRouter, prompts and Box tool results can be sent to the hosted model provider.
 
@@ -85,7 +100,7 @@ The PR’s **Windows app** Actions run provides an `agent-s-windows-x64` artifac
 
 When building locally, run the resulting `AgentS.Windows.exe` from its build output directory. Keep its adjacent self-contained runtime files together. The project runs unelevated and unpackaged; signing, installer/update distribution and clean-machine installation are separate release work. ARM64 is declared as a future build target but not yet validated by the x64 CI job.
 
-To use Sai, add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Accounts**, then create an agent with **Cloud · Sai computer** selected. This uses computers in your existing Sai account.
+To use Sai, add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Settings**, then create an agent with **Cloud · Sai computer** selected. This uses computers in your existing Sai account.
 
 Publishing must preserve `resources.pri`. The project invokes the SDK’s `GenerateProjectPriFile` target before resolving publish output and names the application index `resources.pri`; without it, compilation can pass while startup fails to locate `MainWindow.xaml`. CI checks the published index and launches the actual executable to catch this regression. Startup diagnostics are opt-in via `AGENT_S_STARTUP_DIAGNOSTICS` for the credential-free smoke run; they do not handle or hide the failure.
 
@@ -96,18 +111,20 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Mac mode / feature | This PR | Next work |
 | --- | --- | --- |
 | Sai cloud chat, named conversations, approvals | Implemented, pending Windows/live verification | Streaming/recovery and approval UX validation |
-| Computer display and context | Browser screen link, native status | Embedded screen panel, context/usage parity |
+| Computer display and context | Live screen, Take over and Maximize (Private), Action items, Open work, Memory, Session and instructions | Take over on a Box, saved/resumed sandbox state |
+| Composer | Follow-up queue with Stop & send | Live steering of a running DeepSeek turn; several agents working at once |
 | This Mac → This PC | Claude Code with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Codex with a Codex account, Claude Code account sign-in, floating Agent Activity panel |
 | Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
 | Simular Box | Claude Code with Ollama or OpenRouter, screenshot and live view | Verify a live Box turn, session resume, wake and stop; Codex, DeepSeek and account sign-in remain follow-ups |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |
-| 1Password, guest file sharing, model downloads | Not included | Platform-specific integrations and explicit data/consent handling |
+| Model downloads and catalogs | Full Ollama library and OpenRouter list with sizes, ZDR and per-agent labels; downloads with progress | — |
+| 1Password, guest file sharing | Not included | Platform-specific integrations and explicit data/consent handling |
 
 Conversations store their target. Private turns use the installed Ollama model and the local guest. Sai turns use the existing API and retain their server session IDs. Closing during a remote turn offers server abort when its session ID is known. Losing the stream leaves completion unconfirmed.
 
 ## Verification and release gates
 
-Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening and fitting the window to the desktop without credentials, disabled Send/Stop, opening the Private agent form, opening/cancelling Accounts, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
+Local Linux verification is limited to core compilation and API/stream contract checks. Windows CI covers native compilation/publishing, opening and fitting the window to the desktop without credentials, disabled Send/Stop, opening the Private agent form, opening/closing Settings, the masked key field and clean exit. Its separate `windows-smoke-evidence` artifact contains a machine-readable report and real-window captures for review. This test never enters an API key or starts a remote task. Credential save/read/remove and authenticated flows still require a Windows test account. Do not treat these as verified by the portable tests.
 
 Hosted runners do not exercise the Hyper-V guest. Before marking the draft ready, verify on a Windows 11 x64 Hyper-V host:
 
@@ -123,4 +140,4 @@ For Sai, use a Windows test account and record:
 4. Stop before and after `data-session`, close during a turn, and disconnect midstream. Never show a confirmed stop/completion when the server has not confirmed it.
 5. Test 401, offline/timeout, invalid SSE, corrupt history, disk-save failure, missing computer and wake rejection. Existing local history must not be silently overwritten when loading fails.
 6. Verify screen link reuse/expiry, no live token in local JSON, and no URI opening without a user click. Verify browser launch failure is visible.
-7. Capture native screenshots at normal/narrow widths and 150%/200% scaling, light/dark/high-contrast themes, keyboard focus and Narrator. Check transcript reading position during updates and agent changes. Use the CI startup/Accounts captures as limited startup evidence; they do not verify chat, approval, live-screen or scaling behavior.
+7. Capture native screenshots at normal/narrow widths and 150%/200% scaling, light/dark/high-contrast themes, keyboard focus and Narrator. Check transcript reading position during updates and agent changes. Use the CI startup/Settings captures as limited startup evidence; they do not verify chat, approval, live-screen or scaling behavior.

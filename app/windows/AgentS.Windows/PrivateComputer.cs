@@ -55,10 +55,11 @@ internal sealed class PrivateComputer : IPrivateDesktop
     {
         if (wsl)
         {
-            try { _ = await Capture(cancellation); return; }
+            try { _ = await Capture(cancellation); WslComputer.EnsureDock(); return; }
             catch (PrivateComputerException) { }
             WslComputer.LaunchDesktop();
             await WslComputer.WaitForScreenshot(TimeSpan.FromSeconds(60), cancellation);
+            WslComputer.EnsureDock();
             return;
         }
         await HyperV("if ($vm.State -ne 'Running') { Start-VM -VM $vm | Out-Null }", cancellation);

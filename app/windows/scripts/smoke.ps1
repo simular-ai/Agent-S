@@ -38,6 +38,18 @@ function Assert-State([bool]$condition, [string]$message) {
     $script:checks.Add($message)
     Write-Host "PASS: $message"
 }
+function Reveal-Control($element) {
+    if ($element.Current.IsOffscreen) {
+        # Scroll the dialog to it (focus alone doesn't scroll a ContentDialog), then focus it.
+        $scroll = $null
+        if ($element.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scroll)) { $scroll.ScrollIntoView() }
+        $element.SetFocus()
+        for ($attempt = 0; $attempt -lt 20 -and $element.Current.IsOffscreen; $attempt++) {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    return -not $element.Current.IsOffscreen
+}
 function Capture([string]$name) {
     # Capture the real rendered window, not an HTML reproduction or mock image.
     Start-Sleep -Milliseconds 500
@@ -57,6 +69,11 @@ function Capture([string]$name) {
 }
 try {
     $env:AGENT_S_STARTUP_DIAGNOSTICS = Join-Path $EvidenceDirectory 'startup-error.txt'
+    # A fresh install opens on first-launch setup; this run checks the main window, so it starts past setup
+    # with its own empty data folder (no conversations, no keys).
+    $env:AGENT_S_DATA_DIR = Join-Path $EvidenceDirectory 'data'
+    New-Item -ItemType Directory -Force -Path $env:AGENT_S_DATA_DIR | Out-Null
+    Set-Content -Path (Join-Path $env:AGENT_S_DATA_DIR 'settings.json') -Value '{"FinishedFirstAgentSetup":true}' -Encoding ascii
     $startedAt = Get-Date
     $process = Start-Process -FilePath $Executable -WorkingDirectory (Split-Path $Executable) -PassThru
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
@@ -95,8 +112,11 @@ try {
         $localSetup = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $setupCondition)
         if ($null -eq $localSetup) { Start-Sleep -Milliseconds 200 }
     }
-    Assert-State ($null -ne $localSetup -and -not $localSetup.Current.IsOffscreen) 'New agent defaults to local setup or a local model'
+    Assert-State ($null -ne $localSetup -and (Reveal-Control $localSetup)) 'Private setup or local model is reachable in the dialog'
     Capture 'private-agent'
+    $boxTarget = Find-Element 'TargetBox'
+    $boxTarget.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    Assert-State (Reveal-Control (Find-Element 'BoxName')) 'Simular Box is selectable and its box name field is reachable'
     $cancelCondition = New-Object System.Windows.Automation.PropertyCondition(
         [System.Windows.Automation.AutomationElement]::NameProperty, 'Cancel')
     $cancel = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cancelCondition)
@@ -105,17 +125,30 @@ try {
     Start-Sleep -Milliseconds 300
     $invoke = $accounts.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern)
     $invoke.Invoke()
-    $key = Find-Element 'SaiApiKey'
-    Assert-State $key.Current.IsPassword 'Accounts opens a masked Sai API-key field'
-    Assert-State (Find-Element 'BoxApiKey').Current.IsPassword 'Accounts opens a masked Simular Box key field'
+    # Keys live in Windows Credential Locker: a clean runner shows masked key fields; a PC with saved keys shows "Saved".
+    function Find-KeyState([string]$id) {
+        $either = New-Object System.Windows.Automation.OrCondition(
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, $id)),
+            (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty, "${id}Saved")))
+        for ($i = 0; $i -lt 75; $i++) {
+            $found = $script:root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $either)
+            if ($null -ne $found) { return $found }
+            Start-Sleep -Milliseconds 200
+        }
+        throw "UI Automation element not found: $id"
+    }
+    $key = Find-KeyState 'SaiApiKey'
+    Assert-State ($key.Current.AutomationId -eq 'SaiApiKeySaved' -or $key.Current.IsPassword) 'Settings shows a masked Sai API-key field (or the saved key)'
+    $boxKey = Find-KeyState 'BoxApiKey'
+    Assert-State (($boxKey.Current.AutomationId -eq 'BoxApiKeySaved' -or $boxKey.Current.IsPassword) -and (Reveal-Control $boxKey)) 'Settings shows a reachable masked Simular Box key field (or the saved key)'
     Capture 'accounts'
     $cancelCondition = New-Object System.Windows.Automation.PropertyCondition(
-        [System.Windows.Automation.AutomationElement]::NameProperty, 'Cancel')
+        [System.Windows.Automation.AutomationElement]::NameProperty, 'Done')
     $cancel = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $cancelCondition)
-    if ($null -eq $cancel) { throw 'Accounts dialog has no Cancel control.' }
+    if ($null -eq $cancel) { throw 'Settings dialog has no Done control.' }
     $cancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Milliseconds 300
-    Assert-State (Find-Element 'AccountsButton').Current.IsEnabled 'Accounts cancels back to the native window'
+    Assert-State (Find-Element 'AccountsButton').Current.IsEnabled 'Settings closes back to the native window'
     $null = $process.CloseMainWindow()
     if (-not $process.WaitForExit(10000)) { throw 'Agent S did not close cleanly.' }
     Assert-State ($process.ExitCode -eq 0) 'Native window exits cleanly'

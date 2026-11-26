@@ -17,6 +17,8 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- Generated from app/Resources/Icon/AppIcon.png (the macOS icon), cropped to the tile. -->
     <ApplicationIcon>Assets\AgentS.ico</ApplicationIcon>
+    <!-- The Agent S release this build belongs to; Settings › Check for Updates… compares against it. -->
+    <Version>0.3.3</Version>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
@@ -25,7 +27,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- Guest desktop scripts installed into the WSL Private computer during in-app setup. -->
-    <Content Include="../scripts/agent-s-guest.sh;../scripts/agent-s-desktop.sh;../scripts/agent-s-demo.html"
+    <Content Include="../scripts/agent-s-guest.sh;../scripts/agent-s-desktop.sh;../scripts/agent-s-dock.sh;../scripts/agent-s-demo.html"
              Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <!-- Coding-agent harness tools (web, ui, Ollama relay), installed before the first harness turn. -->
     <Content Include="../scripts/guest-tools/*" Link="Guest/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

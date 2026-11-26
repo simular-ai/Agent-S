@@ -41,8 +41,18 @@ public sealed class Conversation
     public ModelProvider Provider { get; set; } = ModelProvider.Ollama;
     /// <summary>Simular Box agents: the box to work on, by name; null is the account's default box.</summary>
     public string? BoxName { get; set; }
+    /// <summary>The avatar color the person chose (Black, Blue, Green, Orange, Purple, Red, Teal), or null for the automatic one.</summary>
+    public string? Color { get; set; }
     public List<ChatEntry> Entries { get; set; } = [];
     public override string ToString() => Name;
+
+    /// <summary>"Claude Code · gemma4", "Sai · auto": the sidebar preview before there's a conversation, as on macOS.</summary>
+    public string Summary() => Target switch
+    {
+        ConversationTarget.Sai => $"Sai · {(ModelId is null or "auto" ? "auto" : ModelId)}",
+        ConversationTarget.ThisPc or ConversationTarget.Box => $"Claude Code · {ModelId ?? OllamaModels.Default}",
+        _ => $"{(Harness is { } h && h.RunsInComputer() ? h.DisplayName() : "Agent S")} · {ModelId ?? OllamaModels.Default}",
+    };
 }
 
 public sealed class ChatEntry
@@ -50,6 +60,12 @@ public sealed class ChatEntry
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Role { get; set; } = "Sai";
     public string Text { get; set; } = "";
+    /// <summary>Tool steps ("Activity"): the tool's name, the input shown in its details, its output, and how it ended.</summary>
+    public string? Tool { get; set; }
+    public string? Input { get; set; }
+    public string? Output { get; set; }
+    public bool Done { get; set; }
+    public bool Failed { get; set; }
     // Approval URLs and controls are deliberately not persisted or replayed after restarting.
     [JsonIgnore] public string? ApprovalId { get; set; }
     [JsonIgnore] public Uri? ApprovalUrl { get; set; }

@@ -62,7 +62,28 @@ internal static class MarkdownView
                     HorizontalScrollMode = ScrollMode.Auto, VerticalScrollMode = ScrollMode.Disabled,
                 };
                 var box = new StackPanel { Spacing = 6 };
-                if (code.Language.Length > 0) box.Children.Add(new TextBlock { Text = code.Language, FontSize = 11, Foreground = theme("MutedText") });
+                // The language, and "Copy code", as on macOS.
+                var head = new Grid();
+                head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                head.Children.Add(new TextBlock { Text = code.Language, FontSize = 11, Foreground = theme("MutedText"), VerticalAlignment = VerticalAlignment.Center });
+                var copy = new Button
+                {
+                    Content = new FontIcon { Glyph = "", FontSize = 12 }, Padding = new Thickness(6), BorderThickness = new Thickness(0),
+                    Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent), Foreground = theme("MutedText"),
+                };
+                ToolTipService.SetToolTip(copy, "Copy code");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, "Copy code");
+                var source = code.Text;
+                copy.Click += (_, _) =>
+                {
+                    var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+                    package.SetText(source);
+                    global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+                    ToolTipService.SetToolTip(copy, "Copied");
+                };
+                Grid.SetColumn(copy, 1); head.Children.Add(copy);
+                box.Children.Add(head);
                 box.Children.Add(scroll);
                 return new Border
                 {

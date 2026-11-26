@@ -18,5 +18,7 @@ printf '%s\n' "$DBUS_SESSION_BUS_ADDRESS" >"$state/dbus-address"
 xsetroot -solid '#253245'
 openbox-session &
 window_manager=$!
+# Openbox has no taskbar of its own; tint2 is the dock, as in the macOS sandbox.
+if command -v tint2 >/dev/null; then /usr/local/bin/agent-s-dock; fi
 /usr/local/bin/agent-s-guest open ZGVtbw==
 wait "$window_manager"

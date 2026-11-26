@@ -72,7 +72,7 @@ internal static class HarnessTests
             """{"type":"result","result":"Done","is_error":false,"usage":{"input_tokens":10,"cache_read_input_tokens":5,"output_tokens":3}}""",
             "not json", """{"type":"rate_limit_event"}""");
         check(events.Count == 6 && events[0] == new HarnessStarted("s-1") && events[1] == new HarnessText("Opening it.") &&
-              events[2] == new HarnessToolCall("t1", "Bash", "web open https://example.com") &&
+              events[2] == new HarnessToolCall("t1", "Bash", "web open https://example.com", "web open https://example.com\nmore") &&
               events[3] == new HarnessToolResult("t1", "FAILED", true) && events[4] == new HarnessUsage(15, 3) &&
               events[5] == new HarnessFinished("Done", false), "Claude Code stream-json becomes chat events; unknown lines are skipped");
 
@@ -84,7 +84,7 @@ internal static class HarnessTests
             """{"type":"item.completed","item":{"id":"i2","type":"reasoning","text":"thinking"}}""",
             """{"type":"item.completed","item":{"id":"i3","type":"agent_message","text":"All done."}}""",
             """{"type":"turn.completed","usage":{"input_tokens":20,"cached_input_tokens":8,"output_tokens":4}}""");
-        check(events.Count == 6 && events[0] == new HarnessStarted("th-9") && events[1] == new HarnessToolCall("i1", "Shell", "web snapshot") &&
+        check(events.Count == 6 && events[0] == new HarnessStarted("th-9") && events[1] == new HarnessToolCall("i1", "Shell", "web snapshot", "/bin/bash -lc 'web snapshot'") &&
               events[2] == new HarnessToolResult("i1", "ok", false) && events[3] == new HarnessText("All done.") &&
               events[4] == new HarnessUsage(20, 4) && events[5] == new HarnessFinished(null, false), "Codex --json becomes chat events");
         check(Parse(PrivateHarness.Codex, """{"type":"turn.failed","error":{"message":"model not found"}}""").Single() == new HarnessFinished("model not found", true),
@@ -98,7 +98,7 @@ internal static class HarnessTests
             """{"type":"text","text":"Here it is."}""",
             """{"type":"status","phase":"step_end","usage":{"inputTokens":7,"cacheReadTokens":1,"outputTokens":2}}""",
             """{"type":"final","reason":{"kind":"max_steps"}}""");
-        check(events.Count == 6 && events[0] == new HarnessStarted("session-1") && events[1] == new HarnessToolCall("c1", "bash", "web read") &&
+        check(events.Count == 6 && events[0] == new HarnessStarted("session-1") && events[1] == new HarnessToolCall("c1", "bash", "web read", "web read") &&
               events[2] is HarnessToolResult { IsError: true } && events[3] == new HarnessText("Here it is.") &&
               events[4] == new HarnessUsage(8, 2) && events[5] == new HarnessFinished("DeepSeek Harness stopped: max_steps", true),
             "DeepSeek --json becomes chat events and an unfinished turn is an error");

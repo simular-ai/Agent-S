@@ -184,6 +184,62 @@ internal static class PrivateAgentTests
     private static string ToolCall(string name, string arguments) =>
         $$$"""{"done":true,"message":{"role":"assistant","content":"","tool_calls":[{"function":{"index":0,"name":"{{{name}}}","arguments":{{{arguments}}} }}]}}""";
 
+    /// <summary>The built-in loop with OpenRouter, through the app's proxy (OpenAI chat completions).</summary>
+    public static async Task OpenRouter(Action<bool, string> check)
+    {
+        var proxy = new OpenRouterFixture(
+            """{"choices":[{"message":{"role":"assistant","content":"Opening it.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"open","arguments":"{\"text\":\"demo\"}"}}]}}]}""",
+            """{"choices":[{"message":{"role":"assistant","content":"The demo is open."}}]}""");
+        using var agent = new LocalAgent(proxy);
+        var desktop = new DesktopFixture();
+        var events = new List<PrivateEvent>();
+        await foreach (var item in agent.RunOpenRouter("Open the demo.", "anthropic/claude-sonnet-5.5", [new PrivateMessage("You", "hi")], desktop,
+            (new Uri("http://127.0.0.1:4100/"), "proxy-token"))) events.Add(item);
+        check(desktop.Actions.SequenceEqual([new PrivateAction("open", "demo")]) && events[^1] is { Role: "Agent", Text: "The demo is open." },
+            "The built-in loop runs a turn with an OpenRouter model");
+        check(proxy.Requests.All(r => r.Uri.AbsoluteUri == "http://127.0.0.1:4100/v1/chat/completions" && r.Auth == "Bearer proxy-token"),
+            "OpenRouter turns go only to the app's proxy, with its token (never the key)");
+        using var first = JsonDocument.Parse(proxy.Requests[0].Body);
+        using var second = JsonDocument.Parse(proxy.Requests[1].Body);
+        var firstMessages = first.RootElement.GetProperty("messages");
+        var secondMessages = second.RootElement.GetProperty("messages");
+        var lastContent = secondMessages[secondMessages.GetArrayLength() - 1].GetProperty("content");
+        check(first.RootElement.GetProperty("model").GetString() == "anthropic/claude-sonnet-5.5" && first.RootElement.GetProperty("tools").GetArrayLength() == 5
+              && firstMessages[1].GetProperty("content").GetString() == "hi"
+              && firstMessages[firstMessages.GetArrayLength() - 1].GetProperty("content")[1].GetProperty("image_url").GetProperty("url").GetString()!.StartsWith("data:image/png;base64,"),
+            "The request has the model, tools, history and the screenshot on the newest message");
+        check(secondMessages.EnumerateArray().Any(m => m.GetProperty("role").GetString() == "tool" && m.GetProperty("tool_call_id").GetString() == "call_1")
+              && lastContent[1].GetProperty("image_url").GetProperty("url").GetString() == "data:image/png;base64," + Convert.ToBase64String(desktop.Images[1])
+              && secondMessages.EnumerateArray().Count(m => m.GetProperty("content").ValueKind == JsonValueKind.Array) == 1,
+            "The tool result follows its call, and only the newest message carries a screenshot");
+        var refused = new OpenRouterFixture("""{"error":{"message":"No endpoints found matching your data policy"}}""") { Status = HttpStatusCode.NotFound };
+        using var refusing = new LocalAgent(refused);
+        try
+        {
+            await foreach (var _ in refusing.RunOpenRouter("x", "some/model", [], new DesktopFixture(), (new Uri("http://127.0.0.1:4100/"), "t"))) { }
+            check(false, "An OpenRouter error is reported");
+        }
+        catch (LocalAgentException error) { check(error.Message.Contains("data policy"), "An OpenRouter error is reported with its reason"); }
+        try
+        {
+            await foreach (var _ in refusing.RunOpenRouter("x", "some/model", [], new DesktopFixture(), (new Uri("https://openrouter.ai/api/"), "t"))) { }
+            check(false, "Only the loopback proxy is used");
+        }
+        catch (LocalAgentException) { check(true, "OpenRouter turns refuse anything but the loopback proxy"); }
+    }
+
+    private sealed class OpenRouterFixture(params string[] replies) : HttpMessageHandler
+    {
+        private readonly Queue<string> queue = new(replies);
+        public HttpStatusCode Status { get; init; } = HttpStatusCode.OK;
+        public List<(Uri Uri, string Body, string? Auth)> Requests { get; } = [];
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add((request.RequestUri!, await request.Content!.ReadAsStringAsync(cancellationToken), request.Headers.Authorization?.ToString()));
+            return new HttpResponseMessage(Status) { Content = new StringContent(queue.Dequeue(), Encoding.UTF8, "application/json") };
+        }
+    }
+
     private sealed class OllamaFixture(params string[] chat) : HttpMessageHandler
     {
         private readonly Queue<string> replies = new(chat);

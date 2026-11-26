@@ -28,7 +28,7 @@ internal static class ThisPcRunner
     /// <summary>The app's OpenRouter proxy (started once), shared by This PC turns and the Private computer's relay.</summary>
     public static OpenRouterProxy OpenRouterProxy()
     {
-        openRouter ??= new OpenRouterProxy(Secrets.ReadOpenRouter);
+        openRouter ??= new OpenRouterProxy(Secrets.ReadOpenRouter, requiresZdr: () => AppSettings.Current.OpenRouterRequiresZdr);
         openRouter.Start();
         return openRouter;
     }
