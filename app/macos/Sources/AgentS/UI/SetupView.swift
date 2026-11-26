@@ -38,6 +38,21 @@ struct SetupView: View {
                 }
             }
 
+            Section("Sandbox Network") {
+                Picker("Connection", selection: $model.sandboxNetworkMode) {
+                    Text(SandboxNetworkMode.followMac.title).tag(SandboxNetworkMode.followMac)
+                    Text(SandboxNetworkMode.standard.title).tag(SandboxNetworkMode.standard)
+                }
+                Text(model.sandboxNetworkMode == .followMac
+                     ? "Uses this Mac’s IPv4 routes and DNS, including VPN rules."
+                     : "Uses Apple’s shared virtual machine network.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if model.sandboxNetworkModeRequiresRestart {
+                    Text("Restart the sandbox to apply this change.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             Section("Accounts") {
                 KeySetup.sai(model)
                 KeySetup.box(model)

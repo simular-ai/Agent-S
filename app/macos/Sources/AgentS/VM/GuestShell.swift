@@ -9,11 +9,13 @@ import AgentSCore
 struct GuestShell {
     let files: GuestFiles
     let mac: String
+    let forwardedSSHPort: UInt16?
 
     /// The guest's address from its DHCP lease: by MAC, else by the hostname cloud-init gave it
     /// (a guest that sends a DUID client ID is not listed under its MAC). The ARP table is no
     /// fallback: macOS hides it from this app.
     func address() -> String? {
+        if forwardedSSHPort != nil { return "127.0.0.1" }
         guard let leases = try? String(contentsOfFile: GuestNetwork.leasesPath, encoding: .utf8) else { return nil }
         return GuestNetwork.address(for: mac, hostname: GuestSetup.hostname, inLeases: leases)
     }
@@ -59,7 +61,8 @@ struct GuestShell {
         let tunnel = tunnelTo.map {
             ["-R", "127.0.0.1:\($0):127.0.0.1:\($0)", "-o", "ExitOnForwardFailure=yes"]
         } ?? []
-        return tunnel + [
+        let port = forwardedSSHPort.map { ["-p", String($0)] } ?? []
+        return tunnel + port + [
             "-i", files.sshKey.path,
             "-o", "StrictHostKeyChecking=no",
             "-o", "UserKnownHostsFile=/dev/null",

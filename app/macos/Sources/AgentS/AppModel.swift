@@ -61,6 +61,7 @@ final class AppModel: ObservableObject {
     /// Ollama >= 0.14 serves the Anthropic Messages API Claude Code speaks.
     static let minimumOllama = "0.14.0"
     private static let computerMemoryKey = "computerMemoryGB"
+    private static let sandboxNetworkModeKey = "sandboxNetworkMode"
     private nonisolated static let openRouterZDRKey = "openRouterRequiresZDR"
 
     private nonisolated static var storedOpenRouterRequiresZDR: Bool {
@@ -76,6 +77,14 @@ final class AppModel: ObservableObject {
     @Published var computerMemory = LinuxVM.MemoryAllocation(rawValue: UserDefaults.standard.integer(forKey: AppModel.computerMemoryKey)) ?? .twoGB {
         didSet { UserDefaults.standard.set(computerMemory.rawValue, forKey: Self.computerMemoryKey) }
     }
+    @Published var sandboxNetworkMode = UserDefaults.standard.string(forKey: AppModel.sandboxNetworkModeKey)
+        .flatMap(SandboxNetworkMode.init(rawValue:)) ?? .followMac {
+        didSet { UserDefaults.standard.set(sandboxNetworkMode.rawValue, forKey: Self.sandboxNetworkModeKey) }
+    }
+    var sandboxNetworkModeRequiresRestart: Bool {
+        vm.networkMode.map { $0 != sandboxNetworkMode } ?? false
+    }
+
     @Published private(set) var ollamaChecked = false
     @Published private(set) var ollamaVersion: String?
     @Published private(set) var ollamaModels: [Ollama.Model] = []
@@ -479,7 +488,7 @@ final class AppModel: ObservableObject {
         vm.onStateChange = { [weak self] state in self?.vmChanged(state) }
     }
 
-    var shell: GuestShell { GuestShell(files: files, mac: vm.macAddress) }
+    var shell: GuestShell { GuestShell(files: files, mac: vm.macAddress, forwardedSSHPort: vm.forwardedSSHPort) }
 
     var ollamaReady: Bool {
         guard let ollamaVersion else { return false }
@@ -658,7 +667,8 @@ final class AppModel: ObservableObject {
             guard vm.machine == nil else { return }
             let restoring = restoreSavedState && hasSavedSandbox
             phase = .booting(restoring ? "Resuming sandbox…" : "Starting the computer…")
-            resuming = await vm.start(memory: computerMemory, restoreSavedState: restoreSavedState)
+            resuming = await vm.start(memory: computerMemory, networkMode: sandboxNetworkMode,
+                                      restoreSavedState: restoreSavedState)
             sandboxCanCheckpoint = resuming
         }
         guard let machine = vm.machine, vm.state == .running else { return }
@@ -758,7 +768,7 @@ final class AppModel: ObservableObject {
                 guard clock.now < deadline else { throw SandboxSaveFailure.stillBusy }
                 try await Task.sleep(for: .milliseconds(100))
             }
-            if sandboxCanCheckpoint, vm.machine != nil {
+            if sandboxCanCheckpoint, vm.supportsCheckpoint {
                 try await vm.saveForQuit()
             } else {
                 await vm.stop()
