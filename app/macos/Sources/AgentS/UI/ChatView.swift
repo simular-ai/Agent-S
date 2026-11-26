@@ -675,11 +675,7 @@ struct ChatRow: View {
                     if item.isSteering == true {
                         Text("Steering").font(.caption).foregroundStyle(.secondary)
                     }
-                    Text(item.text)
-                        .textSelection(.enabled)
-                        .foregroundStyle(Theme.onAccent)
-                        .padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(RoundedRectangle(cornerRadius: 20).fill(Theme.accent))
+                    UserPromptBubble(prompt: item.text)
                 }
             }
         case .agent:
