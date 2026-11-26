@@ -29,11 +29,6 @@ struct AgentSettings: View {
                                    ? "A Linux VM on this Mac"
                                    : model.privacy == .thisMac ? "This Mac itself (asks before each step)"
                                    : "The cloud: \(model.computer?.displayName ?? "a cloud computer")")
-                    if let spend = model.agent.openRouterSpendUSD {
-                        LabeledContent("Tracked OpenRouter spend", value: OpenRouter.formattedSpend(spend))
-                    } else if model.harness != .sai, model.provider == .openRouter {
-                        LabeledContent("Tracked OpenRouter spend", value: "No usage recorded yet")
-                    }
                 }
 
                 Section("Model") {
@@ -63,6 +58,9 @@ struct AgentSettings: View {
                     }
                     if model.harness != .sai, model.provider.usesAccount {
                         LabeledContent("Model", value: "Automatic")
+                        if let billing = model.provider.accountBillingLabel {
+                            LabeledContent("Billing", value: billing)
+                        }
                         HarnessAccountSetup { dismiss() }
                     }
                 }
@@ -96,6 +94,16 @@ struct AgentSettings: View {
     private func saveName() {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != model.agent.config.name { model.rename(model.agent, to: trimmed) }
+    }
+}
+
+extension ModelProvider {
+    var accountBillingLabel: String? {
+        switch self {
+        case .claudeAccount: "Uses your Claude plan"
+        case .codexAccount: "Uses your ChatGPT plan"
+        case .ollama, .openRouter: nil
+        }
     }
 }
 

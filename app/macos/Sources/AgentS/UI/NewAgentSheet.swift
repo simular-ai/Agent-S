@@ -187,12 +187,15 @@ struct NewAgentSheet: View {
                             }
                             Picker("Model", selection: $saiModel) {
                                 ForEach(model.saiModels.filter(\.allowed)) {
-                                    Text($0.id == "auto" ? "\($0.name) (recommended)" : $0.name).tag($0.id)
+                                    Text($0.optionTitle(recommended: $0.id == "auto")).tag($0.id)
                                 }
                                 if !model.saiModels.contains(where: { $0.id == saiModel }) {
-                                    Text(saiModel == "auto" ? "Automatic (recommended)" : saiModel).tag(saiModel)
+                                    let title = saiModel == "auto" ? "Automatic (recommended)" : saiModel
+                                    Text("\(title) · Cost unavailable").tag(saiModel)
                                 }
                             }
+                            Text("Model cost tiers show relative Sai credit costs.")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                 } else {
@@ -239,6 +242,9 @@ struct NewAgentSheet: View {
                             if !isFirstAgent { KeySetup.openRouter(model) }
                         } else if let notice = selectedProvider.accountDataNotice {
                             LabeledContent("Model", value: "Automatic")
+                            if let billing = selectedProvider.accountBillingLabel {
+                                LabeledContent("Billing", value: billing)
+                            }
                             Text("Sign in after creating the agent. \(notice)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }

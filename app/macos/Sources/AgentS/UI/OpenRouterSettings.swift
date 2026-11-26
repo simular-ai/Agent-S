@@ -62,6 +62,7 @@ struct OpenRouterModelSearch: View {
             .task { await model.refreshOpenRouterModels() }
         let selectedID = selection.trimmingCharacters(in: .whitespacesAndNewlines)
         if !selectedID.isEmpty {
+            LabeledContent("Text token price", value: model.openRouterPricing(for: selectedID).label)
             if showsSelectedInput {
                 let selected = model.openRouterModels.first { $0.id == selectedID }
                 LabeledContent("Model input", value: selected?.inputCapability?.label ?? "Unknown")
@@ -170,6 +171,7 @@ struct OpenRouterCatalogView: View {
                 if found.name != found.id {
                     Text(found.id).font(.caption).foregroundStyle(.secondary)
                 }
+                Text(found.pricing.label).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {

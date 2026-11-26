@@ -616,14 +616,20 @@ final class AppModel: ObservableObject {
     }
 
     func ollamaOptionTitle(_ name: String) -> String {
-        let title = Ollama.displayName(for: name)
-        return ollamaInputCapability(for: name).map { "\(title) · \($0.label)" } ?? title
+        let installed = ollamaModels.first { $0.matches(name) }
+        let billing = Ollama.billing(for: name, installed: installed)
+        return [Ollama.displayName(for: name), ollamaInputCapability(for: name)?.label, billing.label]
+            .compactMap { $0 }.joined(separator: " · ")
     }
 
     func openRouterOptionTitle(_ id: String) -> String {
         let input = openRouterModels.first { $0.id == id }?.inputCapability?.label
         let zdr = openRouterZDRAvailability(for: id).label
-        return [id, input, zdr].compactMap { $0 }.joined(separator: " · ")
+        return [id, openRouterPricing(for: id).label, input, zdr].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    func openRouterPricing(for id: String) -> OpenRouterModelPricing {
+        openRouterModels.first { $0.id == id }?.pricing ?? OpenRouterModelPricing(modelID: id)
     }
 
     // MARK: Actions

@@ -25,6 +25,7 @@ enum OpenRouter {
         let name: String
         let contextLength: Int?
         let inputCapability: ModelInputCapability?
+        let pricing: OpenRouterModelPricing
     }
 
     /// OpenRouter returns the full text-output model list when pagination is omitted.
@@ -36,8 +37,11 @@ enum OpenRouter {
             guard let id = item["id"] as? String else { return nil }
             let architecture = item["architecture"] as? [String: Any]
             let capability = ModelInputCapability.fromInputModalities(architecture?["input_modalities"] as? [String])
+            let prices = item["pricing"] as? [String: Any]
+            let pricing = OpenRouterModelPricing(modelID: id, prompt: prices?["prompt"] as? String,
+                                                 completion: prices?["completion"] as? String)
             return Model(id: id, name: item["name"] as? String ?? id,
-                         contextLength: item["context_length"] as? Int, inputCapability: capability)
+                         contextLength: item["context_length"] as? Int, inputCapability: capability, pricing: pricing)
         }
     }
 
@@ -66,6 +70,21 @@ enum OpenRouter {
 
     @discardableResult
     static func delete() -> Bool { keychain.delete() }
+}
+
+extension OpenRouterModelPricing {
+    var label: String {
+        switch self {
+        case let .rates(input, output) where input == 0 && output == 0:
+            "Free text tokens"
+        case let .rates(input, output):
+            "\(OpenRouter.formattedSpend(input)) in · \(OpenRouter.formattedSpend(output)) out / 1M tokens"
+        case .variable:
+            "Varies by routed model"
+        case .unavailable:
+            "Price unavailable"
+        }
+    }
 }
 
 /// A small HTTP proxy on 127.0.0.1:`OpenRouter.proxyPort`: one request per connection, forwarded
