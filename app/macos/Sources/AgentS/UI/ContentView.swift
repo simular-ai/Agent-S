@@ -565,6 +565,7 @@ extension AppModel {
         case let .preparing(step): ComputerStatus(label: step.label, color: .orange)
         case .stopped: ComputerStatus(label: "Computer off", color: .secondary)
         case let .booting(step): ComputerStatus(label: step, color: .orange)
+        case .stopping: ComputerStatus(label: "Shutting down the sandbox…", color: .orange)
         case .ready: ComputerStatus(label: "Computer on", color: .green)
         case let .failed(message): ComputerStatus(label: message, color: .red)
         }
