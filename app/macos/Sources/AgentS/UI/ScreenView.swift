@@ -48,6 +48,8 @@ struct ComputerPanel: View {
             Group {
                 if model.isSavingSandbox {
                     ProgressView("Saving sandbox…").frame(height: 260)
+                } else if model.phase == .stopping {
+                    ProgressView(model.status.label).frame(height: 260)
                 } else if showsSavedSandbox {
                     savedSandbox.frame(height: 260)
                 } else if let machine = model.vm.machine {
@@ -138,7 +140,7 @@ struct ComputerPanel: View {
     }
 
     private var showsSavedSandbox: Bool {
-        guard model.hasSavedSandbox else { return false }
+        guard model.hasSavedSandbox, model.vm.machine == nil else { return false }
         switch model.phase {
         case .stopped, .failed: return true
         default: return false
@@ -229,7 +231,8 @@ struct DiscardSavedSandboxButton: View {
             .alert("Discard saved sandbox state?", isPresented: $confirmsDiscard) {
                 Button("Cancel", role: .cancel) {}
                 Button("Discard and start", role: .destructive) {
-                    guard case .failed = model.phase, model.hasSavedSandbox, !model.isSavingSandbox else { return }
+                    guard case .failed = model.phase, model.hasSavedSandbox, model.vm.machine == nil,
+                          !model.isSavingSandbox else { return }
                     Task { await model.start(restoreSavedState: false) }
                 }
             } message: {

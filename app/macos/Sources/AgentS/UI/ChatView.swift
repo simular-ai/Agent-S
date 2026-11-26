@@ -357,6 +357,8 @@ struct ChatView: View {
             return AnyView(bannerRow(symbol: nil, text: step.label) { EmptyView() })
         case let .booting(step):
             return AnyView(bannerRow(symbol: nil, text: step) { EmptyView() })
+        case .stopping:
+            return AnyView(bannerRow(symbol: nil, text: model.status.label) { EmptyView() })
         case let .failed(message):
             return AnyView(VStack(alignment: .trailing, spacing: 6) {
                 bannerRow(symbol: "exclamationmark.triangle", text: message) {
@@ -369,7 +371,9 @@ struct ChatView: View {
                         Button(title) { Task { await model.start() } }
                     }
                 }
-                if model.hasSavedSandbox { DiscardSavedSandboxButton().padding(.trailing, 14) }
+                if model.hasSavedSandbox, model.vm.machine == nil {
+                    DiscardSavedSandboxButton().padding(.trailing, 14)
+                }
             })
         case .needsSetup:
             return AnyView(bannerRow(symbol: "gearshape", text: "Set up the sandbox to chat.") {

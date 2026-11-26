@@ -11,6 +11,7 @@ final class AppModel: ObservableObject {
         case preparing(GuestImage.PreparationStep)
         case stopped
         case booting(String)
+        case stopping
         case ready
         case failed(String)
     }
@@ -71,6 +72,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var phase: Phase
     @Published private(set) var guestIP: String?
     @Published private(set) var isSavingSandbox = false
+    private var sandboxStartup: Task<Void, Never>?
     private var attemptedSandboxRestore = false
     private var sandboxCanCheckpoint = false
     private var sandboxNeedsFullToolInstall = false
@@ -656,10 +658,17 @@ final class AppModel: ObservableObject {
     }
 
     func start(restoreSavedState: Bool = true) async {
-        guard !isSavingSandbox else { return }
-        if case .booting = phase { return }
+        guard !isSavingSandbox, sandboxStartup == nil, vm.state != .stopping else { return }
         if case .preparing = phase { return }
 
+        let task = Task { await startSandbox(restoreSavedState: restoreSavedState) }
+        sandboxStartup = task
+        await task.value
+    }
+
+    private func startSandbox(restoreSavedState: Bool) async {
+        defer { if !Task.isCancelled { sandboxStartup = nil } }
+        guard !Task.isCancelled else { return }
         let resuming: Bool
         if vm.state == .running {
             resuming = sandboxCanCheckpoint
@@ -669,25 +678,26 @@ final class AppModel: ObservableObject {
             phase = .booting(restoring ? "Resuming sandbox…" : "Starting the computer…")
             resuming = await vm.start(memory: computerMemory, networkMode: sandboxNetworkMode,
                                       restoreSavedState: restoreSavedState)
+            guard !Task.isCancelled, vm.state == .running else { return }
             sandboxCanCheckpoint = resuming
         }
-        guard let machine = vm.machine, vm.state == .running else { return }
+        guard vm.state == .running else { return }
 
         let shell = shell
         phase = .booting(resuming ? "Reconnecting to the sandbox…" : "Waiting for the computer to come online…")
         guard let ip = await shell.waitUntilReachable() else {
-            if vm.machine === machine, vm.state == .running {
+            if !Task.isCancelled, vm.state == .running {
                 phase = .failed("The computer started but never answered on its network.")
             }
             return
         }
-        guard vm.machine === machine, vm.state == .running else { return }
+        guard !Task.isCancelled, vm.state == .running else { return }
         guestIP = ip
 
         let install: (command: String, step: String)?
         do {
             if resuming, !sandboxNeedsFullToolInstall, try await shell.isReady(on: ip) {
-                guard vm.machine === machine, vm.state == .running else { return }
+                guard !Task.isCancelled, vm.state == .running else { return }
                 phase = .booting("Checking the sandbox tools…")
                 do {
                     try await shell.run(GuestTools.deepSeekReadyCommand, on: ip, timeout: 20)
@@ -696,32 +706,32 @@ final class AppModel: ObservableObject {
                     install = (GuestTools.installDeepSeekCommand, "Updating DeepSeek Harness in the sandbox…")
                 }
             } else {
-                guard vm.machine === machine, vm.state == .running else { return }
+                guard !Task.isCancelled, vm.state == .running else { return }
                 phase = .booting("Waiting for the sandbox’s first-time setup…")
                 let clock = ContinuousClock()
                 let deadline = clock.now.advanced(by: .seconds(600))
                 while (try? await shell.isReady(on: ip)) != true {
-                    guard vm.machine === machine, vm.state == .running else { return }
+                    guard !Task.isCancelled, vm.state == .running else { return }
                     guard clock.now < deadline else {
                         phase = .failed("The sandbox’s first-time setup is taking longer than expected. Try again to check its progress.")
                         return
                     }
                     try await Task.sleep(for: .seconds(3))
                 }
-                guard vm.machine === machine, vm.state == .running else { return }
+                guard !Task.isCancelled, vm.state == .running else { return }
                 sandboxNeedsFullToolInstall = true
                 let minutes = (GuestTools.installTimeoutSeconds + 59) / 60
                 install = (GuestTools.installCommand, "Installing the sandbox tools… Allow about \(minutes) minutes")
             }
         } catch {
-            guard vm.machine === machine, vm.state == .running else { return }
+            guard !Task.isCancelled, vm.state == .running else { return }
             phase = .failed(GuestShell.commandTimedOut(error)
                             ? "Checking the sandbox tools timed out."
                             : "Couldn’t verify the sandbox tools.")
             return
         }
 
-        guard vm.machine === machine, vm.state == .running else { return }
+        guard !Task.isCancelled, vm.state == .running else { return }
         if let install {
             phase = .booting(install.step)
             do {
@@ -729,7 +739,7 @@ final class AppModel: ObservableObject {
                 let timeout = TimeInterval(GuestTools.installTimeoutSeconds + 15)
                 try await shell.run(install.command, on: ip, timeout: timeout)
             } catch {
-                guard vm.machine === machine, vm.state == .running else { return }
+                guard !Task.isCancelled, vm.state == .running else { return }
                 NSLog("Agent S: installing the sandbox tools failed: %@", "\(error)")
                 phase = .failed(GuestShell.commandTimedOut(error)
                                 ? "Installing the sandbox tools timed out. Check your internet connection and try again."
@@ -737,7 +747,7 @@ final class AppModel: ObservableObject {
                 return
             }
         }
-        guard vm.machine === machine, vm.state == .running else { return }
+        guard !Task.isCancelled, vm.state == .running else { return }
         sandboxNeedsFullToolInstall = false
         sandboxCanCheckpoint = true
         phase = .ready
@@ -745,13 +755,13 @@ final class AppModel: ObservableObject {
 
     func stop() async {
         guard !isSavingSandbox else { return }
-        resetSandboxAccountStatus()
+        cancelSandboxStartup()
         agents.forEach { $0.stop() }
         await vm.stop()
     }
 
     func prepareToQuit() async -> Bool {
-        guard vm.machine != nil else {
+        guard vm.machine != nil || vm.state == .starting || vm.state == .stopping else {
             stopAppWork()
             return true
         }
@@ -770,8 +780,9 @@ final class AppModel: ObservableObject {
             }
             if sandboxCanCheckpoint, vm.supportsCheckpoint {
                 try await vm.saveForQuit()
-            } else {
-                await vm.stop()
+            } else if !(await vm.stop()) {
+                isSavingSandbox = false
+                return false
             }
         } catch {
             let alert = NSAlert()
@@ -784,7 +795,10 @@ final class AppModel: ObservableObject {
                 isSavingSandbox = false
                 return false
             }
-            await vm.stop()
+            guard await vm.stop() else {
+                isSavingSandbox = false
+                return false
+            }
         }
 
         stopAppWork()
@@ -810,6 +824,7 @@ final class AppModel: ObservableObject {
 
     func stopAppWork() {
         macTurnPanel.suppressAutomaticChatRestoration()
+        cancelSandboxStartup()
         accountSignIns.values.forEach { $0.cancel() }
         agents.forEach { $0.stop() }
         DeepSeekRuntime.stopAll()
@@ -979,7 +994,7 @@ final class AppModel: ObservableObject {
         if isSavingSandbox { return "Saving the sandbox…" }
         switch phase {
         case .needsSetup: return "Set up the computer in Settings to chat"
-        case .preparing, .booting: return "Waiting for the sandbox…"
+        case .preparing, .booting, .stopping: return "Waiting for the sandbox…"
         case .failed where vm.state == .running: return "Finish sandbox setup to chat"
         case .ready:
             if agents.contains(where: { $0 !== session && $0.config.usesLocalComputer && $0.isRunning }) {
@@ -1541,21 +1556,25 @@ final class AppModel: ObservableObject {
 
     private func vmChanged(_ state: LinuxVM.State) {
         switch state {
+        case .starting, .running:
+            return
+        case .stopping:
+            phase = .stopping
         case .stopped:
-            sandboxCanCheckpoint = false
-            sandboxNeedsFullToolInstall = false
-            resetSandboxAccountStatus()
-            guestIP = nil
             if case .needsSetup = phase {} else { phase = .stopped }
         case let .failed(message):
-            sandboxCanCheckpoint = false
-            sandboxNeedsFullToolInstall = false
-            resetSandboxAccountStatus()
-            guestIP = nil
             phase = .failed(message)
-        default:
-            break
         }
+        cancelSandboxStartup()
+        sandboxCanCheckpoint = false
+        sandboxNeedsFullToolInstall = false
+        resetSandboxAccountStatus()
+        guestIP = nil
+    }
+
+    private func cancelSandboxStartup() {
+        sandboxStartup?.cancel()
+        sandboxStartup = nil
     }
 
     private func resetSandboxAccountStatus() {

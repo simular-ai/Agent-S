@@ -122,6 +122,8 @@ struct FirstAgentPreparationView: View {
             }
         case let .booting(step):
             ProgressView(step).controlSize(.small)
+        case .stopping:
+            ProgressView(model.status.label).controlSize(.small)
         case .ready:
             Label("Sandbox ready", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
         case let .failed(message):

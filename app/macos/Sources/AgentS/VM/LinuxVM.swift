@@ -31,6 +31,8 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
     private(set) var networkMode: SandboxNetworkMode?
     var forwardedSSHPort: UInt16? { hostNetwork?.sshPort }
     private var runningConfiguration: VZVirtualMachineConfiguration?
+    private var startup: Task<Bool, Never>?
+    private var shutdown: Task<Bool, Never>?
     private var savingCheckpoint = false
 
     private var checkpoint: GuestCheckpoint { GuestCheckpoint(files: files) }
@@ -60,10 +62,20 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
     /// Returns true when the sandbox resumed saved state. The VM state reports the outcome of a cold boot.
     @discardableResult
     func start(memory: MemoryAllocation, networkMode: SandboxNetworkMode, restoreSavedState: Bool = true) async -> Bool {
-        guard machine == nil, state != .starting, state != .stopping, !savingCheckpoint else { return false }
+        guard machine == nil, startup == nil, shutdown == nil, !savingCheckpoint else { return false }
         state = .starting
+        let task = Task {
+            defer { startup = nil }
+            return await boot(memory: memory, networkMode: networkMode, restoreSavedState: restoreSavedState)
+        }
+        startup = task
+        return await task.value
+    }
+
+    private func boot(memory: MemoryAllocation, networkMode: SandboxNetworkMode, restoreSavedState: Bool) async -> Bool {
         var restoring = false
         do {
+            try Task.checkCancellation()
             let owner = try GuestDiskLock(url: files.diskLock)
             diskOwner = owner
             defer { withExtendedLifetime(owner) {} }
@@ -95,6 +107,7 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
             } else {
                 attachment = VZNATNetworkDeviceAttachment()
             }
+            try Task.checkCancellation()
             self.networkMode = networkMode
             let config = try configuration(memory: allocation, macAddress: address, attachment: attachment)
             try config.validate()
@@ -109,11 +122,13 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
                 checkpoint.cleanStaging()
                 try await vm.start()
             }
-            guard machine === vm, vm.state == .running else { return false }
+            guard state == .starting, machine === vm, vm.state == .running else { return false }
             state = .running
             return restoring
         } catch {
-            detachMachine()
+            // Shutdown owns cleanup while it waits for the startup operation to finish.
+            guard state != .stopping else { return false }
+            if machine.map(Self.hasStopped) ?? true { detachMachine() }
             state = .failed(restoring ? "Couldn't resume the sandbox. \(error.localizedDescription)" : error.localizedDescription)
             return false
         }
@@ -158,6 +173,7 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
         #if arch(arm64)
         try configuration.validateSaveRestoreSupport()
         try await vm.restoreMachineStateFrom(url: checkpoint.stateURL)
+        try Task.checkCancellation()
         try checkpoint.consume()
         defer { checkpoint.cleanStaging() }
         do {
@@ -171,20 +187,53 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
         #endif
     }
 
-    /// Asks the guest to shut down; forces it off if it is still up after `timeout` seconds.
-    func stop(timeout: TimeInterval = 20) async {
-        guard let vm = machine, !savingCheckpoint, state != .stopping else { return }
+    /// Waits for startup and shuts down the guest before releasing its resources.
+    @discardableResult
+    func stop(timeout: TimeInterval = 20) async -> Bool {
+        guard !savingCheckpoint else { return false }
+        if let shutdown { return await shutdown.value }
+        guard startup != nil || machine != nil else { return true }
         state = .stopping
-        if vm.canRequestStop { try? vm.requestStop() }
-        let deadline = Date().addingTimeInterval(timeout)
-        while vm.state != .stopped, Date() < deadline {
-            try? await Task.sleep(nanoseconds: 500_000_000)
+        let task = Task {
+            defer { shutdown = nil }
+            if let startup {
+                startup.cancel()
+                _ = await startup.value
+            }
+            return await stopMachine(timeout: timeout)
         }
-        if vm.state != .stopped, vm.canStop { try? await vm.stop() }
-        if machine === vm {
-            detachMachine()
-            state = .stopped
+        shutdown = task
+        return await task.value
+    }
+
+    private func stopMachine(timeout: TimeInterval) async -> Bool {
+        if let vm = machine {
+            if vm.canRequestStop, (try? vm.requestStop()) != nil {
+                let deadline = ContinuousClock.now.advanced(by: .seconds(timeout))
+                while !Self.hasStopped(vm), ContinuousClock.now < deadline {
+                    try? await Task.sleep(for: .milliseconds(200))
+                }
+            }
+            if vm.canStop {
+                do {
+                    try await vm.stop()
+                } catch where !Self.hasStopped(vm) {
+                    state = .failed("Couldn’t shut down the sandbox. \(error.localizedDescription)")
+                    return false
+                } catch {}
+            }
+            guard Self.hasStopped(vm) else {
+                state = .failed("Couldn’t finish shutting down the sandbox. Try turning it off again.")
+                return false
+            }
         }
+        detachMachine()
+        state = .stopped
+        return true
+    }
+
+    private static func hasStopped(_ vm: VZVirtualMachine) -> Bool {
+        vm.state == .stopped || vm.state == .error
     }
 
     private func hostNetworkEnded(_ network: SandboxHostNetwork) async {
@@ -195,6 +244,7 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
     }
 
     private func detachMachine() {
+        machine?.delegate = nil
         machine = nil
         runningConfiguration = nil
         hostNetwork?.stop()
@@ -207,7 +257,7 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
 
     nonisolated func guestDidStop(_ virtualMachine: VZVirtualMachine) {
         Task { @MainActor in
-            guard self.machine === virtualMachine else { return }
+            guard self.machine === virtualMachine, self.state != .stopping else { return }
             self.detachMachine()
             self.state = .stopped
         }
@@ -215,7 +265,7 @@ final class LinuxVM: NSObject, VZVirtualMachineDelegate {
 
     nonisolated func virtualMachine(_ virtualMachine: VZVirtualMachine, didStopWithError error: Error) {
         Task { @MainActor in
-            guard self.machine === virtualMachine else { return }
+            guard self.machine === virtualMachine, self.state != .stopping else { return }
             self.detachMachine()
             self.state = .failed(error.localizedDescription)
         }
