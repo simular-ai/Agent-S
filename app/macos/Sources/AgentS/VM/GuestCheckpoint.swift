@@ -27,6 +27,7 @@ struct GuestCheckpoint {
 
     enum Failure: LocalizedError {
         case alreadyOpen, incompatible, changedBackingFiles, notRunning, unsupported, alreadySaved
+        case differentNetwork(SandboxNetworkMode)
 
         var errorDescription: String? {
             switch self {
@@ -36,6 +37,8 @@ struct GuestCheckpoint {
             case .notRunning: "The sandbox must finish starting or stopping before it can be saved."
             case .unsupported: "This Mac cannot save and restore the sandbox's running state."
             case .alreadySaved: "A saved sandbox state already exists."
+            case let .differentNetwork(mode):
+                "The saved sandbox uses \(mode.title). Select it in Settings to resume, or discard the saved state to start with your new setting."
             }
         }
     }
@@ -43,6 +46,7 @@ struct GuestCheckpoint {
     struct Metadata: Codable {
         let version: Int
         let memoryGB: Int
+        let networkMode: SandboxNetworkMode?
         let backingFiles: [FileStamp]
     }
 
@@ -81,7 +85,7 @@ struct GuestCheckpoint {
         return metadata
     }
 
-    func save(memoryGB: Int, writeState: (URL) async throws -> Void) async throws {
+    func save(memoryGB: Int, networkMode: SandboxNetworkMode, writeState: (URL) async throws -> Void) async throws {
         guard !exists else { throw Failure.alreadySaved }
         try clearStagingIfPresent()
         let staging = files.checkpointStaging
@@ -92,7 +96,8 @@ struct GuestCheckpoint {
 
         try await writeState(state)
         try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: state.path)
-        let metadata = Metadata(version: Self.version, memoryGB: memoryGB, backingFiles: try backingFiles())
+        let metadata = Metadata(version: Self.version, memoryGB: memoryGB, networkMode: networkMode,
+                                backingFiles: try backingFiles())
         let metadataURL = staging.appendingPathComponent("metadata.json")
         try JSONEncoder().encode(metadata).write(to: metadataURL)
         try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: metadataURL.path)

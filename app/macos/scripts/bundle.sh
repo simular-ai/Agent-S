@@ -79,6 +79,7 @@ cp ../../LICENSE "$APP/Contents/Resources/LICENSE"
 ./scripts/vendor-deepseek.sh
 RUNTIME=build/deepseek-runtime
 mkdir -p "$APP/Contents/Helpers" "$APP/Contents/Resources/DeepSeek"
+./scripts/build-sandbox-network.sh "$MINIMUM_OS" "$APP"
 cp "$RUNTIME/bin/node" "$APP/Contents/Helpers/node"
 cp -R "$RUNTIME/node_modules" "$RUNTIME/package.json" "$RUNTIME/NODE-LICENSE" "$APP/Contents/Resources/DeepSeek/"
 IDENTITY=${SIGN_IDENTITY:-}
@@ -100,6 +101,7 @@ codesign --force --sign "${IDENTITY:--}" --options runtime "$@" "$SPARKLE_FRAMEW
 while IFS= read -r file; do
   codesign --force --sign "${IDENTITY:--}" --options runtime "$@" "$APP/Contents/Resources/DeepSeek/node_modules/$file"
 done < "$RUNTIME/mach-o.txt"
+codesign --force --sign "${IDENTITY:--}" --options runtime "$@" "$APP/Contents/Helpers/AgentSSandboxNetwork"
 NODE_ENTITLEMENTS=Resources/Node.entitlements
 APP_ENTITLEMENTS=Resources/AgentS.entitlements
 codesign --force --sign "${IDENTITY:--}" --options runtime "$@" --entitlements "$NODE_ENTITLEMENTS" "$APP/Contents/Helpers/node"

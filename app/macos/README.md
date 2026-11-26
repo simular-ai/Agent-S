@@ -19,7 +19,7 @@ Simular Box. Each agent has its own conversation and can pick up where it left o
 ## Build and run
 
 Agent S requires an Apple Silicon Mac with macOS 14 or later. To build from source, install
-Xcode with Swift 6.2 or later. Build and open the app from the repository root.
+Xcode with Swift 6.2 or later and Go 1.26 or later. Build and open the app from the repository root.
 
 ```sh
 cd app/macos
@@ -41,6 +41,18 @@ the Dock to reopen the window, or use **Quit Agent S** to exit the app.
 The distributed app checks for updates automatically. Choose **Agent S → Check for Updates…** to
 check manually. To upgrade from v0.3.3, quit Agent S and use the new DMG to replace the app
 in Applications. Your agents and conversations stay in Application Support.
+
+### Sandbox networking
+
+**Settings → Sandbox Network** defaults to **Follow this Mac’s network**. The sandbox’s IPv4
+connections use sockets on this Mac, and its DNS uses the macOS resolver. Connected VPNs apply
+their policies to those Mac connections. Use fully qualified names for resources that rely on
+VPN DNS search domains. Choose **Standard sandbox network** to use Apple’s VM NAT. Restart the
+sandbox to apply a change.
+
+Saved sandbox state uses the network mode it was created with. Choose that mode to resume it,
+or use **Discard saved state and start…** to boot in the selected mode. Files saved to the
+sandbox disk carry over.
 
 The Computer panel shows pending requests and open work first. Check items under
 **Open work** to run them together in one chat turn or delete them from memory.
