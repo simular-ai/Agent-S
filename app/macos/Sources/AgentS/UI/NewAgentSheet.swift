@@ -153,7 +153,7 @@ struct NewAgentSheet: View {
                             Text("The harness runs on this Mac and controls your Box remotely.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        if location != .linuxVM, harness == .deepSeek, DeepSeekTurn.executable == nil {
+                        if location != .linuxVM, harness == .deepSeek, !DeepSeekTurn.isAvailable {
                             DeepSeekInstallHelp()
                         } else if isBoxOnboarding, harness == .claudeCode, BoxAccount.claude == nil {
                             Link("Install Claude Code on this Mac", destination: URL(string: "https://code.claude.com/docs/en/setup")!)

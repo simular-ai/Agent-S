@@ -12,12 +12,31 @@ struct DeepSeekBoxTests {
         #expect(DeepSeekBoxProfile.patch.contains("Authorization: !!js process.env.AGENT_S_BOX_AUTHORIZATION"))
     }
 
-    @Test func usesASeparateProfileAndTreatsThePromptAsInput() {
-        let resume = "session-18dc9fe4-1044-4115-8d56-9eef81b45712"
-        let args = DeepSeekBoxProfile.arguments(prompt: "--help", resume: resume, patchPath: "/tmp/box.yml")
-        #expect(args == ["--profile", "sdk-minimal", "--patch", "/tmp/box.yml", "--json", "--session-id", resume, "--", "--help"])
-        let fresh = DeepSeekBoxProfile.arguments(prompt: "Hello", resume: "../../other-agent", patchPath: "/tmp/box.yml")
-        #expect(!fresh.contains("--session-id"))
+    @Test func servesTheSDKProtocolInsteadOfAHeadlessTurn() {
+        for patch in [DeepSeekBoxProfile.patch, DeepSeekMacProfile.patch] {
+            #expect(!patch.contains("sdk-jsonrpc-server"))
+            #expect(!patch.contains("sdk-app-startup"))
+            #expect(!patch.contains("headless"))
+            #expect(patch.contains("providers:\n          \(DeepSeekSDKProfile.provider):"))
+        }
+    }
+}
+
+@Suite("DeepSeek SDK runtime")
+struct DeepSeekSDKProfileTests {
+    @Test func launchesTheMinimalProfileWithoutPromptArguments() {
+        #expect(DeepSeekSDKProfile.arguments(entry: "/app/dsh/bin.js", patchPath: "/tmp/mac.yml") ==
+                ["/app/dsh/bin.js", "--profile", "sdk-minimal", "--patch", "/tmp/mac.yml"])
+        #expect(DeepSeekSDKProfile.arguments(entry: nil, patchPath: "/tmp/mac.yml") ==
+                ["--profile", "sdk-minimal", "--patch", "/tmp/mac.yml"])
+    }
+
+    @Test func acceptsOnlySessionIdentities() {
+        let id = DeepSeekSDKProfile.newSessionID()
+        #expect(DeepSeekSDKProfile.isSessionID(id))
+        #expect(DeepSeekSDKProfile.isSessionID("session-18dc9fe4-1044-4115-8d56-9eef81b45712"))
+        #expect(!DeepSeekSDKProfile.isSessionID("../../other-agent"))
+        #expect(!DeepSeekSDKProfile.isSessionID("session-../../x"))
     }
 }
 
@@ -37,13 +56,5 @@ struct DeepSeekMacTests {
         #expect(patch.contains("\n        toolCallTimeoutMs: 1800000\n"))
         #expect(patch.contains("failOnStartupError: true"))
         #expect(!patch.contains("AGENT_S_BOX_"))
-    }
-
-    @Test func preservesSessionAndPromptArgumentBoundaries() {
-        let resume = "session-18dc9fe4-1044-4115-8d56-9eef81b45712"
-        let args = DeepSeekMacProfile.arguments(prompt: "--help", resume: resume, patchPath: "/tmp/mac.yml")
-        #expect(args == ["--profile", "sdk-minimal", "--patch", "/tmp/mac.yml", "--json", "--session-id", resume, "--", "--help"])
-        let fresh = DeepSeekMacProfile.arguments(prompt: "Hello", resume: "../../other-agent", patchPath: "/tmp/mac.yml")
-        #expect(!fresh.contains("--session-id"))
     }
 }

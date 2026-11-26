@@ -1,0 +1,10 @@
+{
+  "name": "agent-s-deepseek-runtime",
+  "private": true,
+  "description": "The DeepSeek Harness runtime Agent S bundles. scripts/vendor-deepseek.sh installs it from package-lock.json. The plugins Agent S's profile patch inserts are listed so dsh resolves them from this installation.",
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
+    "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5"
+  }
+}

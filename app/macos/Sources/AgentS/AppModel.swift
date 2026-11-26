@@ -753,6 +753,7 @@ final class AppModel: ObservableObject {
         macTurnPanel.suppressAutomaticChatRestoration()
         accountSignIns.values.forEach { $0.cancel() }
         agents.forEach { $0.stop() }
+        DeepSeekRuntime.stopAll()
     }
 
     func refreshOllama(timeout: TimeInterval = 10) async {
@@ -891,7 +892,7 @@ final class AppModel: ObservableObject {
                 return "Install Codex on this Mac to use this agent"
             case .claudeCode where BoxAccount.claude == nil:
                 return "Install Claude Code on this Mac to use this agent"
-            case .deepSeek where DeepSeekTurn.executable == nil:
+            case .deepSeek where !DeepSeekTurn.isAvailable:
                 return "Install DeepSeek Harness on this Mac to use this agent"
             default: break
             }
@@ -904,7 +905,7 @@ final class AppModel: ObservableObject {
             switch config.harness {
             case .claudeCode where BoxAccount.claude == nil: return "Install Claude Code on this Mac"
             case .codex where CodexAccount.executable == nil: return "Install Codex on this Mac"
-            case .deepSeek where DeepSeekTurn.executable == nil:
+            case .deepSeek where !DeepSeekTurn.isAvailable:
                 return "Install DeepSeek Harness on this Mac"
             default: break
             }

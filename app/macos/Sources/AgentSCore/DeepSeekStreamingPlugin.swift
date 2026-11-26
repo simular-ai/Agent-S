@@ -1,4 +1,5 @@
-/// Adapts the pinned DeepSeek Harness's Cordis events to the app's line-oriented protocol.
+/// Adapts the pinned DeepSeek Harness's Cordis events to the app: lines on stdout for headless turns
+/// in the sandbox, JSON-RPC notifications for the SDK runtime on the Mac (`AGENT_S_SDK=1`).
 public enum DeepSeekStreamingPlugin {
     public static let filename = "agent-s-stream.mjs"
 
@@ -10,8 +11,13 @@ public enum DeepSeekStreamingPlugin {
 
     export function apply(ctx) {
       let rootAgent
-      const write = event => process.stdout.write(JSON.stringify(event) + '\n')
-      const announceSteering = process.env.AGENT_S_STEERING === '1' ? setupSteering(ctx, write) : null
+      // In SDK mode stdout carries JSON-RPC frames, so live text travels as notifications and steering
+      // uses session/prompt. Headless mode keeps the line protocol on stdout and stdin.
+      const sdk = process.env.AGENT_S_SDK === '1'
+      const write = sdk
+        ? event => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', method: 'agent_s/stream', params: event }) + '\n')
+        : event => process.stdout.write(JSON.stringify(event) + '\n')
+      const announceSteering = !sdk && process.env.AGENT_S_STEERING === '1' ? setupSteering(ctx, write) : null
 
       ctx.on('agent/assistant-stream', ({ agent, frame }) => {
         if (!rootAgent) {

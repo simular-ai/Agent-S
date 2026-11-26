@@ -27,8 +27,13 @@ cd app/macos
 open "build/Agent S.app"
 ```
 
-The build script signs the app for local development by default. Run `./scripts/test.sh`
-from `app/macos/` to run the Swift test suite.
+The build script signs the app for local development by default. It also bundles the
+DeepSeek Harness runtime: on the first build, `scripts/vendor-deepseek.sh` downloads the pinned
+Node.js release and installs the packages in `DeepSeekRuntime/package-lock.json`, so that build
+needs network access. Run `./scripts/test.sh` from `app/macos/` to run the Swift test suite, and
+`./scripts/vendor-deepseek.sh --check` to test the bundled runtime with synthetic model and tool
+servers. After updating DeepSeek Harness in `DeepSeekRuntime/package.json`, regenerate the lock
+file and run `./scripts/vendor-deepseek.sh --trace` to update the list of packages Agent S ships.
 
 Closing the last window keeps Agent S, active turns, and the VM running. Click Agent S in
 the Dock to reopen the window, or use **Quit Agent S** to exit the app.
@@ -106,7 +111,7 @@ sandbox and choose **Sign in** above the composer.
 
 ### This Mac
 
-1. Install the CLI you chose for the agent. [Claude Code setup](https://code.claude.com/docs/en/setup) · [Codex CLI setup](https://learn.chatgpt.com/docs/cli) · [DeepSeek Harness setup](#deepseek-harness)
+1. Install the CLI you chose for the agent. [Claude Code setup](https://code.claude.com/docs/en/setup) · [Codex CLI setup](https://learn.chatgpt.com/docs/cli). Agent S includes [DeepSeek Harness](#deepseek-harness).
 2. Install simulang with `npm install -g @simular-ai/simulang`.
 3. In **Settings → Mac Permissions**, allow **Accessibility**. Enable **Screen Recording**
    if you want the agent to take screenshots. These permissions apply to Agent S and are
@@ -134,15 +139,17 @@ and leave the **Box** field empty for your default Box, or enter the name of a s
 The selected CLI runs on your Mac and uses the Box's tools.
 [Box access keys](https://box.simular.ai/access)
 
-Install Claude Code or Codex using the links above, or follow the DeepSeek setup below.
+Install Claude Code or Codex using the links above. DeepSeek Harness is included.
 
 ### DeepSeek Harness
 
-For **This Mac** and **Simular Box**, use Node.js 24.9 or later and install the version expected by Agent S.
-
-```sh
-npm install -g @deepseek-ai/dsh@0.2.2-rc.5
-```
+For **This Mac** and **Simular Box**, Agent S runs the DeepSeek Harness release it was built with
+(0.2.2-rc.5) on its own signed copy of Node.js. Each agent keeps one harness process for its
+conversation, so follow-up messages start without relaunching it. **Stop** ends the process, and
+the next message continues the same conversation. A harness with no messages for 15 minutes
+exits until the next message. Development builds without the bundled runtime use
+`AGENT_S_DSH_RUNTIME` (a folder built by `scripts/vendor-deepseek.sh`) or an installed `dsh` of
+the same version.
 
 ### Model setup
 
@@ -183,6 +190,8 @@ npm install -g @deepseek-ai/dsh@0.2.2-rc.5
 - [Sources/AgentSCore](Sources/AgentSCore) contains mode and provider rules, guest
   setup, harness commands, and stream parsers.
 - [Tests/AgentSCoreTests](Tests/AgentSCoreTests) contains the Swift tests.
+- [DeepSeekRuntime](DeepSeekRuntime) pins the bundled DeepSeek Harness packages and holds the
+  tools that select and prune them.
 
 ## Publishing
 
