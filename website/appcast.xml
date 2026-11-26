@@ -1,0 +1,25 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>Agent S</title>
+        <item>
+            <title>0.3.4</title>
+            <pubDate>Wed, 25 Nov 2026 21:44:21 -0800</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+            <description><![CDATA[<ul>
+  <li>Reorder agents within their sidebar groups by dragging or using the available move actions.</li>
+  <li>Check for updates automatically or from the Agent S menu. Agent S saves the sandbox before restarting for an update.</li>
+  <li>Use the bundled DeepSeek Harness runtime, with a separate runtime per agent.</li>
+</ul>
+]]></description>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.4/Agent-S-macOS-0.3.4-arm64.dmg" length="178652428" type="application/octet-stream" sparkle:edSignature="uRPfBp30YIpd5VBsSA52+lJ/a2yLil58CX4TsOMr5r1uQ78WP/hNf5bAMym0tD99XzQOGo8HjGAlIwHS+bwlBQ=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: cNHHTLwvWT+VWxl8BpFROLuS+HwYw7FxtvOW0lhMZYYD1Ytp1RJ5JTaR/ljgoSVuMhXMw2TA781gCrZWUB1tDQ==
+length: 1515
+-->
