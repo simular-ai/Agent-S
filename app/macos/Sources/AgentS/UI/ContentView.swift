@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import AgentSCore
 
 /// One window: conversations on the left, the chat in the middle, and the computer's screen in a
@@ -410,6 +411,8 @@ struct AgentAvatar: View {
 struct ConversationRow: View {
     @EnvironmentObject private var model: AppModel
     @ObservedObject var session: AgentSession
+    @State private var rowHeight: CGFloat = 0
+    @State private var dropAfter: Bool?
     let selected: Bool
     let select: () -> Void
 
@@ -448,6 +451,34 @@ struct ConversationRow: View {
         .accessibilityLabel(Text(session.config.name))
         .accessibilityValue(Text(preview.isEmpty ? status : "\(status), \(preview)"))
         .accessibilityAddTraits(selected ? .isSelected : [])
+        .onDrag { dragItem() }
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowHeight = $0 }
+        .onDrop(of: [dragType], delegate: AgentRowDrop(type: dragType, rowHeight: rowHeight, dropAfter: $dropAfter) { id, after in
+            withAnimation(.easeInOut(duration: 0.18)) { model.moveAgent(id, relativeTo: session, after: after) }
+        })
+        .overlay(alignment: dropAfter == true ? .bottom : .top) {
+            if dropAfter != nil {
+                Capsule().fill(Theme.accent)
+                    .frame(height: 2)
+                    .padding(.horizontal, 6)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var dragType: UTType {
+        // A separate drag type for each computer group limits which rows accept a drop.
+        UTType(exportedAs: "ai.simular.agent-s.sidebar-agent.\(session.config.privacy.location.rawValue.lowercased())", conformingTo: .data)
+    }
+
+    private func dragItem() -> NSItemProvider {
+        let provider = NSItemProvider()
+        let data = Data(session.id.uuidString.utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: dragType.identifier, visibility: .ownProcess) { completion in
+            completion(data, nil)
+            return nil
+        }
+        return provider
     }
 
     /// "Claude Code · gemma4", "Sai · auto": until there's a conversation.
@@ -458,6 +489,32 @@ struct ConversationRow: View {
         else if config.provider.usesAccount { model = "Automatic" }
         else { model = config.provider == .ollama ? config.ollamaModel : config.openRouterModel }
         return "\(config.harness.displayName) · \(model)"
+    }
+}
+
+private struct AgentRowDrop: DropDelegate {
+    let type: UTType
+    let rowHeight: CGFloat
+    @Binding var dropAfter: Bool?
+    let move: @MainActor (UUID, Bool) -> Void
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        dropAfter = info.location.y >= rowHeight / 2
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) { dropAfter = nil }
+
+    func performDrop(info: DropInfo) -> Bool {
+        dropAfter = nil
+        guard let item = info.itemProviders(for: [type]).first else { return false }
+        let after = info.location.y >= rowHeight / 2
+        let move = move
+        _ = item.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+            guard let data, let id = UUID(uuidString: String(decoding: data, as: UTF8.self)) else { return }
+            Task { @MainActor in move(id, after) }
+        }
+        return true
     }
 }
 
