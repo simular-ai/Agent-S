@@ -325,7 +325,7 @@ struct ChatView: View {
             .pickerStyle(.inline)
         } label: {
             headerMenuLabel(compact ? nil : (enabled ? "Auto-approve" : "Ask first"),
-                            icon: enabled ? "checkmark.shield.fill" : "shield", active: enabled, compact: compact)
+                            icon: enabled ? "checkmark.shield" : "shield", active: enabled, compact: compact)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
@@ -344,11 +344,11 @@ struct ChatView: View {
             }
             Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
         }
-        .foregroundStyle(active ? Theme.onAccent : Color.primary)
+        .foregroundStyle(Color.primary)
         .frame(height: 16)
         .padding(.horizontal, compact ? 8 : 12)
         .padding(.vertical, 8)
-        .background(active ? Theme.accent : Theme.card, in: Capsule())
+        .background(active ? Theme.bubble : Theme.card, in: Capsule())
         .overlay { Capsule().strokeBorder(Theme.hairline).allowsHitTesting(false) }
         .contentShape(Capsule())
     }
