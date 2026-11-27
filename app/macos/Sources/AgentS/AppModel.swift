@@ -1643,6 +1643,7 @@ final class AppModel: ObservableObject {
         // A follow-up submitted during a turn can refer to the result still being produced.
         guard !source.isRunning, !source.isSendingSteering else { return }
         let route = handoff.source.route
+        let senderName = source.config.name
         let recipientName = recipient.config.name
         let intent = HandoffDraftPrompt.intent(for: handoff.originalRequest, recipient: recipientName)
         let visible = source.contextForHandoffDraft(route: route, onDevice: handoff.draftOnDevice,
@@ -1669,7 +1670,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let prompt = HandoffDraftPrompt.prompt(request: handoff.originalRequest, recipient: recipientName,
+        let prompt = HandoffDraftPrompt.prompt(request: handoff.originalRequest, sender: senderName, recipient: recipientName,
                                               context: context, intent: intent)
         handoffDraftTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1692,7 +1693,7 @@ final class AppModel: ObservableObject {
                         let instructions = (isRetry ? HandoffDraftPrompt.retryInstructions : HandoffDraftPrompt.instructions)
                             + (intent == .relayResult ? HandoffDraftPrompt.relayInstructions : "")
                         let input = isRetry ? HandoffDraftPrompt.prompt(
-                            request: handoff.originalRequest, recipient: recipientName,
+                            request: handoff.originalRequest, sender: senderName, recipient: recipientName,
                             context: HandoffDraftPrompt.retryContext(context, recipient: recipientName), intent: intent
                         ) : prompt
                         let generated = try await HandoffDraftService.draft(instructions: instructions,

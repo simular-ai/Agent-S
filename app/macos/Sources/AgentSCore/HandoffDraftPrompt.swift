@@ -3,10 +3,12 @@ import Foundation
 public struct HandoffDraftTurn: Equatable, Sendable {
     public let request: String
     public let reply: String
+    public let requestSender: String?
 
-    public init(request: String, reply: String) {
+    public init(request: String, reply: String, requestSender: String? = nil) {
         self.request = request
         self.reply = reply
+        self.requestSender = requestSender
     }
 }
 
@@ -30,8 +32,10 @@ public enum HandoffDraftPrompt {
     }
 
     public static let instructions = """
-    Compose the text of a message addressed to the selected recipient. Agent S has already resolved
-    the recipient and handles delivery after review. The selected recipient is authoritative.
+    Write the body of a message from the named sender directly to the named recipient. Agent S has
+    already resolved the recipient. This message is awaiting review and has not been delivered.
+    In the message, "I" means the sender, and "you" means the recipient. Refer to the recipient
+    directly when relevant. Omit commentary about the handoff, including who completed it.
     An @mention in the current request is an address, not a task for you to resolve. Earlier
     agent rosters and availability claims do not determine Agent S routing. Do not send anything,
     check availability, answer the user, or offer to do the recipient's work.
@@ -53,31 +57,42 @@ public enum HandoffDraftPrompt {
     Fill the message body for the recipient selected by the application. Convert requests such as
     ask, send, tell, or have the recipient do something into a request addressed directly to them.
     When sharing a result, extract the actual facts and omit routing comments even when they
-    appeared in the same earlier reply as the result.
+    appeared in the same earlier reply as the result. Lead with the finding itself and keep the
+    verification method without naming the person who checked it, unless the user asked who did it.
     Output only {"message":"..."} or {"message":null}, with no explanation of the drafting process.
     """
 
     public static let relayInstructions = """
 
     The user asked to relay an existing result. Put the actual facts from the source result in the
-    message body so the recipient can read them immediately. Preserve relevant figures, links, and
-    findings. A request to share, write, or summarize the result is not a message for this request.
+    message body so the recipient can read them immediately. Lead with the findings in neutral
+    language, such as "The page loaded in Chrome. Verification used the rendered page." Describe
+    what was checked and how. Omit who checked it unless the user asks for attribution. If they do,
+    use "you" for the recipient’s earlier work and never give the sender credit for someone else’s
+    work. Preserve relevant figures and links.
+    A request to share, write, or summarize the result is not a message for this request.
     If the source result is missing, use {"message":null}.
     """
 
-    public static func prompt(request: String, recipient: String, context: [HandoffDraftTurn],
+    public static func prompt(request: String, sender: String, recipient: String, context: [HandoffDraftTurn],
                               intent: Intent = .compose) -> String {
         let sourceResult = intent == .relayResult ? context.last?.reply : nil
         let earlier = sourceResult == nil ? context.suffix(3) : context.dropLast().suffix(2)
         let recent = earlier.map { turn in
-            """
-            User: \(excerpt(turn.request, limit: 600))
-            Agent: \(excerpt(turn.reply, limit: 1_400))
+            let speaker = turn.requestSender.map { "Message from \(String(reflecting: $0))" } ?? "User"
+            return """
+            \(speaker): \(excerpt(turn.request, limit: 600))
+            Sender’s reply: \(excerpt(turn.reply, limit: 1_400))
             """
         }
-        let prior = recent.isEmpty ? "" : "\n\nPrevious conversation, oldest first:\n\(recent.joined(separator: "\n\n"))"
+        let prior = recent.isEmpty ? "" : "\n\nPrevious conversation in the sender’s chat, oldest first:\n\(recent.joined(separator: "\n\n"))"
         let result = sourceResult.map { "\n\nSource result to relay: \(excerpt($0, limit: 3_000))" } ?? ""
-        return "Selected recipient: \(String(reflecting: recipient))\(prior)\(result)\n\nCurrent user request: \(String(reflecting: request))"
+        return """
+        Sender: \(String(reflecting: sender))
+        Selected recipient: \(String(reflecting: recipient))\(prior)\(result)
+
+        Current user request: \(String(reflecting: request))
+        """
     }
 
     public static func retryContext(_ context: [HandoffDraftTurn], recipient: String) -> [HandoffDraftTurn] {
@@ -90,15 +105,16 @@ public enum HandoffDraftPrompt {
                 !isRoutingDiagnostic($0, recipient: recipient)
                     && $0.range(of: leadStatus, options: [.regularExpression, .caseInsensitive]) == nil
             }.joined(separator: "\n")
-            return facts.isEmpty ? nil : HandoffDraftTurn(request: turn.request, reply: facts)
+            return facts.isEmpty ? nil : HandoffDraftTurn(request: turn.request, reply: facts, requestSender: turn.requestSender)
         }
     }
 
     public static func relayContext(_ context: [HandoffDraftTurn], recipient: String) -> [HandoffDraftTurn] {
-        guard let latest = context.last,
-              let source = retryContext([latest], recipient: recipient).last,
-              !isRelayPlaceholder(source.reply) else { return [] }
-        return Array(context.dropLast()) + [source]
+        guard let latest = context.last, let source = retryContext([latest], recipient: recipient).last else { return [] }
+        let findings = relayFindings(in: source.reply, recipient: recipient)
+        guard !findings.isEmpty, !isRelayPlaceholder(findings) else { return [] }
+        return Array(context.dropLast()) + [HandoffDraftTurn(request: source.request, reply: findings,
+                                                           requestSender: source.requestSender)]
     }
 
     /// Only a usable recipient-facing message can advance to review.
@@ -120,7 +136,9 @@ public enum HandoffDraftPrompt {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let request, request.localizedCaseInsensitiveContains("@\(recipient)"),
            message.caseInsensitiveCompare(request) == .orderedSame { return nil }
-        if intent == .relayResult, isRelayPlaceholder(message) { return nil }
+        if intent == .relayResult, isRelayPlaceholder(message) || hasRelayAttributionError(message, recipient: recipient) {
+            return nil
+        }
         guard message.unicodeScalars.contains(where: {
             CharacterSet.alphanumerics.contains($0) || $0.properties.isEmojiPresentation
         }), !isRoutingDiagnostic(message, recipient: recipient) else { return nil }
@@ -137,6 +155,36 @@ public enum HandoffDraftPrompt {
         return [forwarding, emptyIntroduction].contains {
             plain.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
         }
+    }
+
+    private static let sentenceStart = #"((?:^|[.!?]\s+|\n)\s*(?:[-•]\s+)?)"#
+    private static let completedHandoff = #"(?:completed|finished|handled)\s+(?:this|the)\s+(?:agent\s+)?handoff\b"#
+    private static let reportingVerb = #"(?:reported|confirmed|verified|found|said|noted)"#
+
+    private static func recipientSubject(_ recipient: String) -> String {
+        let name = NSRegularExpression.escapedPattern(for: recipient)
+        return sentenceStart + #"[*_`]*@?"# + name + #"[*_`]*\s+(?:has\s+)?"#
+    }
+
+    private static func relayFindings(in reply: String, recipient: String) -> String {
+        let subject = recipientSubject(recipient)
+        // Strip only the reporting lead-in and retain the wording of the finding after it.
+        let report = subject + "(?:\(completedHandoff)\\s+and\\s+)?\(reportingVerb)\\s+that\\s+"
+        let method = subject + #"(?:confirmed|verified)\s+it\s+(?:from|using)\s+"#
+        let facts = reply.replacingOccurrences(of: report, with: "$1", options: [.regularExpression, .caseInsensitive])
+            .replacingOccurrences(of: method, with: "$1Verification used ", options: [.regularExpression, .caseInsensitive])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let completion = facts.range(of: subject + completedHandoff + #"[.!?]*$"#,
+                                     options: [.regularExpression, .caseInsensitive])
+        return completion == facts.startIndex..<facts.endIndex ? "" : facts
+    }
+
+    private static func hasRelayAttributionError(_ message: String, recipient: String) -> Bool {
+        // Match result attribution at the start of a sentence, leaving names within factual details alone.
+        let attribution = "(?:\(completedHandoff)|\(reportingVerb)\\s+(?:that|it|the|a|an)\\b)"
+        let completion = sentenceStart + #"(?:you|the recipient)\s+(?:have\s+|has\s+)?"# + completedHandoff
+        let pattern = recipientSubject(recipient) + attribution + "|" + completion
+        return message.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     private static func isRoutingDiagnostic(_ message: String, recipient: String) -> Bool {

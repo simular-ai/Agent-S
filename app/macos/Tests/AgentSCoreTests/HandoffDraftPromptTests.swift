@@ -5,17 +5,18 @@ import Testing
 struct HandoffDraftPromptTests {
     @Test func quotesTheUserRequestAndKeepsContextSeparate() {
         let prompt = HandoffDraftPrompt.prompt(request: "Share that result with @Research",
-                                             recipient: "Research",
+                                             sender: "Agent", recipient: "Research",
                                              context: [.init(request: "Check the report", reply: "The total is 42.")])
         #expect(prompt.contains("Current user request: \"Share that result with @Research\""))
-        #expect(prompt.contains("Previous conversation, oldest first:\nUser: \"Check the report\"\nAgent: \"The total is 42.\""))
+        #expect(prompt.hasPrefix("Sender: \"Agent\"\nSelected recipient: \"Research\""))
+        #expect(prompt.contains("Previous conversation in the sender’s chat, oldest first:\nUser: \"Check the report\"\nSender’s reply: \"The total is 42.\""))
         #expect(prompt.hasSuffix(String(reflecting: "Share that result with @Research")))
         #expect(HandoffDraftPrompt.instructions.contains("already resolved"))
         #expect(HandoffDraftPrompt.instructions.contains("instead of instructing the recipient"))
     }
 
     @Test func boundsDraftContextAndKeepsTheNewestTurns() {
-        let prompt = HandoffDraftPrompt.prompt(request: "Summarize", recipient: "Research",
+        let prompt = HandoffDraftPrompt.prompt(request: "Summarize", sender: "Agent", recipient: "Research",
                                              context: [
                                                 .init(request: "Too old", reply: "Too old"),
                                                 .init(request: "First recent", reply: "First result"),
@@ -83,12 +84,22 @@ struct HandoffDraftPromptTests {
 
     @Test func retryKeepsFactsFromRepliesThatIncludedStaleRoutingDiagnostics() {
         let mixed = HandoffDraftTurn(request: "Count the inventory",
-                                    reply: "The report at https://example.test lists 49 items. Only the lead agent is active. No agent named Sai is currently available.")
+                                    reply: "The report at https://example.test lists 49 items. Only the lead agent is active. No agent named Sai is currently available.",
+                                    requestSender: "Taylor")
         let independent = HandoffDraftTurn(request: "Check the numbers", reply: "The total is correct.")
         let diagnostic = HandoffDraftTurn(request: "Troubleshoot", reply: "I cannot send the request.")
         #expect(HandoffDraftPrompt.retryContext([mixed, independent, diagnostic], recipient: "Sai") == [
-            .init(request: mixed.request, reply: "The report at https://example.test lists 49 items."), independent,
+            .init(request: mixed.request, reply: "The report at https://example.test lists 49 items.", requestSender: "Taylor"), independent,
         ])
+    }
+
+    @Test func distinguishesIncomingHandoffMessagesFromTheUserAndSender() {
+        let context = [HandoffDraftTurn(request: "The page loaded in Chrome.",
+                                        reply: "Sai reported that the page loaded.", requestSender: "Sai")]
+        let prompt = HandoffDraftPrompt.prompt(request: "Ask @Taylor to check the page title.",
+                                               sender: "Agent", recipient: "Taylor", context: context)
+        #expect(prompt.contains("Message from \"Sai\": \"The page loaded in Chrome.\"\nSender’s reply: \"Sai reported that the page loaded.\""))
+        #expect(!prompt.contains("User: \"The page loaded"))
     }
 
     @Test(arguments: [
@@ -116,7 +127,7 @@ struct HandoffDraftPromptTests {
         let older = HandoffDraftTurn(request: "Last week's total", reply: "Last week there were 12 responses.")
         let latest = HandoffDraftTurn(request: "Summarize the survey", reply: "The survey received 49 responses.")
         let context = HandoffDraftPrompt.relayContext([older, latest], recipient: "Sai")
-        let prompt = HandoffDraftPrompt.prompt(request: "share the summary to @sai", recipient: "Sai",
+        let prompt = HandoffDraftPrompt.prompt(request: "share the summary to @sai", sender: "Agent", recipient: "Sai",
                                               context: context, intent: .relayResult)
         #expect(prompt.contains("Source result to relay: \"The survey received 49 responses.\""))
         #expect(HandoffDraftPrompt.relayContext([], recipient: "Sai").isEmpty)
@@ -126,6 +137,24 @@ struct HandoffDraftPromptTests {
         #expect(HandoffDraftPrompt.relayContext([
             older, .init(request: "Send it", reply: "I cannot send the request. No agent named Sai is available."),
         ], recipient: "Sai").isEmpty)
+        #expect(HandoffDraftPrompt.relayContext([
+            older, .init(request: "Send it", reply: "Sai completed the handoff."),
+        ], recipient: "Sai").isEmpty)
+    }
+
+    @Test func relaySourceKeepsTheFindingsAndVerificationMethodWithoutRecipientCommentary() {
+        let previous = HandoffDraftTurn(request: "Review the page", reply: "Taylor reported that the page was live.")
+        let latest = HandoffDraftTurn(request: "Check the rendered title", reply: """
+            Sai completed the handoff and reported that `https://simular.ai` loaded successfully in Chrome.
+            The title was “Simular — The Autonomous Computer Company.”
+            Sai confirmed it from the rendered page rather than the HTTP status.
+            """, requestSender: "Sai")
+        let context = HandoffDraftPrompt.relayContext([previous, latest], recipient: "Sai")
+        #expect(context == [previous, HandoffDraftTurn(request: latest.request, reply: """
+            `https://simular.ai` loaded successfully in Chrome.
+            The title was “Simular — The Autonomous Computer Company.”
+            Verification used the rendered page rather than the HTTP status.
+            """, requestSender: "Sai")])
     }
 
     @Test(arguments: [
@@ -136,6 +165,26 @@ struct HandoffDraftPromptTests {
     ])
     func refusesToReviewAPlaceholderWhenTheUserAskedToShareResults(_ response: String) {
         #expect(HandoffDraftPrompt.message(from: response, recipient: "Sai", intent: .relayResult) == nil)
+    }
+
+    @Test(arguments: [
+        #"{"message":"Sai completed the handoff and reported that `https://simular.ai` loaded successfully in Chrome."}"#,
+        #"{"message":"The page loaded in Chrome. **Sai** confirmed that the title was correct."}"#,
+        #"{"message":"You completed this handoff. The page loaded in Chrome."}"#,
+    ])
+    func refusesRelaysWithMisleadingRecipientAttribution(_ response: String) {
+        #expect(HandoffDraftPrompt.message(from: response, recipient: "Sai", intent: .relayResult) == nil)
+    }
+
+    @Test(arguments: [
+        "https://simular.ai loaded successfully in Chrome. The title, hero, navigation, and calls to action rendered correctly.",
+        "Your earlier Chrome check confirmed that the title was correct.",
+        "Taylor confirmed that the title was correct.",
+        "Sai Chen reported that the title was correct.",
+    ])
+    func acceptsFindingsAndKeepsTheirGroundedAttribution(_ message: String) {
+        let response = "{\"message\":\(String(reflecting: message))}"
+        #expect(HandoffDraftPrompt.message(from: response, recipient: "Sai", intent: .relayResult) == message)
     }
 
     @Test func acceptsResultsAndLeavesDelegatedSharingInstructionsIntact() {

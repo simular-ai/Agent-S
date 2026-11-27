@@ -253,7 +253,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 if requiresThisResult { return [] }
                 continue
             }
-            turns.append(HandoffDraftTurn(request: request, reply: reply))
+            turns.append(HandoffDraftTurn(request: request, reply: reply, requestSender: root.handoffSender?.name))
             if turns.count == 3 { break }
         }
         return Array(turns.reversed())
