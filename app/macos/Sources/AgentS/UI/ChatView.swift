@@ -825,7 +825,7 @@ struct ChatView: View {
             attachmentPickerConversation = agent.handoffConversationID
             showsAttachmentPicker = true
         } label: {
-            Image(systemName: "paperclip")
+            Image(systemName: "plus")
                 .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(.secondary)
                 .frame(width: 30, height: 34)
