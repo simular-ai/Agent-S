@@ -4,6 +4,7 @@ import SwiftUI
 struct UserPromptBubble: View {
     let prompt: String
     var senderName: String? = nil
+    var neutral = false
     @State private var isClipped = false
     @State private var isExpanded = false
     @State private var isHovered = false
@@ -30,11 +31,11 @@ struct UserPromptBubble: View {
                     }
                 }
                 .textSelection(.enabled)
-                .foregroundStyle(incoming ? Color.primary : Theme.onAccent)
+                .foregroundStyle(incoming || neutral ? Color.primary : Theme.onAccent)
                 .padding(.horizontal, incoming ? 14 : 16)
                 .padding(.vertical, incoming ? 8 : 10)
                 .frame(maxWidth: incoming && showsActions ? .infinity : nil, alignment: .leading)
-                .background(incoming ? Theme.bubble : Theme.accent, in: shape)
+                .background(incoming || neutral ? Theme.bubble : Theme.accent, in: shape)
                 .overlay {
                     if incoming { shape.strokeBorder(Theme.hairline.opacity(0.6)).allowsHitTesting(false) }
                 }

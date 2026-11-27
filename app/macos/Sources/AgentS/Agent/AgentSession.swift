@@ -682,6 +682,7 @@ final class AgentSession: ObservableObject, Identifiable {
         forcedFollowUpID = nil
         isStopping = false
         isRunning = false
+        clearMacControl()
         sandboxEnded?(sandboxEnd)
         onChange?()
         handoff?.onReply(reply)
@@ -863,6 +864,7 @@ final class AgentSession: ObservableObject, Identifiable {
     private func requestStop() {
         guard isRunning, !isStopping else { return }
         isStopping = true
+        clearMacControl()
         allowRestOfTurn = false
         noteTurnResult(success: false)
         pauseQueuedFollowUps()
@@ -993,6 +995,7 @@ final class AgentSession: ObservableObject, Identifiable {
         claudeMacToolBusy = true
         defer { if claudeMacTool === runner { claudeMacToolBusy = false } }
         guard await requestApproval(tool: "Bash", input: ["command": command], macToolPath: MacAccess.macTool),
+              await waitForMacControl(turn: requestedTurn),
               claudeMacTool === runner else {
             return ("The command was not approved.", false, nil)
         }
@@ -1035,6 +1038,59 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var allowRestOfTurn = false
     @Published private var armedMacAutoApprovalRoute: AgentMemoryRoute?
 
+    @Published private(set) var macControlPaused = false
+    private var macTakeover = false
+    private var macComposerEditing = false
+    private var macControlWaiters: [UUID: CheckedContinuation<Void, Never>] = [:]
+
+    func setMacTakeover(_ paused: Bool) {
+        guard !paused || (config.privacy == .thisMac && isRunning && !isStopping) else { return }
+        macTakeover = paused
+        updateMacControl()
+    }
+
+    func setMacComposerEditing(_ editing: Bool) {
+        guard !editing || (config.privacy == .thisMac && isRunning && !isStopping) else { return }
+        macComposerEditing = editing
+        updateMacControl()
+    }
+
+    private func clearMacControl() {
+        macTakeover = false
+        macComposerEditing = false
+        updateMacControl()
+    }
+
+    private func updateMacControl() {
+        let paused = macTakeover || macComposerEditing
+        if macControlPaused != paused { macControlPaused = paused }
+        guard !paused else { return }
+        let waiters = Array(macControlWaiters.values)
+        macControlWaiters.removeAll()
+        for waiter in waiters { waiter.resume() }
+    }
+
+    private func isLiveMacTurn(_ expectedTurn: String) -> Bool {
+        config.privacy == .thisMac && turn == expectedTurn && isRunning && !isStopping && !Task.isCancelled
+    }
+
+    private func waitForMacControl(turn expectedTurn: String) async -> Bool {
+        while macControlPaused, isLiveMacTurn(expectedTurn) {
+            let id = UUID()
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                    if macControlPaused, isLiveMacTurn(expectedTurn) { macControlWaiters[id] = continuation }
+                    else { continuation.resume() }
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in
+                    self?.macControlWaiters.removeValue(forKey: id)?.resume()
+                }
+            }
+        }
+        return isLiveMacTurn(expectedTurn)
+    }
+
     func macAutoApprovalEnabled(for route: AgentMemoryRoute) -> Bool {
         isRunning ? allowRestOfTurn : armedMacAutoApprovalRoute == route
     }
@@ -1073,23 +1129,34 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Asked by the hook before a tool runs on the Mac: shows the step and waits for Allow or Deny.
     /// Looking (screenshots, the window's tree, the app list) runs without asking.
     func requestApproval(tool: String, input: [String: Any], macToolPath: String) async -> Bool {
-        guard isRunning, !isStopping else { return false }
+        let approvalTurn = turn
+        guard await waitForMacControl(turn: approvalTurn) else { return false }
         let needsApproval = !allowRestOfTurn && !MacAgent.isLookOnly(tool: tool, input: input, macToolPath: macToolPath)
         if MacAgent.isUICommand(tool: tool, input: input, macToolPath: macToolPath) {
             onMacUIActivity?(self, needsApproval)
         }
-        guard needsApproval else { return true }
+        guard needsApproval else { return await waitForMacControl(turn: approvalTurn) }
         let id = UUID().uuidString
         let title: String? = if tool == "Bash", let command = input["command"] as? String {
             ToolActivity.title(tool: "mac", summary: command)
         } else {
             nil
         }
-        return await withCheckedContinuation { continuation in
-            pendingApprovals[id] = continuation
-            items.append(ChatItem(id: "approval/\(id)", kind: .approval(id: id, linkOnly: false, url: nil, answer: nil),
-                                  text: Self.describe(tool: tool, input: input, macToolPath: macToolPath), approvalTitle: title))
+        let approved = await withTaskCancellationHandler {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                guard isLiveMacTurn(approvalTurn) else { continuation.resume(returning: false); return }
+                pendingApprovals[id] = continuation
+                items.append(ChatItem(id: "approval/\(id)", kind: .approval(id: id, linkOnly: false, url: nil, answer: nil),
+                                      text: Self.describe(tool: tool, input: input, macToolPath: macToolPath), approvalTitle: title))
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                guard let self, self.pendingApprovals[id] != nil else { return }
+                self.answer(approval: id, with: "deny")
+            }
         }
+        guard approved else { return false }
+        return await waitForMacControl(turn: approvalTurn)
     }
 
     /// What a step will do, for the approval card: the exact command or file.
@@ -1551,6 +1618,7 @@ final class AgentSession: ObservableObject, Identifiable {
         armedMacAutoApprovalRoute = nil
         activeTurnItemID = nil
         stop()
+        clearMacControl()
         if isRunning { turn = UUID().uuidString }
         steeringFollowUpID = nil
         queuedFollowUps = []

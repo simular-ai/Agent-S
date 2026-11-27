@@ -16,7 +16,12 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
     private var manualSessionID: UUID?
     private var panel: NSPanel?
     private var openConversation: ((AgentSession) -> Void)?
+    private let sendMessage: (AgentSession, String) -> Bool
     private var restoresChatOnCompletion = true
+
+    init(sendMessage: @escaping (AgentSession, String) -> Bool) {
+        self.sendMessage = sendMessage
+    }
 
     func show(_ session: AgentSession, presentation: Presentation, openConversation: @escaping (AgentSession) -> Void) {
         let id = session.id
@@ -31,8 +36,12 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
                     guard !isRunning, let self, let session else { return }
                     self.turnObservations[id] = nil
                     guard self.manualSessionID != id else { return }
+                    if self.state.selectedID == id, self.state.isKey || self.state.drafts[id]?.isEmpty == false {
+                        self.manualSessionID = id
+                        return
+                    }
                     let wasVisible = self.panel?.isVisible == true
-                    self.remove(session)
+                    self.remove(session, discardDraft: false)
                     if self.restoresChatOnCompletion, wasVisible, self.state.sessions.isEmpty {
                         self.openConversation?(session)
                     }
@@ -52,24 +61,39 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
                 if self.state.approvals[id] != approvals { self.state.approvals[id] = approvals }
             }
         }
-        state.selectedID = id
+        // A different agent may ask for approval while the person is typing in this panel.
+        if state.selectedID == nil || !state.isKey || manualSessionID == id { state.selectedID = id }
         reveal()
     }
 
-    func remove(_ session: AgentSession) {
+    func remove(_ session: AgentSession, discardDraft: Bool = true) {
         let id = session.id
+        session.setMacComposerEditing(false)
         approvalObservations[id] = nil
         turnObservations[id] = nil
         if manualSessionID == id { manualSessionID = nil }
         state.sessions.removeAll { $0.id == id }
         state.approvals[id] = nil
+        if discardDraft { state.drafts[id] = nil }
         if state.selectedID == id { state.selectedID = state.sessions.last?.id }
         if state.sessions.isEmpty { panel?.orderOut(nil) }
     }
 
     func windowWillClose(_ notification: Notification) {
+        releaseTypingHold()
         clearManualSession()
     }
+
+    func windowDidBecomeKey(_ notification: Notification) { state.isKey = true }
+
+    func windowDidResignKey(_ notification: Notification) { releaseTypingHold() }
+
+    private func releaseTypingHold() {
+        state.isKey = false
+        for session in state.sessions { session.setMacComposerEditing(false) }
+    }
+
+    func clearDraft(for session: AgentSession) { state.drafts[session.id] = nil }
 
     func suppressAutomaticChatRestoration() {
         restoresChatOnCompletion = false
@@ -79,7 +103,7 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
         guard let id = manualSessionID else { return }
         manualSessionID = nil
         if turnObservations[id] == nil, let session = state.sessions.first(where: { $0.id == id }) {
-            remove(session)
+            remove(session, discardDraft: false)
         }
     }
 
@@ -93,6 +117,8 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
                                   styleMask: [.titled, .closable, .resizable, .nonactivatingPanel],
                                   backing: .buffered, defer: false)
         panel.title = "Agent Activity"
+        panel.titleVisibility = .hidden
+        panel.titlebarAppearsTransparent = true
         panel.delegate = self
         panel.contentMinSize = NSSize(width: 354, height: 240)
         panel.isReleasedWhenClosed = false
@@ -101,9 +127,9 @@ final class MacTurnPanelController: NSObject, NSWindowDelegate {
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .canJoinAllApplications, .ignoresCycle]
-        panel.contentView = MacTurnHostingView(rootView: MacTurnPanelContent(state: state) { [weak self] session in
+        panel.contentView = MacTurnHostingView(rootView: MacTurnPanelContent(state: state, openConversation: { [weak self] session in
             self?.openConversation?(session)
-        })
+        }, sendMessage: sendMessage))
         let frameName = "This Mac activity panel"
         if !panel.setFrameUsingName(frameName), let screen = NSApp.mainWindow?.screen ?? NSScreen.main {
             let visible = screen.visibleFrame
@@ -120,11 +146,14 @@ private final class MacTurnPanelState: ObservableObject {
     @Published var sessions: [AgentSession] = []
     @Published var selectedID: UUID?
     @Published var approvals: [UUID: Set<String>] = [:]
+    @Published var isKey = false
+    @Published var drafts: [UUID: String] = [:]
 }
 
 private struct MacTurnPanelContent: View {
     @ObservedObject var state: MacTurnPanelState
     let openConversation: (AgentSession) -> Void
+    let sendMessage: (AgentSession, String) -> Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -142,8 +171,12 @@ private struct MacTurnPanelContent: View {
                 .padding(.top, 8)
             }
             if let session = state.sessions.first(where: { $0.id == state.selectedID }) {
-                MacTurnPanelView(agent: session) { openConversation(session) }
-                    .id(session.id)
+                MacTurnPanelView(agent: session, draft: Binding(
+                    get: { state.drafts[session.id, default: ""] },
+                    set: { state.drafts[session.id] = $0.isEmpty ? nil : $0 }
+                ), isPanelKey: state.isKey, showConversation: { openConversation(session) },
+                                 onSubmit: { sendMessage(session, $0) })
+                .id(session.id)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -152,7 +185,7 @@ private struct MacTurnPanelContent: View {
 }
 
 private final class MacTurnWindow: NSPanel {
-    // The nonactivating panel can accept keyboard copy when a user clicks selectable reply text.
+    // The nonactivating panel accepts keyboard input only when the person focuses it.
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }

@@ -1158,6 +1158,7 @@ private struct TranscriptScrollObserver: NSViewRepresentable {
 struct ChatRow: View {
     let item: ChatItem
     var onHandoffDecision: ((UUID, Bool) -> Void)?
+    var neutralUserMessages = false
 
     var body: some View {
         switch item.kind {
@@ -1173,7 +1174,9 @@ struct ChatRow: View {
                         }
                         handoffAttribution
                         let attachments = item.attachmentNames ?? []
-                        if !item.text.isEmpty || attachments.isEmpty { UserPromptBubble(prompt: item.text) }
+                        if !item.text.isEmpty || attachments.isEmpty {
+                            UserPromptBubble(prompt: item.text, neutral: neutralUserMessages)
+                        }
                         ForEach(Array(attachments.enumerated()), id: \.offset) { _, name in
                             ChatAttachmentChip(name: name).fixedSize(horizontal: true, vertical: false)
                         }

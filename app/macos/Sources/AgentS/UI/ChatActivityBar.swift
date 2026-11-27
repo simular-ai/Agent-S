@@ -6,11 +6,12 @@ struct ChatTranscriptRow: View {
     let isRunning: Bool
     var showsWorking = false
     var onHandoffDecision: ((UUID, Bool) -> Void)?
+    var neutralUserMessages = false
 
     var body: some View {
         switch row.content {
         case let .message(item):
-            ChatRow(item: item, onHandoffDecision: onHandoffDecision)
+            ChatRow(item: item, onHandoffDecision: onHandoffDecision, neutralUserMessages: neutralUserMessages)
         case let .activity(steps):
             ChatActivityBar(steps: steps, isCurrentTurnRunning: isRunning && row.isCurrentTurn,
                             showsWorking: showsWorking)

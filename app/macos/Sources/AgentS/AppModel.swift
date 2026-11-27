@@ -403,6 +403,7 @@ final class AppModel: ObservableObject {
         session.onHandoffConversationReset = { [weak self] session in
             self?.invalidateHandoffs(involving: session)
             self?.removeChatAttachments(for: session)
+            self?.macTurnPanel.clearDraft(for: session)
         }
         session.onHandoffDecision = { [weak self, weak session] id, approve in
             guard let session else { return }
@@ -2002,7 +2003,11 @@ final class AppModel: ObservableObject {
 
     // MARK: This Mac agents
 
-    private let macTurnPanel = MacTurnPanelController()
+    private lazy var macTurnPanel = MacTurnPanelController { [weak self] session, text in
+        let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let self, session.config.privacy == .thisMac, !prompt.isEmpty else { return false }
+        return session.isRunning ? self.queueFollowUp(prompt, for: session) : self.send(prompt, to: session, isDirectChat: true)
+    }
     var openMainWindow: (() -> Void)?
 
     func showMacTurnPanel(for session: AgentSession, presentation: MacTurnPanelController.Presentation = .manual) {
