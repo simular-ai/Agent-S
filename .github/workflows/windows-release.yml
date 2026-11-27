@@ -175,34 +175,35 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           $zip = Join-Path $env:RUNNER_TEMP "$env:ZIP_NAME.zip"
-          # --target pins a newly created tag to the commit that was built, rather
-          # than letting gh default it to the tip of the default branch.
-          gh release view $env:TAG 2>$null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $env:TAG --title $env:TAG --generate-notes --target $env:GITHUB_SHA
-            if ($LASTEXITCODE -ne 0) {
-              throw "Failed to create release $env:TAG; not uploading."
-            }
-          }
-          # Re-resolve the tag immediately before touching assets: the guard ran
-          # before a multi-minute build, so the tag could have moved since.
-          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not resolve tag ${env:TAG} before upload: $out"
-          }
-          $nowSha = ("$out" | ConvertFrom-Json).sha
-          if ($nowSha -ne $env:GITHUB_SHA) {
-            throw "Tag $env:TAG now points at $nowSha; refusing to upload assets built from $env:GITHUB_SHA."
-          }
-          # --clobber deletes each asset before writing its replacement, so a
-          # failed re-run can leave users with no ZIP or a checksum that does not
-          # match it. Only upload a genuinely absent pair, and never clobber.
           $zipName = "$env:ZIP_NAME.zip"
           $shaName = "$env:ZIP_NAME.zip.sha256"
-          $existing = @(gh release view $env:TAG --json assets --jq '.assets[].name')
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not list assets on release ${env:TAG}."
+          $existing = @(gh release view $env:TAG --json assets --jq '.assets[].name' 2>&1)
+          $releaseExists = $LASTEXITCODE -eq 0
+          if (-not $releaseExists -and "$existing" -ne 'release not found') {
+            throw "Could not look up release ${env:TAG}: $existing"
           }
+
+          # Recheck after the build. Only a new release may create a missing tag.
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            $nowSha = ("$out" | ConvertFrom-Json).sha
+            if ($nowSha -ne $env:GITHUB_SHA) {
+              throw "Tag $env:TAG now points at $nowSha; refusing to publish assets built from $env:GITHUB_SHA."
+            }
+          } elseif ($releaseExists -or "$out" -notmatch 'No commit found for SHA') {
+            throw "Could not resolve tag ${env:TAG} before publishing: $out"
+          }
+
+          if (-not $releaseExists) {
+            # With asset arguments, gh uploads to a draft before publishing it.
+            gh release create $env:TAG $zip "$zip.sha256" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create release $env:TAG with both Windows assets."
+            }
+            exit 0
+          }
+
+          # Preserve an existing complete asset pair and leave partial pairs for repair.
           $hasZip = $existing -contains $zipName
           $hasSha = $existing -contains $shaName
           if ($hasZip -and $hasSha) {
