@@ -65,7 +65,7 @@ jobs:
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign exe and native DLLs
-        uses: azure/trusted-signing-action@v0.5.11
+        uses: Azure/artifact-signing-action@v0.5.11
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
