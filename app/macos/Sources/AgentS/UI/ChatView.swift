@@ -9,6 +9,9 @@ struct ChatView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var showComputer: Bool
     @State private var drafts: [UUID: String] = [:]
+    @State private var draftMentions: [UUID: DraftMention] = [:]
+    @State private var highlightedMentionID: UUID?
+    @State private var dismissesMentionSuggestions = false
     @FocusState private var composerFocused: Bool
     @ScaledMetric(relativeTo: .callout) private var followUpRowHeight: CGFloat = 26
     @State private var followsLatest = true
@@ -26,6 +29,18 @@ struct ChatView: View {
         let agentID: UUID
         let lastItem: ChatItem?
         let target: TranscriptAnchor?
+    }
+
+    private struct DraftMention {
+        let recipientID: UUID
+        let token: String
+        var includeLastReply = false
+
+        func isPresent(in text: String) -> Bool {
+            let escaped = NSRegularExpression.escapedPattern(for: token)
+            return text.range(of: #"(?<![\p{L}\p{N}\p{M}_@])"# + escaped + #"(?![\p{L}\p{N}\p{M}_-])"#,
+                              options: .regularExpression) != nil
+        }
     }
 
     private static let nearBottom: CGFloat = 40
@@ -71,6 +86,13 @@ struct ChatView: View {
                 }
                 .frame(width: 520, height: 420)
             }
+            .onChange(of: agent.id) {
+                highlightedMentionID = nil
+                dismissesMentionSuggestions = false
+            }
+            .onChange(of: agent.latestReplyForHandoff != nil) {
+                if agent.latestReplyForHandoff == nil { draftMentions[agent.id]?.includeLastReply = false }
+            }
     }
 
     private var accountSelection: String? {
@@ -85,7 +107,8 @@ struct ChatView: View {
     }
 
     private var chat: some View {
-        VStack(spacing: 0) {
+        let suggestions = mentionSuggestions
+        return VStack(spacing: 0) {
             topBar
             transcript
             if let banner = computerBanner {
@@ -111,7 +134,11 @@ struct ChatView: View {
             }
             VStack(spacing: 4) {
                 if !agent.queuedFollowUps.isEmpty { queuedFollowUps }
-                composer
+                if !suggestions.isEmpty { mentionPicker(suggestions) }
+                if let mention = draftMentions[agent.id], agent.latestReplyForHandoff != nil {
+                    includeReplyOption(for: mention)
+                }
+                composer(suggestions: suggestions)
             }
             .frame(maxWidth: 820)
             .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
@@ -137,7 +164,8 @@ struct ChatView: View {
                         if rows.isEmpty { emptyState }
                         ForEach(rows) { row in
                             ChatTranscriptRow(row: row, isRunning: agent.isRunning,
-                                              showsWorking: agent.isRunning && activityAtEnd && row.id == rows.last?.id)
+                                              showsWorking: agent.isRunning && activityAtEnd && row.id == rows.last?.id,
+                                              onHandoffDecision: agent.decideHandoff)
                                 .id(TranscriptAnchor.row(row.id))
                         }
                         if showsWorkingRow {
@@ -406,7 +434,15 @@ struct ChatView: View {
 
     private var draft: Binding<String> {
         let id = agent.id
-        return Binding(get: { drafts[id, default: ""] }, set: { drafts[id] = $0 })
+        return Binding(get: { drafts[id, default: ""] }, set: { text in
+            guard drafts[id, default: ""] != text else { return }
+            drafts[id] = text
+            if let mention = draftMentions[id], !mention.isPresent(in: text) {
+                draftMentions[id] = nil
+            }
+            highlightedMentionID = nil
+            dismissesMentionSuggestions = false
+        })
     }
 
     private var hasDraft: Bool {
@@ -414,7 +450,101 @@ struct ChatView: View {
     }
 
     private var canSend: Bool {
-        !agent.isStopping && hasDraft && (agent.isRunning || (model.canChat && !agent.isSendingSteering))
+        !agent.isStopping && hasDraft &&
+            (draftMentions[agent.id] != nil || agent.isRunning || (model.canChat && !agent.isSendingSteering))
+    }
+
+    private func mentionRange(in text: String) -> Range<String.Index>? {
+        guard let start = text.lastIndex(of: "@") else { return nil }
+        if start > text.startIndex {
+            let before = text[text.index(before: start)]
+            guard before.isWhitespace || before == "(" || before == "[" || before == "\"" else { return nil }
+        }
+        let query = text[text.index(after: start)...]
+        guard !query.contains(where: \.isNewline) else { return nil }
+        return start..<text.endIndex
+    }
+
+    private var mentionSuggestions: [AgentSession] {
+        let text = draft.wrappedValue
+        guard composerFocused, draftMentions[agent.id] == nil, !dismissesMentionSuggestions,
+              let range = mentionRange(in: text) else { return [] }
+        let query = String(text[range].dropFirst())
+        return model.agents.filter {
+            $0.id != agent.id && (query.isEmpty || $0.config.name.localizedCaseInsensitiveContains(query))
+        }
+    }
+
+    private func mentionPicker(_ suggestions: [AgentSession]) -> some View {
+        let highlightedID = highlightedMentionID ?? suggestions.first?.id
+        return ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 2) {
+                    ForEach(suggestions) { recipient in
+                        Button { chooseMention(recipient) } label: {
+                            HStack(spacing: 8) {
+                                AgentAvatar(config: recipient.config, size: 22).accessibilityHidden(true)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(verbatim: recipient.config.name).font(.callout.weight(.medium))
+                                    Text(model.memoryRoute(for: recipient).displayName)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                                .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(recipient.id == highlightedID ? Theme.bubble : .clear,
+                                        in: RoundedRectangle(cornerRadius: 6))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .id(recipient.id)
+                    }
+                }
+                .padding(4)
+            }
+            .frame(height: CGFloat(min(suggestions.count, 4)) * 42 + 8)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
+            .onChange(of: highlightedMentionID) { _, id in
+                if let id { proxy.scrollTo(id) }
+            }
+        }
+    }
+
+    private func chooseMention(_ recipient: AgentSession) {
+        var text = draft.wrappedValue
+        guard let range = mentionRange(in: text) else { return }
+        let mention = DraftMention(recipientID: recipient.id, token: "@\(recipient.config.name)")
+        text.replaceSubrange(range, with: mention.token + " ")
+        draft.wrappedValue = text
+        draftMentions[agent.id] = mention
+        composerFocused = true
+    }
+
+    private func includeReplyOption(for mention: DraftMention) -> some View {
+        let id = agent.id
+        return Toggle("Include last reply", isOn: Binding(
+            get: { draftMentions[id]?.includeLastReply ?? false },
+            set: { includeReply in
+                if draftMentions[id]?.recipientID == mention.recipientID {
+                    draftMentions[id]?.includeLastReply = includeReply
+                }
+            }
+        ))
+        .toggleStyle(.checkbox)
+        .font(.caption)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 18)
+        .help("Review the last reply before sharing it with the mentioned agent")
+    }
+
+    private func moveMention(by offset: Int, in suggestions: [AgentSession]) -> KeyPress.Result {
+        guard !suggestions.isEmpty else { return .ignored }
+        let index = suggestions.firstIndex { $0.id == highlightedMentionID } ?? 0
+        let next = min(max(index + offset, 0), suggestions.count - 1)
+        highlightedMentionID = suggestions[next].id
+        return .handled
     }
 
     private var queuedFollowUps: some View {
@@ -482,9 +612,11 @@ struct ChatView: View {
         .frame(height: followUpRowHeight)
     }
 
-    private var composer: some View {
+    private func composer(suggestions: [AgentSession]) -> some View {
         let stopsTurn = agent.isRunning && !hasDraft
-        let submissionLabel = if !agent.isRunning { "Send" }
+        let submissionLabel = if !suggestions.isEmpty { "Select agent mention" }
+            else if draftMentions[agent.id] != nil { "Send agent handoff" }
+            else if !agent.isRunning { "Send" }
             else if agent.supportsSteering { "Steer the current turn" }
             else { "Queue follow-up" }
         let stopLabel = agent.forcedFollowUpID == nil ? "Stop" : "Cancel follow-up after stopping"
@@ -496,12 +628,20 @@ struct ChatView: View {
                 .font(.body)
                 .lineLimit(1...6)
                 .focused($composerFocused)
-                .onSubmit(send)
+                .onSubmit { submit(suggestions: suggestions) }
+                .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
+                .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
+                .onKeyPress(.escape) {
+                    guard !suggestions.isEmpty else { return .ignored }
+                    dismissesMentionSuggestions = true
+                    highlightedMentionID = nil
+                    return .handled
+                }
                 .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
                 .padding(.vertical, 9)
             roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
                 if stopsTurn { agent.stop() }
-                else { send() }
+                else { submit(suggestions: suggestions) }
             }
             .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
             .disabled(!actionEnabled)
@@ -626,12 +766,24 @@ struct ChatView: View {
         .frame(maxWidth: 420)
     }
 
-    private func send() {
+    private func submit(suggestions: [AgentSession]) {
+        if let recipient = suggestions.first(where: { $0.id == highlightedMentionID }) ?? suggestions.first {
+            chooseMention(recipient)
+            return
+        }
         guard canSend else { return }
         let session = agent
         let field = draft
         let original = field.wrappedValue
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let mention = draftMentions[session.id] {
+            followsLatest = true
+            if model.startHandoff(text, from: session, to: mention.recipientID,
+                                  includeLastReply: mention.includeLastReply), field.wrappedValue == original {
+                field.wrappedValue = ""
+            }
+            return
+        }
         let wasRunning = session.isRunning
         let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
         if accepted {
@@ -670,32 +822,64 @@ private struct TranscriptScrollObserver: NSViewRepresentable {
 struct ChatRow: View {
     let item: ChatItem
     var isToolActive = true
+    var onHandoffDecision: ((UUID, Bool) -> Void)?
     @State private var open = false
 
     var body: some View {
         switch item.kind {
         case .user:
-            HStack {
-                Spacer(minLength: 120)
-                VStack(alignment: .trailing, spacing: 4) {
-                    if item.isSteering == true {
-                        Text("Steering").font(.caption).foregroundStyle(.secondary)
+            if let sender = item.handoffSender {
+                incomingHandoff(from: sender)
+            } else {
+                HStack {
+                    Spacer(minLength: 120)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        if item.isSteering == true {
+                            Text("Steering").font(.caption).foregroundStyle(.secondary)
+                        }
+                        handoffAttribution
+                        UserPromptBubble(prompt: item.text)
                     }
-                    UserPromptBubble(prompt: item.text)
                 }
             }
         case .agent:
-            ChatMarkdown(markdown: item.text)
-                .multilineTextAlignment(.leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 4) {
+                handoffAttribution
+                ChatMarkdown(markdown: item.text)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            }
         case let .step(name, done, failed, output):
             toolStep(name: name, done: done, failed: failed, output: output)
         case let .approval(id, linkOnly, url, answer):
             ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer)
         case let .notice(isError):
-            Text(item.text).font(.callout).foregroundStyle(isError ? Color.red : Color.secondary)
+            if let share = item.handoffShare {
+                HandoffShareCard(share: share, text: item.text, onDecision: onHandoffDecision)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    handoffAttribution
+                    Text(item.text).font(.callout).foregroundStyle(isError ? Color.red : Color.secondary)
+                }
                 .padding(.horizontal, 4)
+            }
+        }
+    }
+
+    private func incomingHandoff(from sender: HandoffSender) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            AgentAvatar(name: sender.name, avatarImage: sender.avatarImage, avatarColor: sender.avatarColor, size: 24)
+                .accessibilityHidden(true)
+            UserPromptBubble(prompt: item.text, senderName: sender.name)
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var handoffAttribution: some View {
+        if let label = item.handoffLabel {
+            Text(verbatim: label).font(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -747,6 +931,100 @@ struct ChatRow: View {
                 Text(verbatim: value).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
             }
         }
+    }
+}
+
+private struct HandoffShareCard: View {
+    let share: HandoffShare
+    let text: String
+    let onDecision: ((UUID, Bool) -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                let participant = share.replyFrom ?? share.destination
+                AgentAvatar(name: participant.name, avatarImage: participant.avatarImage,
+                            avatarColor: participant.avatarColor, size: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: title).font(.callout.weight(.semibold))
+                        .foregroundStyle(isAwaiting ? Color.primary : Color.secondary)
+                    Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            if isAwaiting {
+                messagePreview
+                if let onDecision {
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
+                        Button(isReply ? "Dismiss" : "Cancel", role: .cancel) { onDecision(share.id, false) }
+                            .buttonStyle(.bordered)
+                        Button(isReply ? "Continue with reply" : "Approve and share") { onDecision(share.id, true) }
+                            .buttonStyle(.borderedProminent).tint(Theme.accent)
+                    }
+                    .controlSize(.small)
+                }
+            } else {
+                DisclosureGroup(isReply ? "View reply" : "View message") {
+                    messagePreview.padding(.top, 4)
+                }
+                .font(.caption)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(isAwaiting ? Theme.card : Theme.bubble, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Theme.hairline).allowsHitTesting(false))
+    }
+
+    private var isAwaiting: Bool { share.state == .awaitingApproval }
+    private var isReply: Bool { share.replyFrom != nil }
+
+    private var title: String {
+        if let sender = share.replyFrom {
+            return share.state == .sending ? "Continuing with \(sender.name)’s reply" : "Reply from \(sender.name)"
+        }
+        let name = share.destination.name
+        switch share.state {
+        case .awaitingApproval: return "Share with \(name)?"
+        case .queued: return "Queued to share with \(name)"
+        case .sending: return "Sending to \(name)"
+        case .shared: return "Shared with \(name)"
+        case .canceled: return "Sharing with \(name) canceled"
+        case .failed: return "Couldn’t confirm sharing with \(name)"
+        case .expired: return "Approval to share with \(name) expired"
+        }
+    }
+
+    private var subtitle: String {
+        guard isReply else { return share.route }
+        switch share.state {
+        case .awaitingApproval: return "Continue using \(share.route)"
+        case .queued: return "Continuation queued"
+        case .sending: return share.route
+        case .shared: return "Continued with reply"
+        case .canceled: return "Dismissed"
+        case .failed: return "Couldn’t continue"
+        case .expired: return "Continuation expired"
+        }
+    }
+
+    private var messagePreview: some View {
+        let details = Text(verbatim: text)
+            .font(.callout)
+            .textSelection(.enabled)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(10)
+
+        return ViewThatFits(in: .vertical) {
+            details
+            ScrollView { details }
+        }
+        .frame(maxHeight: 180, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
+        .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
