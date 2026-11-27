@@ -4,22 +4,27 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.5</title>
-            <pubDate>Thu, 26 Nov 2026 00:16:11 -0800</pubDate>
-            <sparkle:version>3</sparkle:version>
-            <sparkle:shortVersionString>0.3.5</sparkle:shortVersionString>
+            <title>0.3.6</title>
+            <pubDate>Thu, 26 Nov 2026 15:52:31 -0800</pubDate>
+            <sparkle:version>4</sparkle:version>
+            <sparkle:shortVersionString>0.3.6</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[## Sandbox VPN support
+            <description sparkle:format="markdown"><![CDATA[## Model pricing and spend
 
-- The sandbox now follows your Mac’s IPv4 routes and DNS by default, including VPN routes, so agents can reach resources available through your VPN.
-- Use **Settings → Sandbox Network** to switch to **Standard sandbox network**. The setting applies after you restart the sandbox.
-- To resume a sandbox session saved before the update, select **Standard sandbox network** first. Starting a fresh session in the new mode keeps files on the sandbox disk.
+- See OpenRouter’s input and output text-token rates, Sai’s relative credit costs, and billing details for local and account-backed models as you choose a model.
+- Open **Computer → Session and instructions** to see the OpenRouter spend Agent S has tracked for the selected agent. Tracking starts with new requests.
+- Use **Settings → Accounts → Check OpenRouter spend** to see daily, weekly, monthly, and lifetime spend for the saved key.
+
+## Chat and sandbox
+
+- Expand long prompts in chat and hover to copy the full prompt.
+- Turning off the sandbox now cancels pending startup and waits for confirmed VM shutdown so its memory can be reclaimed.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.5/Agent-S-macOS-0.3.5-arm64.dmg" length="190304126" type="application/octet-stream" sparkle:edSignature="nk+Yn0KzyByYn5VjFfssn+7VgyeUA3BSH0mmyv3noLdFVP93IBVPE1gqXkP0p4ubI2MOoWTQ3Ye4qGOmbRtnBA=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.6/Agent-S-macOS-0.3.6-arm64.dmg" length="188556971" type="application/octet-stream" sparkle:edSignature="wXb6ioFit+8gqXqp6f52OrNfDMzJXNqUk3oJzdQ6fk0EslYoTR5iLLxhGLRwuL99H7xUDM8n3kSQSNdzi6ikBw=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: AcyihPgl5pN58d3rWdTFp/RZeKYTPUD66L9g2vXouTwxavEPnFeiYydL6q/iU4R5nGCz2UguyUqooZ/bProNDQ==
-length: 1691
+edSignature: DPTlexNlpL563rWll5v8kLFM6zrNmj7Ax58e8ny0OPPisQzVQbFMCb6GpywqoSNBgjXo7zEs5fmPXprgeOOPAg==
+length: 1898
 -->
