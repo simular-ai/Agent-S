@@ -330,6 +330,7 @@ struct ChatView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .modifier(ChatButtonHover())
         .disabled(agent.isStopping)
         .accessibilityLabel("Computer approvals")
         .accessibilityValue(enabled ? autoTitle : "Ask for approval")
@@ -427,6 +428,7 @@ struct ChatView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
+        .modifier(ChatButtonHover())
         .disabled(agent.isRunning)
         .accessibilityLabel("Model")
         .accessibilityValue("\(model.harness.displayName) · \(model.activeModel)")
@@ -763,6 +765,14 @@ struct ChatView: View {
                     .lineLimit(1...6)
                     .focused($composerFocused)
                     .onSubmit { submit(suggestions: suggestions) }
+                    .onKeyPress(.return, phases: [.down, .repeat]) { press in
+                        let modifiers = press.modifiers.intersection([.shift, .command, .control, .option])
+                        let window = NSApp.currentEvent?.window ?? NSApp.keyWindow
+                        guard modifiers == .shift, let editor = window?.firstResponder as? NSTextView,
+                              !editor.hasMarkedText() else { return .ignored }
+                        editor.insertNewlineIgnoringFieldEditor(nil)
+                        return .handled
+                    }
                     .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
                     .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
                     .onKeyPress(.escape) {
@@ -832,6 +842,7 @@ struct ChatView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(ChatButtonHover())
         .accessibilityLabel("Attach files")
         .help("Attach files")
     }
@@ -845,6 +856,7 @@ struct ChatView: View {
                 .background(Circle().fill(Theme.accent))
         }
         .buttonStyle(.plain)
+        .modifier(ChatButtonHover(tint: Theme.onAccent.opacity(0.16)))
         .accessibilityLabel(help)
         .help(help)
     }
@@ -977,6 +989,21 @@ struct ChatView: View {
             attachmentDrafts[conversation] = nil
             if !wasRunning || session.supportsSteering { followsLatest = true }
         }
+    }
+}
+
+private struct ChatButtonHover: ViewModifier {
+    var tint = Color.primary.opacity(0.09)
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        let highlighted = isHovered && isEnabled
+        content
+            .overlay { Capsule().fill(tint).opacity(highlighted ? 1 : 0).allowsHitTesting(false) }
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
     }
 }
 
