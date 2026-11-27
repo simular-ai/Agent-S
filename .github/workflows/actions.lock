@@ -3,6 +3,8 @@
 # Docs: https://gh.io/actions-lockfile
 version: 'v0.0.3'
 workflows:
+    '.github/workflows/lint-workflows.yml':
+        - 'actions/checkout@v4.4.0'
     '.github/workflows/lint.yml':
         - 'actions/checkout@v3.7.0'
         - 'actions/setup-python@v4.9.1'
