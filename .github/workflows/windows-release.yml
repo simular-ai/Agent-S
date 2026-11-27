@@ -350,10 +350,19 @@ jobs:
           }
 
           $ready = Get-ReleaseForTag
+          if (-not $ready -or $ready.id -ne $release.id -or -not $ready.draft) {
+            throw "Draft $env:TAG changed while assets were being uploaded; refusing to publish."
+          }
+          # Last chance to catch a retarget before the release is public: if the
+          # draft now names another commit, publishing would create the tag there
+          # while the assets came from ours. The post-publish check would only
+          # notice after the release was already visible.
+          if ("$($ready.target_commitish)" -ne $env:GITHUB_SHA) {
+            throw "Draft $env:TAG now targets $($ready.target_commitish); expected $env:GITHUB_SHA. Refusing to publish."
+          }
           $uploaded = @($ready.assets | Where-Object { $_.state -eq 'uploaded' -and $_.size -gt 0 })
-          if (-not $ready -or $ready.id -ne $release.id -or -not $ready.draft -or
-              $uploaded.name -notcontains $zipName -or $uploaded.name -notcontains $shaName) {
-            throw "Draft $env:TAG changed or is missing a Windows asset; refusing to publish."
+          if ($uploaded.name -notcontains $zipName -or $uploaded.name -notcontains $shaName) {
+            throw "Draft $env:TAG is missing a completed Windows asset; refusing to publish."
           }
           Assert-ReleaseTag $ready
           gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($ready.id)" -F draft=false --silent
