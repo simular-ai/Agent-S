@@ -3,6 +3,11 @@ import os
 import backoff
 import numpy as np
 from anthropic import Anthropic
+from gui_agents.utils import (
+    anthropic_supports_temperature,
+    extract_anthropic_text,
+    extract_anthropic_thinking,
+)
 from openai import (
     AzureOpenAI,
     APIConnectionError,
@@ -215,21 +220,19 @@ class LMMEngineAnthropic(LMMEngine):
                 thinking={"type": "enabled", "budget_tokens": 4096},
                 **kwargs,
             )
-            thoughts = full_response.content[0].thinking
-            print("CLAUDE 3.7 THOUGHTS:", thoughts)
-            return full_response.content[1].text
-        return (
-            self.llm_client.messages.create(
-                system=messages[0]["content"][0]["text"],
-                model=self.model,
-                messages=messages[1:],
-                max_tokens=max_new_tokens if max_new_tokens else 4096,
-                temperature=temperature,
-                **kwargs,
-            )
-            .content[0]
-            .text
-        )
+            thoughts = extract_anthropic_thinking(full_response)
+            print("CLAUDE THOUGHTS:", thoughts)
+            return extract_anthropic_text(full_response)
+        request_kwargs = {
+            "system": messages[0]["content"][0]["text"],
+            "model": self.model,
+            "messages": messages[1:],
+            "max_tokens": max_new_tokens if max_new_tokens else 4096,
+            **kwargs,
+        }
+        if anthropic_supports_temperature(self.model):
+            request_kwargs["temperature"] = temperature
+        return extract_anthropic_text(self.llm_client.messages.create(**request_kwargs))
 
 
 class LMMEngineGemini(LMMEngine):

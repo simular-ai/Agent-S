@@ -46,7 +46,7 @@ class Worker(BaseModule):
         """
         super().__init__(worker_engine_params, platform)
 
-        self.temperature = worker_engine_params.get("temperature", 0.0)
+        self.temperature = worker_engine_params.get("temperature") or 0.0
         self.use_thinking = worker_engine_params.get("model", "") in [
             "claude-opus-4-20250514",
             "claude-sonnet-4-20250514",
