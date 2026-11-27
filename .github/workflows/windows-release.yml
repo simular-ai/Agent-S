@@ -32,7 +32,6 @@ jobs:
       cancel-in-progress: false
 
     env:
-      OUT_DIR: ${{ runner.temp }}/agent-s-windows
       ZIP_NAME: AgentS-Windows-x64
 
     steps:
@@ -54,6 +53,9 @@ jobs:
           }
           $version = $env:TAG.Substring(1)
           "BUILD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # A job-level env cannot use the runner context, which made this whole
+          # file invalid to GitHub, so publish the output directory from here.
+          "OUT_DIR=$env:RUNNER_TEMP/agent-s-windows" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Building version $version from tag $env:TAG."
 
       # Publishing must never sign binaries from one commit and attach them to a
