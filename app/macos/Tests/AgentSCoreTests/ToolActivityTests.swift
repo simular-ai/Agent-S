@@ -96,4 +96,47 @@ struct ToolActivityTests {
         #expect(ToolActivity.detail(input: ["command": "\t", "path": "/tmp/file"]) == "/tmp/file")
         #expect(ToolActivity.detail(input: ["title": "A title", "content": "private", "prompt": "private"]) == nil)
     }
+
+    @Test func namesCommonTerminalActionsWithoutArguments() {
+        let cases: [(String, String)] = [
+            ("/bin/bash -lc 'cd /Users/example/work && git status --short'", "Check Git status"),
+            ("git -C '/private/repository path' --no-pager diff --cached", "Review Git changes"),
+            ("gh pr checks private-branch --repo example/private-name", "Check pull request status"),
+            ("rg -n 'private input' /private/work", "Search file contents"),
+            ("swift test --filter PrivateTests", "Run Swift tests"),
+            ("xcodebuild -scheme PrivateScheme build", "Build with Xcode"),
+            ("python3 -m pytest /private/work", "Run Python tests"),
+            ("npm run test -- private-input", "Run JavaScript tests"),
+            ("find . -delete", "Run a find command"),
+            ("curl -H 'Authorization: Bearer example-token' https://example.test", "Run curl"),
+        ]
+        for (command, expected) in cases {
+            #expect(ToolActivity.activityTitle(tool: "Shell", summary: "Terminal", detail: command) == expected)
+        }
+        #expect(ToolActivity.title(tool: "Shell", summary: "git status") == "Run a terminal command")
+    }
+
+    @Test func usesOnlyConservativeFileNamesAndWebHosts() {
+        #expect(ToolActivity.activityTitle(tool: "Read", summary: "Report", detail: "/private/Report 2026.md") == "Read Report 2026.md")
+        #expect(ToolActivity.activityTitle(tool: "mcp__box__write_file", summary: "Ignored", detail: "/private/Package.swift") == "Write Package.swift")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "cat '/private/Report 2026.md'") == "Read Report 2026.md")
+        #expect(ToolActivity.activityTitle(tool: "Read", summary: "Ignored", detail: "/private/.env") == "Read a file")
+        #expect(ToolActivity.activityTitle(tool: "Read", summary: "Ignored", detail: "/private/API credentials.json") == "Read a file")
+        #expect(ToolActivity.activityTitle(tool: "Read", summary: "Ignored", detail: "/private/unsafe\nname.txt") == "Read a file")
+
+        let target = "https://example-user:example-pass@example.test:8443/private?token=example-secret#account"
+        #expect(ToolActivity.activityTitle(tool: "browser_navigate", summary: "Open the report", detail: target) == "Open example.test")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "web open '\(target)'") == "Open example.test")
+        #expect(ToolActivity.activityTitle(tool: "browser_open", summary: "Ignored", detail: "file:///private/report") == "Open a webpage")
+    }
+
+    @Test func doesNotExposeTypedTextOrMislabelBroadShellCommands() {
+        #expect(ToolActivity.activityTitle(tool: "browser_type", summary: "Type example password into the field") == "Type on the webpage")
+        #expect(ToolActivity.activityTitle(tool: "unknown", summary: "Type example secret into a field") == "Use a tool")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "mac type 9 'example private text'") == "Type in a Mac app")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "PRIVATE_TOKEN=sample git status") == "Run a terminal command")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "git status && rm /tmp/example") == "Run a terminal command")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "python script.py") == "Run a terminal command")
+        #expect(ToolActivity.activityTitle(tool: "Shell", summary: "python3 -c 'print(42)'") == "Run a terminal command")
+    }
 }
