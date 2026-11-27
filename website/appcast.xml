@@ -4,27 +4,25 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.6</title>
-            <pubDate>Thu, 26 Nov 2026 15:52:31 -0800</pubDate>
-            <sparkle:version>4</sparkle:version>
-            <sparkle:shortVersionString>0.3.6</sparkle:shortVersionString>
+            <title>0.3.7</title>
+            <pubDate>Fri, 27 Nov 2026 02:18:44 -0800</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.3.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description sparkle:format="markdown"><![CDATA[## Model pricing and spend
+            <description sparkle:format="markdown"><![CDATA[## macOS
 
-- See OpenRouter’s input and output text-token rates, Sai’s relative credit costs, and billing details for local and account-backed models as you choose a model.
-- Open **Computer → Session and instructions** to see the OpenRouter spend Agent S has tracked for the selected agent. Tracking starts with new requests.
-- Use **Settings → Accounts → Check OpenRouter spend** to see daily, weekly, monthly, and lifetime spend for the saved key.
+- Mention another agent to send a task or share a previous reply. Review the exact message inline and choose when a reply should start a new turn.
+- Queued follow-ups reach a live turn when the harness can accept them. Shared sandbox turns wait for confirmed cleanup.
+- The Computer toolbar groups Chrome Password Manager and 1Password in one Passwords menu.
+- The sidebar has a Discord community button, and the production app has a refined indigo icon.
 
-## Chat and sandbox
-
-- Expand long prompts in chat and hover to copy the full prompt.
-- Turning off the sandbox now cancels pending startup and waits for confirmed VM shutdown so its memory can be reclaimed.
+This update also patches bundled runtime dependencies and tightens handoff privacy.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.6/Agent-S-macOS-0.3.6-arm64.dmg" length="188556971" type="application/octet-stream" sparkle:edSignature="wXb6ioFit+8gqXqp6f52OrNfDMzJXNqUk3oJzdQ6fk0EslYoTR5iLLxhGLRwuL99H7xUDM8n3kSQSNdzi6ikBw=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.7/Agent-S-macOS-0.3.7-arm64.dmg" length="189587101" type="application/octet-stream" sparkle:edSignature="tmHY0QNpvaLfOwVFVQwn2HB72+BZVOQJokkLwSo1B8r8mP5vuNcwEYbid3G8Yqc6/8j/l8Atx4UxV0zKmJkQAA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: DPTlexNlpL563rWll5v8kLFM6zrNmj7Ax58e8ny0OPPisQzVQbFMCb6GpywqoSNBgjXo7zEs5fmPXprgeOOPAg==
-length: 1898
+edSignature: wDr9+839ZGmgGZcdk2eC5MC2p+b3devH/M6cHRSGuFsulpSTcIfZT2dGKZZvBwDvOpaLD3AjD29TQAbWFI6hCQ==
+length: 1761
 -->
