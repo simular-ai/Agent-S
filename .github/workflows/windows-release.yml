@@ -38,6 +38,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4.4.0
 
+      - name: Derive the build version from the tag
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Validate before TAG is used in any API path below: only the
+          # refs/tags/ prefix is URL-encoded, so a tag containing a slash or a
+          # space would otherwise build a malformed request.
+          # Require the same v-prefixed form as the existing v0.3.x releases; a
+          # bare 0.4.0 would create an inconsistent tag series.
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Tag $env:TAG must look like vMAJOR.MINOR.PATCH (for example v0.4.0). The numeric version is stamped into Settings > Check for Updates..., so it has to be a plain v-prefixed release version."
+          }
+          $version = $env:TAG.Substring(1)
+          "BUILD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Building version $version from tag $env:TAG."
+
       # Publishing must never sign binaries from one commit and attach them to a
       # tag pointing at another. Checkout builds the dispatch ref, so compare the
       # tag's commit against the commit actually built before anything is signed.
@@ -48,43 +66,31 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $ErrorActionPreference = 'Stop'
+          $errFile = Join-Path $env:RUNNER_TEMP 'guard-error.txt'
           # Resolve via the API rather than `git ls-remote`: an annotated tag's
           # ref points at a tag object, not a commit, so the raw SHA would never
           # match. `commits/<ref>` peels the tag to its commit for us.
-          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" 2>&1
+          # stderr goes to a file: merging it into stdout would corrupt the JSON.
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" 2>$errFile
           if ($LASTEXITCODE -ne 0) {
+            $err = if (Test-Path $errFile) { (Get-Content $errFile -Raw).Trim() } else { '' }
             # Only this specific message means "tag not created yet" (GitHub
             # answers 422 "No commit found for SHA: <tag>"). Everything else -
             # auth, rate limit, wrong repo returning 404, server error - must
             # stop the run rather than be read as a missing tag and waved
             # through. Failing closed costs a human a re-run; failing open
-            # would publish assets against an unverified tag.
-            if ("$out" -match 'No commit found for SHA') {
-              Write-Host "Tag $env:TAG does not exist; it will be created at $env:GITHUB_SHA."
+            # ships unsigned or mis-tagged binaries.
+            if ($err -match 'No commit found for SHA') {
+              Write-Host "Tag $env:TAG does not exist yet; the release step will create it at $env:GITHUB_SHA."
               exit 0
             }
-            throw "Could not look up tag ${env:TAG}: $out"
+            throw "Could not resolve tag ${env:TAG}: $err"
           }
-          $tagSha = ("$out" | ConvertFrom-Json).sha
+          $tagSha = ($out | ConvertFrom-Json).sha
           if ($tagSha -ne $env:GITHUB_SHA) {
-            throw "Tag $env:TAG points at $tagSha but this run built $env:GITHUB_SHA. Refusing to publish."
+            throw "Tag $env:TAG points at $tagSha, but this run built $env:GITHUB_SHA."
           }
-          Write-Host "Tag $env:TAG already points at the built commit $env:GITHUB_SHA."
-
-      - name: Derive the build version from the tag
-        shell: pwsh
-        env:
-          TAG: ${{ inputs.tag }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Require the same v-prefixed form as the existing v0.3.x releases; a
-          # bare 0.4.0 would create an inconsistent tag series.
-          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
-            throw "Tag $env:TAG must look like vMAJOR.MINOR.PATCH (for example v0.4.0). The numeric version is stamped into Settings > Check for Updates..., so it has to be a plain v-prefixed release version."
-          }
-          $version = $env:TAG.Substring(1)
-          "BUILD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          Write-Host "Building version $version from tag $env:TAG."
+          Write-Host "Tag $env:TAG resolves to the built commit."
 
       - uses: actions/setup-dotnet@v4.3.1
         with:
@@ -153,12 +159,36 @@ jobs:
       - name: Verify signatures
         shell: pwsh
         run: |
-          $exe = Join-Path $env:OUT_DIR 'AgentS.Windows.exe'
-          $sig = Get-AuthenticodeSignature $exe
-          if ($sig.Status -ne 'Valid') { throw "Signature not valid on exe: $($sig.Status)" }
-          Write-Host "exe signed by: $($sig.SignerCertificate.Subject)"
+          $ErrorActionPreference = 'Stop'
+          # The signer covers every exe and dll in the publish folder (non
+          # recursive, matching its files-folder setting), so verify that same
+          # set: checking only the main exe would let a failed signature on a
+          # native DLL ship inside a release that looks signed.
+          $targets = @(Get-ChildItem -Path $env:OUT_DIR -File |
+            Where-Object { $_.Extension -in @('.exe', '.dll') })
+          if ($targets.Count -eq 0) { throw "No exe or dll files found in $env:OUT_DIR." }
+          $bad = @()
+          foreach ($file in $targets) {
+            $sig = Get-AuthenticodeSignature $file.FullName
+            if ($sig.Status -ne 'Valid') {
+              $bad += "$($file.Name): $($sig.Status)"
+              continue
+            }
+            # A valid signature alone is not enough: it must be our certificate,
+            # and timestamped so it outlives the certificate's own expiry.
+            if ($sig.SignerCertificate.Subject -notlike '*O="Simular, Inc."*') {
+              $bad += "$($file.Name): unexpected signer $($sig.SignerCertificate.Subject)"
+            }
+            if (-not $sig.TimeStamperCertificate) {
+              $bad += "$($file.Name): signature is not timestamped"
+            }
+          }
+          if ($bad.Count -gt 0) {
+            throw ("Signature verification failed for {0} of {1} files:`n{2}" -f $bad.Count, $targets.Count, ($bad -join "`n"))
+          }
+          Write-Host "Verified $($targets.Count) files as validly signed and timestamped."
+          Write-Host "Signer: $((Get-AuthenticodeSignature $targets[0].FullName).SignerCertificate.Subject)"
 
-      # --- Package -------------------------------------------------------
       - name: Zip and checksum
         shell: pwsh
         run: |
@@ -174,33 +204,75 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
         run: |
+          $ErrorActionPreference = 'Stop'
           $zipName = "$env:ZIP_NAME.zip"
           $shaName = "$zipName.sha256"
           $zip = Join-Path $env:RUNNER_TEMP $zipName
           $checksum = "$zip.sha256"
+          $errFile = Join-Path $env:RUNNER_TEMP 'gh-error.txt'
+
+          function Get-GhError {
+            if (Test-Path $errFile) {
+              $text = (Get-Content $errFile -Raw).Trim()
+              Remove-Item $errFile -ErrorAction SilentlyContinue
+              return $text
+            }
+            return ''
+          }
 
           function Get-ReleaseForTag {
             # The release-by-tag REST endpoint only returns published releases.
-            # An authenticated release listing includes drafts.
+            # An authenticated listing includes drafts, so use that to find a
+            # draft left behind by an interrupted run.
+            Remove-Item $errFile -ErrorAction SilentlyContinue
             $filter = '.[] | select(.tag_name == "{0}")' -f $env:TAG
-            $releases = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq $filter)
-            if ($LASTEXITCODE -ne 0) { throw "Could not list releases for $env:TAG." }
+            $releases = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq $filter 2>$errFile)
+            if ($LASTEXITCODE -ne 0) { throw "Could not list releases for $env:TAG: $(Get-GhError)" }
             if ($releases.Count -gt 1) { throw "Multiple releases match $env:TAG." }
             if ($releases.Count -eq 1) { return ($releases[0] | ConvertFrom-Json) }
           }
 
+          function Resolve-Commitish($value) {
+            if (-not $value) { return $null }
+            if ($value -match '^[0-9a-fA-F]{40}$') { return $value.ToLowerInvariant() }
+            # A release created by hand can target a branch name; resolve it so a
+            # legitimate draft is not rejected for naming "main" instead of a SHA.
+            Remove-Item $errFile -ErrorAction SilentlyContinue
+            $resolved = gh api "repos/$env:GITHUB_REPOSITORY/commits/$value" --jq .sha 2>$errFile
+            if ($LASTEXITCODE -ne 0) { throw "Could not resolve commitish '$value' for $env:TAG: $(Get-GhError)" }
+            return "$resolved".Trim().ToLowerInvariant()
+          }
+
           function Assert-ReleaseTag($release) {
-            $tag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>&1
+            Remove-Item $errFile -ErrorAction SilentlyContinue
+            $tag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>$errFile
             if ($LASTEXITCODE -eq 0) {
-              if ("$tag" -ne $env:GITHUB_SHA) {
-                throw "Tag $env:TAG points at $tag; expected $env:GITHUB_SHA."
+              $tagSha = "$tag".Trim()
+              if ($tagSha -ne $env:GITHUB_SHA) {
+                throw "Tag $env:TAG points at $tagSha; expected $env:GITHUB_SHA."
               }
-            } elseif (($release -and -not $release.draft) -or "$tag" -notmatch 'No commit found for SHA') {
-              throw "Could not resolve tag ${env:TAG}: $tag"
+            } else {
+              $msg = Get-GhError
+              if (($release -and -not $release.draft) -or $msg -notmatch 'No commit found for SHA') {
+                throw "Could not resolve tag ${env:TAG}: $msg"
+              }
             }
-            if ($release.draft -and $release.target_commitish -ne $env:GITHUB_SHA) {
-              throw "Draft $env:TAG targets $($release.target_commitish); expected $env:GITHUB_SHA."
+            if ($release -and $release.draft) {
+              $target = Resolve-Commitish $release.target_commitish
+              if ($target -ne $env:GITHUB_SHA) {
+                throw "Draft $env:TAG targets $($release.target_commitish); expected $env:GITHUB_SHA."
+              }
             }
+          }
+
+          function Save-Asset($release, $name, $destination) {
+            $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if (-not $asset) { throw "Asset $name is not on release $env:TAG." }
+            # Fetch through the asset API, not the release-by-tag endpoint: the
+            # latter hides drafts, which is exactly the case being recovered.
+            # curl, not a PowerShell redirect, so the ZIP stays binary-clean.
+            curl.exe -sSL --fail -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/octet-stream" "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)" -o $destination
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download asset $name from $env:TAG." }
           }
 
           $release = Get-ReleaseForTag
@@ -209,7 +281,7 @@ jobs:
             gh release create $env:TAG --draft --title $env:TAG --generate-notes --target $env:GITHUB_SHA
             if ($LASTEXITCODE -ne 0) { throw "Failed to create draft for $env:TAG." }
             $release = Get-ReleaseForTag
-            if (-not $release.draft) { throw "Expected a draft for $env:TAG after creation." }
+            if (-not $release -or -not $release.draft) { throw "Expected a draft for $env:TAG after creation." }
             Assert-ReleaseTag $release
           }
 
@@ -221,9 +293,10 @@ jobs:
           }
           $hasZip = $release.assets.name -contains $zipName
           $hasChecksum = $release.assets.name -contains $shaName
+
           if (-not $release.draft) {
             if ($hasZip -and $hasChecksum) {
-              Write-Host "Release $env:TAG already has both Windows assets."
+              Write-Host "Release $env:TAG already has both Windows assets; nothing to publish."
               exit 0
             }
             if ($hasZip -or $hasChecksum) {
@@ -234,19 +307,18 @@ jobs:
             exit 0
           }
 
-          # Build the checksum from the ZIP that will actually be published.
-          # A rebuilt and signed ZIP can differ from one uploaded by a prior run.
+          # Build the checksum from the ZIP that will actually be published. A
+          # rebuilt and signed ZIP differs from one an earlier run uploaded.
           if ($hasZip) {
+            Write-Host "Draft $env:TAG already holds $zipName; reusing it and discarding this run's rebuilt ZIP."
             $zip = Join-Path $env:RUNNER_TEMP "draft-$zipName"
-            gh release download $env:TAG --pattern $zipName --output $zip
-            if ($LASTEXITCODE -ne 0) { throw "Failed to read the existing ZIP on draft $env:TAG." }
+            Save-Asset $release $zipName $zip
           }
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           $checksumLine = "$hash  $zipName"
           if ($hasChecksum) {
             $draftChecksum = Join-Path $env:RUNNER_TEMP "draft-$shaName"
-            gh release download $env:TAG --pattern $shaName --output $draftChecksum
-            if ($LASTEXITCODE -ne 0) { throw "Failed to read the existing checksum on draft $env:TAG." }
+            Save-Asset $release $shaName $draftChecksum
             if ((Get-Content $draftChecksum -Raw).Trim() -ne $checksumLine) {
               throw "Draft $env:TAG has a checksum that does not match the ZIP. Resolve the mismatch before rerunning."
             }
@@ -263,13 +335,27 @@ jobs:
 
           $ready = Get-ReleaseForTag
           $uploaded = @($ready.assets | Where-Object { $_.state -eq 'uploaded' -and $_.size -gt 0 })
-          if ($ready.id -ne $release.id -or -not $ready.draft -or
+          if (-not $ready -or $ready.id -ne $release.id -or -not $ready.draft -or
               $uploaded.name -notcontains $zipName -or $uploaded.name -notcontains $shaName) {
             throw "Draft $env:TAG changed or is missing a Windows asset; refusing to publish."
           }
           Assert-ReleaseTag $ready
           gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($ready.id)" -F draft=false --silent
           if ($LASTEXITCODE -ne 0) { throw "Failed to publish draft $env:TAG." }
+
+          # Publishing is the step that must be confirmed rather than assumed:
+          # check the release is live and its tag points at what we built.
+          $published = Get-ReleaseForTag
+          if (-not $published -or $published.draft) {
+            throw "Release $env:TAG is still a draft after publishing."
+          }
+          Remove-Item $errFile -ErrorAction SilentlyContinue
+          $finalTag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>$errFile
+          if ($LASTEXITCODE -ne 0) { throw "Published $env:TAG but cannot resolve its tag: $(Get-GhError)" }
+          if ("$finalTag".Trim() -ne $env:GITHUB_SHA) {
+            throw "Published $env:TAG but its tag points at $("$finalTag".Trim()), not $env:GITHUB_SHA."
+          }
+          Write-Host "Published $env:TAG with both Windows assets."
 
       - name: Upload smoke evidence
         if: always()
