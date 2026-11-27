@@ -1667,23 +1667,39 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             defer { self.handoffDraftTasks[id] = nil }
             do {
-                // The daemon can retag a model while the source turn is finishing.
-                if !handoff.draftOnDevice, route.provider == .ollama,
-                   await Self.verifyOllamaMemoryRoute(route) != route {
-                    self.finishHandoff(id, message: "The source model route changed. Send a new handoff to continue.")
-                    return
+                var draft: String?
+                for isRetry in [false, true] {
+                    // Recheck before each call since the daemon can retag a model while queued.
+                    if !handoff.draftOnDevice, route.provider == .ollama,
+                       await Self.verifyOllamaMemoryRoute(route) != route {
+                        self.finishHandoff(id, message: "The source model route changed. Send a new handoff to continue.")
+                        return
+                    }
+                    try Task.checkCancellation()
+                    guard self.handoffParticipants(handoff) != nil else {
+                        self.finishHandoff(id, message: "The agent or model changed. Send a new handoff to continue.")
+                        return
+                    }
+                    do {
+                        let instructions = isRetry ? HandoffDraftPrompt.retryInstructions : HandoffDraftPrompt.instructions
+                        let input = isRetry ? HandoffDraftPrompt.prompt(
+                            request: handoff.originalRequest, recipient: recipientName,
+                            context: HandoffDraftPrompt.retryContext(context, recipient: recipientName)
+                        ) : prompt
+                        let generated = try await HandoffDraftService.draft(instructions: instructions,
+                                                                            prompt: input, using: backend)
+                        try Task.checkCancellation()
+                        if let message = HandoffDraftPrompt.message(from: generated, recipient: recipientName,
+                                                                    request: handoff.originalRequest) {
+                            draft = message
+                            break
+                        }
+                    } catch HandoffDraftService.Failure.invalidResponse {
+                        continue
+                    }
                 }
-                try Task.checkCancellation()
-                guard self.handoffParticipants(handoff) != nil else {
-                    self.finishHandoff(id, message: "The agent or model changed. Send a new handoff to continue.")
-                    return
-                }
-                let generated = try await HandoffDraftService.draft(instructions: HandoffDraftPrompt.instructions,
-                                                                    prompt: prompt, using: backend)
-                try Task.checkCancellation()
-                let draft = AgentHandoffRequest.withoutRecipientHeading(generated, recipientName: recipientName)
-                guard !draft.isEmpty else {
-                    self.finishHandoff(id, message: "The source model didn’t prepare a message to share.")
+                guard let draft else {
+                    self.finishHandoff(id, message: "Couldn’t draft a message. Try restating what \(recipientName) should receive or do.")
                     return
                 }
                 guard let (currentSource, _) = self.handoffParticipants(handoff),
