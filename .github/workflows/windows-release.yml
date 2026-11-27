@@ -18,13 +18,18 @@ jobs:
   release:
     runs-on: windows-latest
     # The signing identity can only be reached from this environment, and the
-    # environment is restricted to `main` and `v*` tags. Two federated
-    # credentials are allowlisted so login works whichever subject form GitHub
-    # emits for this repo:
+    # environment only admits the protected `main` branch - not tags, which are
+    # unprotected here and could point anywhere. Two federated credentials are
+    # allowlisted so login works whichever subject form GitHub emits:
     #   repo:simular-ai/Agent-S:environment:release
     #   repo:simular-ai@99358647/Agent-S@870189331:environment:release
     environment: release
     timeout-minutes: 40
+    # Two runs for the same tag would race: both could see the tag as missing,
+    # and the loser could publish over the winner. Serialise per tag.
+    concurrency:
+      group: windows-release-${{ inputs.tag }}
+      cancel-in-progress: false
 
     env:
       OUT_DIR: ${{ runner.temp }}/agent-s-windows
@@ -46,12 +51,21 @@ jobs:
           # Resolve via the API rather than `git ls-remote`: an annotated tag's
           # ref points at a tag object, not a commit, so the raw SHA would never
           # match. `commits/<ref>` peels the tag to its commit for us.
-          $json = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>$null
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
           if ($LASTEXITCODE -ne 0) {
-            Write-Host "Tag $env:TAG does not exist; it will be created at $env:GITHUB_SHA."
-            exit 0
+            # Only this specific message means "tag not created yet" (GitHub
+            # answers 422 "No commit found for SHA: <tag>"). Everything else -
+            # auth, rate limit, wrong repo returning 404, server error - must
+            # stop the run rather than be read as a missing tag and waved
+            # through. Failing closed costs a human a re-run; failing open
+            # would publish assets against an unverified tag.
+            if ("$out" -match 'No commit found for SHA') {
+              Write-Host "Tag $env:TAG does not exist; it will be created at $env:GITHUB_SHA."
+              exit 0
+            }
+            throw "Could not look up tag ${env:TAG}: $out"
           }
-          $tagSha = ($json | ConvertFrom-Json).sha
+          $tagSha = ("$out" | ConvertFrom-Json).sha
           if ($tagSha -ne $env:GITHUB_SHA) {
             throw "Tag $env:TAG points at $tagSha but this run built $env:GITHUB_SHA. Refusing to publish."
           }
@@ -136,10 +150,26 @@ jobs:
           gh release view $env:TAG 2>$null
           if ($LASTEXITCODE -ne 0) {
             gh release create $env:TAG --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to create release $env:TAG; not uploading."
+            }
           }
-          # Safe to clobber: the guard step proved this tag already points at the
-          # commit we just built, so a re-run replaces its own assets.
+          # Re-resolve the tag immediately before touching assets: the guard ran
+          # before a multi-minute build, so the tag could have moved since.
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not resolve tag ${env:TAG} before upload: $out"
+          }
+          $nowSha = ("$out" | ConvertFrom-Json).sha
+          if ($nowSha -ne $env:GITHUB_SHA) {
+            throw "Tag $env:TAG now points at $nowSha; refusing to upload assets built from $env:GITHUB_SHA."
+          }
+          # Safe to clobber: this tag is proven to point at the commit we built,
+          # so a re-run only replaces its own assets.
           gh release upload $env:TAG $zip "$zip.sha256" --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Failed to upload assets to release $env:TAG."
+          }
 
       - name: Upload smoke evidence
         if: always()
