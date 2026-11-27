@@ -109,7 +109,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var handoffLabel: String? = nil
     var handoffSender: HandoffSender? = nil
     var handoffShare: HandoffShare? = nil
-    /// Ordinary user messages that started a turn. Older saved conversations have no provenance.
+    /// Messages that started a turn. Older saved conversations have no provenance.
     var turnProvenance: TurnProvenance? = nil
 
     var isBlankAssistantMessage: Bool {
@@ -220,7 +220,8 @@ final class AgentSession: ObservableObject, Identifiable {
         return item?.text.replacingOccurrences(of: "\n", with: " ")
     }
 
-    func contextForHandoffDraft(route: AgentMemoryRoute, onDevice: Bool) -> [HandoffDraftTurn] {
+    func contextForHandoffDraft(route: AgentMemoryRoute, onDevice: Bool,
+                                requireLatestResult: Bool = false) -> [HandoffDraftTurn] {
         var turns: [HandoffDraftTurn] = []
         var end = items.endIndex
         for index in items.indices.reversed() {
@@ -228,26 +229,30 @@ final class AgentSession: ObservableObject, Identifiable {
             guard root.kind == .user, root.isSteering != true else { continue }
             let turnItems = items[items.index(after: index)..<end]
             end = index
-            guard root.handoffLabel == nil, root.handoffSender == nil, root.handoffShare == nil else { continue }
+            // Older drafts had attribution but no sender. Their text was never delivered.
+            guard root.handoffShare == nil, root.handoffLabel == nil || root.handoffSender != nil else { continue }
 
-            switch root.turnProvenance {
-            case .incomplete:
-                continue
-            case let .completed(turnRoute):
-                guard onDevice || turnRoute == route else { continue }
-            case nil:
-                // Older chat items do not identify which model saw them.
-                guard onDevice, !hasInterruption(in: turnItems) else { continue }
+            let eligible = switch root.turnProvenance {
+            case .incomplete: false
+            case let .completed(turnRoute): onDevice || turnRoute == route
+            // Older chat items do not identify which model saw them.
+            case nil: onDevice && !hasInterruption(in: turnItems)
             }
-
-            guard let reply = visibleReply(in: turnItems) else { continue }
+            let requiresThisResult = requireLatestResult && turns.isEmpty
+            guard eligible, let reply = visibleReply(in: turnItems) else {
+                if requiresThisResult { return [] }
+                continue
+            }
             let steering = turnItems.filter {
                 $0.kind == .user && $0.isSteering == true && $0.handoffLabel == nil
                     && $0.handoffSender == nil && $0.handoffShare == nil
             }
             let request = ([root.text] + steering.map(\.text))
                 .joined(separator: "\n\n").trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !request.isEmpty else { continue }
+            guard !request.isEmpty else {
+                if requiresThisResult { return [] }
+                continue
+            }
             turns.append(HandoffDraftTurn(request: request, reply: reply))
             if turns.count == 3 { break }
         }
@@ -257,7 +262,8 @@ final class AgentSession: ObservableObject, Identifiable {
     private func hasInterruption(in turnItems: ArraySlice<ChatItem>) -> Bool {
         turnItems.contains {
             switch $0.kind {
-            case .notice(true), .step(_, false, _, _): return true
+            case .notice(true): return true
+            case let .step(name, false, _, _): return name != "EndConversation"
             case .notice(false): return $0.handoffShare == nil && $0.handoffLabel == nil && $0.text == "Stopped."
             default: return false
             }
@@ -271,7 +277,7 @@ final class AgentSession: ObservableObject, Identifiable {
     /// chat prefixes them with the turn.
     private var turn = UUID().uuidString
     private var turnResult: Bool?
-    private var ordinaryTurnItemID: String?
+    private var activeTurnItemID: String?
     private var process: Process?
     private var activeAccountProvider: ModelProvider?
     private var submitSteering: ((String) async throws -> Void)?
@@ -498,8 +504,8 @@ final class AgentSession: ObservableObject, Identifiable {
                         canLaunch: $0.canLaunch, onReply: $0.onReply)
         }
         var displayed = item
-        ordinaryTurnItemID = handoff == nil ? item.id : nil
-        if handoff == nil { displayed.turnProvenance = .incomplete }
+        activeTurnItemID = item.id
+        displayed.turnProvenance = .incomplete
         displayed.text = handoff?.displayText ?? text
         displayed.handoffLabel = handoff?.label
         displayed.handoffSender = handoff?.sender
@@ -635,10 +641,10 @@ final class AgentSession: ObservableObject, Identifiable {
     private func finalizeTurn(success: Bool, forceSend: UUID? = nil) {
         let handoff = activeHandoffTurn
         activeHandoffTurn = nil
-        if success, let itemID = ordinaryTurnItemID, let index = items.lastIndex(where: { $0.id == itemID }) {
+        if success, let itemID = activeTurnItemID, let index = items.lastIndex(where: { $0.id == itemID }) {
             items[index].turnProvenance = .completed(route: activeMemoryRoute)
         }
-        ordinaryTurnItemID = nil
+        activeTurnItemID = nil
         let reply = success ? handoff.flatMap(handoffReply) : nil
         let sandboxEnded = sandboxTurnEnded
         let sandboxEnd = sandboxTurnVerification.map(SandboxTurnEnd.requiresVerification) ?? .finished
@@ -664,9 +670,9 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func visibleReply(in turnItems: ArraySlice<ChatItem>) -> String? {
-        // Replies come from the final text segment. Earlier segments can be narration before tools.
+        // Earlier segments can be narration before tools. EndConversation only closes the turn.
         let lastStep = turnItems.lastIndex { item in
-            if case .step = item.kind { return true }
+            if case let .step(name, _, _, _) = item.kind { return name != "EndConversation" }
             return false
         }
         let start = lastStep.map { turnItems.index(after: $0) } ?? turnItems.startIndex
@@ -1453,7 +1459,7 @@ final class AgentSession: ObservableObject, Identifiable {
         }
         handoffConversationID = UUID()
         memorySessions = [:]
-        ordinaryTurnItemID = nil
+        activeTurnItemID = nil
         stop()
         if isRunning { turn = UUID().uuidString }
         steeringFollowUpID = nil

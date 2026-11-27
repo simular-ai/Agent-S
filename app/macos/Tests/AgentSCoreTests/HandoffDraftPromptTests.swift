@@ -90,4 +90,60 @@ struct HandoffDraftPromptTests {
             .init(request: mixed.request, reply: "The report at https://example.test lists 49 items."), independent,
         ])
     }
+
+    @Test(arguments: [
+        "share the summary to @sai",
+        "Please send that result with @Sai.",
+        "Could you forward the latest findings to @SAI?",
+        "Send @Sai the summary, please.",
+    ])
+    func recognizesRequestsToRelayAnExistingResult(_ request: String) {
+        #expect(HandoffDraftPrompt.intent(for: request, recipient: "Sai") == .relayResult)
+    }
+
+    @Test(arguments: [
+        "Ask @Sai to share the summary with Alice.",
+        "Have @Sai write a summary.",
+        "Share the summary with Alice, and ask @Sai to fact-check it.",
+        "Send the summary to @Sai 2.",
+        #"Send "the build passed" to @Sai."#,
+    ])
+    func keepsDelegationAndExplicitMessageContentInComposeMode(_ request: String) {
+        #expect(HandoffDraftPrompt.intent(for: request, recipient: "Sai") == .compose)
+    }
+
+    @Test func relayExposesTheActualLatestResultAndRefusesAnEmptyOrStaleSource() {
+        let older = HandoffDraftTurn(request: "Last week's total", reply: "Last week there were 12 responses.")
+        let latest = HandoffDraftTurn(request: "Summarize the survey", reply: "The survey received 49 responses.")
+        let context = HandoffDraftPrompt.relayContext([older, latest], recipient: "Sai")
+        let prompt = HandoffDraftPrompt.prompt(request: "share the summary to @sai", recipient: "Sai",
+                                              context: context, intent: .relayResult)
+        #expect(prompt.contains("Source result to relay: \"The survey received 49 responses.\""))
+        #expect(HandoffDraftPrompt.relayContext([], recipient: "Sai").isEmpty)
+        #expect(HandoffDraftPrompt.relayContext([
+            older, .init(request: "Send it", reply: "Share the summary."),
+        ], recipient: "Sai").isEmpty)
+        #expect(HandoffDraftPrompt.relayContext([
+            older, .init(request: "Send it", reply: "I cannot send the request. No agent named Sai is available."),
+        ], recipient: "Sai").isEmpty)
+    }
+
+    @Test(arguments: [
+        #"{"message":"Share the summary."}"#,
+        #"{"message":"Please forward the latest summary to Sai."}"#,
+        #"{"message":"Here’s the summary:"}"#,
+        #"{"message":"Summarize it."}"#,
+    ])
+    func refusesToReviewAPlaceholderWhenTheUserAskedToShareResults(_ response: String) {
+        #expect(HandoffDraftPrompt.message(from: response, recipient: "Sai", intent: .relayResult) == nil)
+    }
+
+    @Test func acceptsResultsAndLeavesDelegatedSharingInstructionsIntact() {
+        let result = #"{"message":"Summary: The survey received 49 responses."}"#
+        #expect(HandoffDraftPrompt.message(from: result, recipient: "Sai", intent: .relayResult)
+                == "Summary: The survey received 49 responses.")
+        let delegation = #"{"message":"Share the summary with Alice."}"#
+        #expect(HandoffDraftPrompt.message(from: delegation, recipient: "Sai", intent: .compose)
+                == "Share the summary with Alice.")
+    }
 }

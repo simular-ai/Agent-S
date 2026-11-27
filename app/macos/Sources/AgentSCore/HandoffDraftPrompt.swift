@@ -11,6 +11,24 @@ public struct HandoffDraftTurn: Equatable, Sendable {
 }
 
 public enum HandoffDraftPrompt {
+    public enum Intent: Equatable, Sendable {
+        case compose
+        case relayResult
+    }
+
+    private static let relayVerb = #"(?:share|send|forward|relay|pass (?:along|on))"#
+    private static let resultReference = #"(?:(?:the|this|that|your|my|our|latest|last|previous|final)\s+)*(?:summary|results?|output|findings|reply|response|answer|report|conclusions?)"#
+
+    public static func intent(for request: String, recipient: String) -> Intent {
+        let name = NSRegularExpression.escapedPattern(for: recipient)
+        let prefix = #"^\s*(?:(?:please|could you|can you|would you)\s+)*"#
+        let address = #"@"# + name
+        let body = "(?:\(resultReference)\\s+(?:to|with)\\s+\(address)|\(address)\\s+\(resultReference))"
+        let pattern = prefix + relayVerb + #"\s+"# + body + #"(?:,\s*please)?\s*[.!?]*\s*$"#
+        return request.range(of: pattern, options: [.regularExpression, .caseInsensitive]) == nil
+            ? .compose : .relayResult
+    }
+
     public static let instructions = """
     Compose the text of a message addressed to the selected recipient. Agent S has already resolved
     the recipient and handles delivery after review. The selected recipient is authoritative.
@@ -39,15 +57,27 @@ public enum HandoffDraftPrompt {
     Output only {"message":"..."} or {"message":null}, with no explanation of the drafting process.
     """
 
-    public static func prompt(request: String, recipient: String, context: [HandoffDraftTurn]) -> String {
-        let recent = context.suffix(3).map { turn in
+    public static let relayInstructions = """
+
+    The user asked to relay an existing result. Put the actual facts from the source result in the
+    message body so the recipient can read them immediately. Preserve relevant figures, links, and
+    findings. A request to share, write, or summarize the result is not a message for this request.
+    If the source result is missing, use {"message":null}.
+    """
+
+    public static func prompt(request: String, recipient: String, context: [HandoffDraftTurn],
+                              intent: Intent = .compose) -> String {
+        let sourceResult = intent == .relayResult ? context.last?.reply : nil
+        let earlier = sourceResult == nil ? context.suffix(3) : context.dropLast().suffix(2)
+        let recent = earlier.map { turn in
             """
             User: \(excerpt(turn.request, limit: 600))
             Agent: \(excerpt(turn.reply, limit: 1_400))
             """
         }
         let prior = recent.isEmpty ? "" : "\n\nPrevious conversation, oldest first:\n\(recent.joined(separator: "\n\n"))"
-        return "Selected recipient: \(String(reflecting: recipient))\(prior)\n\nCurrent user request: \(String(reflecting: request))"
+        let result = sourceResult.map { "\n\nSource result to relay: \(excerpt($0, limit: 3_000))" } ?? ""
+        return "Selected recipient: \(String(reflecting: recipient))\(prior)\(result)\n\nCurrent user request: \(String(reflecting: request))"
     }
 
     public static func retryContext(_ context: [HandoffDraftTurn], recipient: String) -> [HandoffDraftTurn] {
@@ -64,8 +94,16 @@ public enum HandoffDraftPrompt {
         }
     }
 
+    public static func relayContext(_ context: [HandoffDraftTurn], recipient: String) -> [HandoffDraftTurn] {
+        guard let latest = context.last,
+              let source = retryContext([latest], recipient: recipient).last,
+              !isRelayPlaceholder(source.reply) else { return [] }
+        return Array(context.dropLast()) + [source]
+    }
+
     /// Only a usable recipient-facing message can advance to review.
-    public static func message(from response: String, recipient: String, request: String? = nil) -> String? {
+    public static func message(from response: String, recipient: String, request: String? = nil,
+                               intent: Intent = .compose) -> String? {
         let trimmed = response.trimmingCharacters(in: .whitespacesAndNewlines)
         let lines = trimmed.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
         let payload: String
@@ -82,10 +120,23 @@ public enum HandoffDraftPrompt {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         if let request, request.localizedCaseInsensitiveContains("@\(recipient)"),
            message.caseInsensitiveCompare(request) == .orderedSame { return nil }
+        if intent == .relayResult, isRelayPlaceholder(message) { return nil }
         guard message.unicodeScalars.contains(where: {
             CharacterSet.alphanumerics.contains($0) || $0.properties.isEmojiPresentation
         }), !isRoutingDiagnostic(message, recipient: recipient) else { return nil }
         return message
+    }
+
+    private static func isRelayPlaceholder(_ message: String) -> Bool {
+        let plain = message.replacingOccurrences(of: #"[`*_>]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let end = #"[\s.!?:—–-]*$"#
+        let forwarding = #"^(?:please\s+)?(?:share|send|forward|relay|pass (?:along|on)|give me|provide|write|draft|prepare|summari[sz]e)\s+"#
+            + "(?:\(resultReference)|it|that)(?:\\s+(?:to|with|for)[^\\r\\n.!?]{1,80})?" + end
+        let emptyIntroduction = #"^(?:(?:here(?:'s|’s| is)|below is)\s+)?"# + resultReference + end
+        return [forwarding, emptyIntroduction].contains {
+            plain.range(of: $0, options: [.regularExpression, .caseInsensitive]) != nil
+        }
     }
 
     private static func isRoutingDiagnostic(_ message: String, recipient: String) -> Bool {

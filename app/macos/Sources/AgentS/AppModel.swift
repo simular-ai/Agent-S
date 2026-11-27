@@ -1643,6 +1643,15 @@ final class AppModel: ObservableObject {
         // A follow-up submitted during a turn can refer to the result still being produced.
         guard !source.isRunning, !source.isSendingSteering else { return }
         let route = handoff.source.route
+        let recipientName = recipient.config.name
+        let intent = HandoffDraftPrompt.intent(for: handoff.originalRequest, recipient: recipientName)
+        let visible = source.contextForHandoffDraft(route: route, onDevice: handoff.draftOnDevice,
+                                                    requireLatestResult: intent == .relayResult)
+        let context = intent == .relayResult ? HandoffDraftPrompt.relayContext(visible, recipient: recipientName) : visible
+        if intent == .relayResult, context.isEmpty {
+            finishHandoff(id, message: "There’s no completed result available to share. Include the summary in your request.")
+            return
+        }
         let backend: HandoffDraftService.Backend
         if handoff.draftOnDevice {
             backend = .onDevice
@@ -1660,9 +1669,8 @@ final class AppModel: ObservableObject {
             return
         }
 
-        let recipientName = recipient.config.name
-        let context = source.contextForHandoffDraft(route: route, onDevice: handoff.draftOnDevice)
-        let prompt = HandoffDraftPrompt.prompt(request: handoff.originalRequest, recipient: recipientName, context: context)
+        let prompt = HandoffDraftPrompt.prompt(request: handoff.originalRequest, recipient: recipientName,
+                                              context: context, intent: intent)
         handoffDraftTasks[id] = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.handoffDraftTasks[id] = nil }
@@ -1681,16 +1689,17 @@ final class AppModel: ObservableObject {
                         return
                     }
                     do {
-                        let instructions = isRetry ? HandoffDraftPrompt.retryInstructions : HandoffDraftPrompt.instructions
+                        let instructions = (isRetry ? HandoffDraftPrompt.retryInstructions : HandoffDraftPrompt.instructions)
+                            + (intent == .relayResult ? HandoffDraftPrompt.relayInstructions : "")
                         let input = isRetry ? HandoffDraftPrompt.prompt(
                             request: handoff.originalRequest, recipient: recipientName,
-                            context: HandoffDraftPrompt.retryContext(context, recipient: recipientName)
+                            context: HandoffDraftPrompt.retryContext(context, recipient: recipientName), intent: intent
                         ) : prompt
                         let generated = try await HandoffDraftService.draft(instructions: instructions,
                                                                             prompt: input, using: backend)
                         try Task.checkCancellation()
                         if let message = HandoffDraftPrompt.message(from: generated, recipient: recipientName,
-                                                                    request: handoff.originalRequest) {
+                                                                    request: handoff.originalRequest, intent: intent) {
                             draft = message
                             break
                         }
