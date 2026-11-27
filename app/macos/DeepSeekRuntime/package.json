@@ -6,5 +6,9 @@
     "@deepseek-ai/dsh": "0.2.2-rc.5",
     "@deepseek-ai/dsh-llm-pi-ai": "0.2.2-rc.5",
     "@deepseek-ai/dsh-mcp-client": "0.2.2-rc.5"
+  },
+  "overrides": {
+    "undici": "8.12.2",
+    "@modelcontextprotocol/client": "2.3.0"
   }
 }

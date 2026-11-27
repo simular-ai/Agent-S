@@ -58,6 +58,9 @@ struct AgentSettings: View {
                     }
                     if model.harness != .sai, model.provider.usesAccount {
                         LabeledContent("Model", value: "Automatic")
+                        if let billing = model.provider.accountBillingLabel {
+                            LabeledContent("Billing", value: billing)
+                        }
                         HarnessAccountSetup { dismiss() }
                     }
                 }
@@ -91,6 +94,16 @@ struct AgentSettings: View {
     private func saveName() {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty, trimmed != model.agent.config.name { model.rename(model.agent, to: trimmed) }
+    }
+}
+
+extension ModelProvider {
+    var accountBillingLabel: String? {
+        switch self {
+        case .claudeAccount: "Uses your Claude plan"
+        case .codexAccount: "Uses your ChatGPT plan"
+        case .ollama, .openRouter: nil
+        }
     }
 }
 

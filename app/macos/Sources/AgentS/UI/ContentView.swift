@@ -284,6 +284,18 @@ struct Sidebar: View {
             }
 
             HStack {
+                Link(destination: URL(string: "https://discord.com/invite/Uru8geWNp4")!) {
+                    DiscordMark()
+                        .fill(.black)
+                        .frame(width: 18, height: 14)
+                        .frame(width: 34, height: 34)
+                        .background(.white, in: Circle())
+                        .overlay(Circle().stroke(Theme.hairline))
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Join Discord")
+                .help("Join Discord")
                 Spacer()
                 CircleButton(systemImage: "gearshape", help: "Settings") { showSettings = true }
             }
@@ -300,6 +312,57 @@ struct Sidebar: View {
             Button("Rename") { if let renaming { model.rename(renaming, to: newName) }; renaming = nil }
             Button("Cancel", role: .cancel) { renaming = nil }
         }
+    }
+}
+
+/// Discord's Clyde symbol from https://discord.com/branding, in the original SVG coordinates.
+private struct DiscordMark: Shape {
+    private static let size = CGSize(width: 65, height: 48)
+
+    private static let logo = Path { path in
+        path.move(to: CGPoint(x: 41.2351, y: 0))
+        path.addCurve(to: CGPoint(x: 39.5556, y: 3.397), control1: CGPoint(x: 40.6164, y: 1.09866), control2: CGPoint(x: 40.0607, y: 2.2352))
+        path.addCurve(to: CGPoint(x: 25.0584, y: 3.397), control1: CGPoint(x: 34.7569, y: 2.67719), control2: CGPoint(x: 29.8697, y: 2.67719))
+        path.addCurve(to: CGPoint(x: 23.3788, y: 0), control1: CGPoint(x: 24.5658, y: 2.2352), control2: CGPoint(x: 23.9976, y: 1.09866))
+        path.addCurve(to: CGPoint(x: 10.3085, y: 4.02841), control1: CGPoint(x: 18.8705, y: 0.770324), control2: CGPoint(x: 14.4759, y: 2.12155))
+        path.addCurve(to: CGPoint(x: 0.925755, y: 39.9432), control1: CGPoint(x: 2.04967, y: 16.2652), control2: CGPoint(x: -0.185531, y: 28.1863))
+        path.addCurve(to: CGPoint(x: 16.951, y: 47.9874), control1: CGPoint(x: 5.76238, y: 43.517), control2: CGPoint(x: 11.1799, y: 46.2447))
+        path.addCurve(to: CGPoint(x: 20.3859, y: 42.4562), control1: CGPoint(x: 18.2517, y: 46.2447), control2: CGPoint(x: 19.4009, y: 44.3883))
+        path.addCurve(to: CGPoint(x: 14.981, y: 39.88), control1: CGPoint(x: 18.5169, y: 41.7616), control2: CGPoint(x: 16.7111, y: 40.8903))
+        path.addCurve(to: CGPoint(x: 16.307, y: 38.8824), control1: CGPoint(x: 15.4356, y: 39.5517), control2: CGPoint(x: 15.8776, y: 39.2107))
+        path.addCurve(to: CGPoint(x: 48.3449, y: 38.8824), control1: CGPoint(x: 26.4475, y: 43.6559), control2: CGPoint(x: 38.1917, y: 43.6559))
+        path.addCurve(to: CGPoint(x: 49.6708, y: 39.88), control1: CGPoint(x: 48.7742, y: 39.236), control2: CGPoint(x: 49.2162, y: 39.577))
+        path.addCurve(to: CGPoint(x: 44.2533, y: 42.4688), control1: CGPoint(x: 47.9408, y: 40.9029), control2: CGPoint(x: 46.1349, y: 41.7616))
+        path.addCurve(to: CGPoint(x: 47.6882, y: 48), control1: CGPoint(x: 45.2383, y: 44.4009), control2: CGPoint(x: 46.3875, y: 46.2573))
+        path.addCurve(to: CGPoint(x: 63.7134, y: 39.9684), control1: CGPoint(x: 53.4593, y: 46.2573), control2: CGPoint(x: 58.8768, y: 43.5422))
+        path.addCurve(to: CGPoint(x: 54.3054, y: 4.04104), control1: CGPoint(x: 65.0268, y: 26.3299), control2: CGPoint(x: 61.4656, y: 14.5099))
+        path.addCurve(to: CGPoint(x: 41.2478, y: 0.0252565), control1: CGPoint(x: 50.1507, y: 2.13418), control2: CGPoint(x: 45.7561, y: 0.782952))
+        path.addLine(to: CGPoint(x: 41.2351, y: 0))
+        path.closeSubpath()
+
+        path.move(to: CGPoint(x: 21.8003, y: 32.7072))
+        path.addCurve(to: CGPoint(x: 16.0923, y: 26.3804), control1: CGPoint(x: 18.6811, y: 32.7072), control2: CGPoint(x: 16.0923, y: 29.8785))
+        path.addCurve(to: CGPoint(x: 21.7876, y: 20.041), control1: CGPoint(x: 16.0923, y: 22.8824), control2: CGPoint(x: 18.5801, y: 20.041))
+        path.addCurve(to: CGPoint(x: 27.4956, y: 26.3804), control1: CGPoint(x: 24.9952, y: 20.041), control2: CGPoint(x: 27.5461, y: 22.895))
+        path.addCurve(to: CGPoint(x: 21.8003, y: 32.7072), control1: CGPoint(x: 27.4451, y: 29.8658), control2: CGPoint(x: 24.9826, y: 32.7072))
+        path.closeSubpath()
+
+        path.move(to: CGPoint(x: 42.8389, y: 32.7072))
+        path.addCurve(to: CGPoint(x: 37.1436, y: 26.3804), control1: CGPoint(x: 39.7071, y: 32.7072), control2: CGPoint(x: 37.1436, y: 29.8785))
+        path.addCurve(to: CGPoint(x: 42.8389, y: 20.041), control1: CGPoint(x: 37.1436, y: 22.8824), control2: CGPoint(x: 39.6314, y: 20.041))
+        path.addCurve(to: CGPoint(x: 48.5343, y: 26.3804), control1: CGPoint(x: 46.0465, y: 20.041), control2: CGPoint(x: 48.5848, y: 22.895))
+        path.addCurve(to: CGPoint(x: 42.8389, y: 32.7072), control1: CGPoint(x: 48.4838, y: 29.8658), control2: CGPoint(x: 46.0213, y: 32.7072))
+        path.closeSubpath()
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let size = Self.size
+        let scale = min(rect.width / size.width, rect.height / size.height)
+        return Self.logo.applying(CGAffineTransform(
+            a: scale, b: 0, c: 0, d: scale,
+            tx: rect.midX - size.width * scale / 2,
+            ty: rect.midY - size.height * scale / 2
+        ))
     }
 }
 
@@ -404,8 +467,21 @@ struct SideHeader: View {
 
 /// An agent's headshot: its chosen picture, or the Sai mark on its own color.
 struct AgentAvatar: View {
-    let config: AgentConfig
+    private let name: String
+    private let avatarImage: String?
+    private let avatarColor: Int?
     var size: CGFloat
+
+    init(config: AgentConfig, size: CGFloat) {
+        self.init(name: config.name, avatarImage: config.avatarImage, avatarColor: config.avatarColor, size: size)
+    }
+
+    init(name: String, avatarImage: String?, avatarColor: Int?, size: CGFloat) {
+        self.name = name
+        self.avatarImage = avatarImage
+        self.avatarColor = avatarColor
+        self.size = size
+    }
 
     static let palette: [Color] = [
         Color(white: 0.08), Color(red: 0.20, green: 0.42, blue: 0.95), Color(red: 0.13, green: 0.60, blue: 0.36),
@@ -419,7 +495,7 @@ struct AgentAvatar: View {
             if let image {
                 Image(nsImage: image).resizable().scaledToFill()
             } else {
-                Self.palette[(config.avatarColor ?? 0) % Self.palette.count]
+                Self.palette[(avatarColor ?? 0) % Self.palette.count]
                     .overlay {
                         Text(initial)
                             .font(.system(size: size * 0.46, weight: .semibold, design: .rounded))
@@ -433,11 +509,11 @@ struct AgentAvatar: View {
 
     /// The first letter of the agent's name ("S" for Sai), or "?" before it has one.
     private var initial: String {
-        config.name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "?"
+        name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "?"
     }
 
     private var image: NSImage? {
-        config.avatarImage.flatMap { NSImage(contentsOf: GuestFiles.standard.avatars.appendingPathComponent($0)) }
+        avatarImage.flatMap { NSImage(contentsOf: GuestFiles.standard.avatars.appendingPathComponent($0)) }
     }
 }
 
@@ -565,6 +641,7 @@ extension AppModel {
         case let .preparing(step): ComputerStatus(label: step.label, color: .orange)
         case .stopped: ComputerStatus(label: "Computer off", color: .secondary)
         case let .booting(step): ComputerStatus(label: step, color: .orange)
+        case .stopping: ComputerStatus(label: "Shutting down the sandbox…", color: .orange)
         case .ready: ComputerStatus(label: "Computer on", color: .green)
         case let .failed(message): ComputerStatus(label: message, color: .red)
         }

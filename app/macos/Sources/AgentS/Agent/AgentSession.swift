@@ -48,6 +48,34 @@ struct SavedAgent: Codable {
     var config: AgentConfig
     var items: [ChatItem]
     var sessions: [String: String]
+    var openRouterSpendUSD: Decimal? = nil
+}
+
+/// The sender's identity and appearance when a handoff was delivered.
+struct HandoffSender: Codable, Equatable {
+    let name: String
+    let avatarColor: Int?
+    let avatarImage: String?
+
+    init(_ config: AgentConfig) {
+        name = config.name
+        avatarColor = config.avatarColor
+        avatarImage = config.avatarImage
+    }
+}
+
+struct HandoffShare: Codable, Equatable {
+    enum State: String, Codable {
+        case awaitingApproval, queued, sending, shared, canceled, failed, expired
+
+        var isPending: Bool { self == .awaitingApproval || self == .queued || self == .sending }
+    }
+
+    let id: UUID
+    let destination: HandoffSender
+    let route: String
+    var state: State
+    var replyFrom: HandoffSender? = nil
 }
 
 /// One item in the chat: what the user asked, what the agent said, a step it took.
@@ -66,6 +94,9 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var toolInput: String? = nil
     var isSteering: Bool? = nil
     var approvalTitle: String? = nil
+    var handoffLabel: String? = nil
+    var handoffSender: HandoffSender? = nil
+    var handoffShare: HandoffShare? = nil
 
     var isBlankAssistantMessage: Bool {
         kind == .agent && text.allSatisfy(\.isWhitespace)
@@ -90,6 +121,7 @@ final class AgentSession: ObservableObject, Identifiable {
     @Published private(set) var memory = AgentMemory()
     @Published private(set) var memoryError: String?
     @Published private(set) var chatItemRequest: ChatItemRequest?
+    @Published private(set) var openRouterSpendUSD: Decimal?
     @Published private(set) var sessions: [Harness: String] = [:]
     @Published private var sandboxSessions: [String: String] = [:]
     private var accountSessions: [ModelProvider: String] = [:]
@@ -98,6 +130,8 @@ final class AgentSession: ObservableObject, Identifiable {
     var onChange: (() -> Void)?
     var onTurnEnded: ((AgentSession, Bool) -> Void)?
     var onForcedFollowUpReady: ((AgentSession, UUID) -> Void)?
+    var onHandoffConversationReset: ((AgentSession) -> Void)?
+    var onHandoffDecision: ((UUID, Bool) -> Void)?
     var onMacUIActivity: ((_ session: AgentSession, _ needsApproval: Bool) -> Void)?
 
     nonisolated var id: UUID { MainActor.assumeIsolated { config.id } }
@@ -114,10 +148,10 @@ final class AgentSession: ObservableObject, Identifiable {
             Harness(rawValue: key).map { ($0, value) }
         })
         let items = saved.items.map { item in
-            guard item.kind == .agent else { return item }
-            var cleaned = item
-            cleaned.text = MemoryWire.visibleText(item.text)
-            return cleaned
+            var restored = item
+            if item.kind == .agent { restored.text = MemoryWire.visibleText(item.text) }
+            if item.handoffShare?.state.isPending == true { restored.handoffShare?.state = .expired }
+            return restored
         }
         // A turn that was running when the app quit isn't running now.
         self.init(config: saved.config.enforcingPrivacy, items: items, sessions: sessions)
@@ -126,6 +160,7 @@ final class AgentSession: ObservableObject, Identifiable {
             accountSessions[provider] = stored[provider.rawValue]
         }
         boxSessions = stored.filter { $0.key.hasPrefix("box/") }
+        openRouterSpendUSD = saved.openRouterSpendUSD
     }
 
     var saved: SavedAgent {
@@ -133,7 +168,12 @@ final class AgentSession: ObservableObject, Identifiable {
         for (key, id) in sandboxSessions { savedSessions[key] = id }
         for (provider, id) in accountSessions { savedSessions[provider.rawValue] = id }
         for (key, id) in boxSessions { savedSessions[key] = id }
-        return SavedAgent(config: config, items: items, sessions: savedSessions)
+        return SavedAgent(config: config, items: items, sessions: savedSessions, openRouterSpendUSD: openRouterSpendUSD)
+    }
+
+    func recordOpenRouterSpend(_ amount: Decimal) {
+        openRouterSpendUSD = (openRouterSpendUSD ?? 0) + amount
+        onChange?()
     }
 
     var currentSessionID: String? {
@@ -165,6 +205,20 @@ final class AgentSession: ObservableObject, Identifiable {
         let item = items.last { $0.kind == .user || ($0.kind == .agent && !$0.isBlankAssistantMessage) }
         return item?.text.replacingOccurrences(of: "\n", with: " ")
     }
+
+    var latestReplyForHandoff: String? {
+        guard !isRunning, !isStopping, turnResult != false,
+              let index = items.lastIndex(where: { $0.kind == .user && $0.isSteering != true }) else { return nil }
+        let turnItems = items.suffix(from: items.index(after: index))
+        if turnResult == nil, turnItems.contains(where: {
+            switch $0.kind {
+            case .notice(true), .step(_, false, _, _): return true
+            case .notice(false): return $0.handoffShare == nil && $0.handoffLabel == nil && $0.text == "Stopped."
+            default: return false
+            }
+        }) { return nil }
+        return visibleReply(in: turnItems)
+    }
     /// Tokens the last turn used, and which harness ran it.
     @Published private(set) var lastUsage: (input: Int, output: Int)?
     @Published private(set) var harness: Harness = .claudeCode
@@ -185,21 +239,48 @@ final class AgentSession: ObservableObject, Identifiable {
     private var activeSaiSessionID: String?
     private var confirmedSaiSessionID: String?
     private var confirmStop: (() async -> Bool)?
+    private var sandboxTurnEnded: ((SandboxTurnEnd) -> Void)?
+    private var sandboxTurnVerification: (() async -> Bool)?
+    private(set) var handoffConversationID = UUID()
+    private var pendingHandoffTurn: HandoffTurnOptions?
+    private var activeHandoffTurn: HandoffTurn?
 
     struct QueuedFollowUp: Identifiable {
         let id = UUID()
         let text: String
         let route: AgentMemoryRoute
-        let steeringTurn: String?
+        var declinedSteeringTurn: String? = nil
+    }
+
+    enum SandboxTurnEnd {
+        case finished
+        case requiresVerification(() async -> Bool)
     }
 
     var supportsSteering: Bool {
-        config.harness == .deepSeek || (config.harness == .codex && !config.usesLocalComputer)
+        // Keep unrelated follow-ups queued while a reply is being prepared for another agent.
+        activeHandoffTurn == nil && (config.harness == .deepSeek || (config.harness == .codex && !config.usesLocalComputer))
     }
 
     struct ChatItemRequest: Equatable {
         let itemID: String
         private let requestID = UUID()
+    }
+
+    private struct HandoffTurnOptions {
+        let label: String?
+        let displayText: String?
+        let sender: HandoffSender?
+        let canLaunch: (() -> Bool)?
+        let onReply: (String?) -> Void
+    }
+
+    private struct HandoffTurn {
+        let conversationID: UUID
+        let itemID: String
+        let canLaunch: (() -> Bool)?
+        let onReply: (String?) -> Void
+        var reportedReply: String?
     }
 
     private struct MemoryTurn {
@@ -313,20 +394,95 @@ final class AgentSession: ObservableObject, Identifiable {
         return true
     }
 
+    /// Record the next ordinary send as a handoff before a harness can report completion.
+    @discardableResult
+    func withHandoffTurn(label: String? = nil, displayText: String? = nil, sender: HandoffSender? = nil,
+                         canLaunch: (() -> Bool)? = nil,
+                         onReply: @escaping (String?) -> Void, send: () -> Bool) -> Bool {
+        guard !isRunning, pendingHandoffTurn == nil else { return false }
+        pendingHandoffTurn = HandoffTurnOptions(label: label, displayText: displayText, sender: sender,
+                                               canLaunch: canLaunch, onReply: onReply)
+        defer { pendingHandoffTurn = nil }
+        return send()
+    }
+
+    /// Place an attributed reply or status in the chat without creating a harness turn.
+    func appendHandoff(_ text: String, label: String, as kind: ChatItem.Kind) {
+        switch kind {
+        case .agent, .notice:
+            items.append(ChatItem(id: UUID().uuidString, kind: kind, text: text, handoffLabel: label))
+            onChange?()
+        default:
+            break
+        }
+    }
+
+    func appendHandoffShare(_ text: String, share: HandoffShare) {
+        items.append(ChatItem(id: share.id.uuidString, kind: .notice(isError: false), text: text, handoffShare: share))
+        onChange?()
+    }
+
+    func updateHandoffShare(_ id: UUID, state: HandoffShare.State) {
+        guard let index = items.firstIndex(where: { $0.handoffShare?.id == id }),
+              let current = items[index].handoffShare?.state, current.isPending, current != state else { return }
+        // A canceled in-flight request may already have reached the provider.
+        items[index].handoffShare?.state = current == .sending && state == .canceled ? .failed : state
+        onChange?()
+    }
+
+    func decideHandoff(_ id: UUID, approve: Bool) {
+        guard items.contains(where: { $0.handoffShare?.id == id && $0.handoffShare?.state == .awaitingApproval }) else {
+            return
+        }
+        onHandoffDecision?(id, approve)
+    }
+
     /// Keep the user's visible text separate from route-scoped reference notes and the update protocol.
     private func beginTurnMessage(_ text: String, memoryRoute: AgentMemoryRoute?) -> ChatItem {
         let item = ChatItem(id: UUID().uuidString, kind: .user, text: text)
         turnResult = nil
-        items.append(item)
+        let handoff = pendingHandoffTurn
+        pendingHandoffTurn = nil
+        activeHandoffTurn = handoff.map {
+            HandoffTurn(conversationID: handoffConversationID, itemID: item.id,
+                        canLaunch: $0.canLaunch, onReply: $0.onReply)
+        }
+        var displayed = item
+        displayed.text = handoff?.displayText ?? text
+        displayed.handoffLabel = handoff?.label
+        displayed.handoffSender = handoff?.sender
+        items.append(displayed)
         memoryTurn = nil
         activeMemoryRoute = memoryRoute
         activeMemorySessionInvalidated = false
         return item
     }
 
+    private func setVerifiedRoute(_ route: AgentMemoryRoute?, expected: AgentMemoryRoute?) -> Bool {
+        if activeHandoffTurn != nil, route != expected || route?.canRouteHandoff != true {
+            reportUnsentHandoff("The model route changed before the handoff could start.")
+            return false
+        }
+        activeMemoryRoute = route
+        return true
+    }
+
+    private func handoffMayLaunch() -> Bool {
+        guard activeHandoffTurn?.canLaunch?() != false else {
+            reportUnsentHandoff("The handoff was canceled before it could start.")
+            return false
+        }
+        return true
+    }
+
+    private func reportUnsentHandoff(_ message: String) {
+        if let itemID = activeHandoffTurn?.itemID { items.removeAll { $0.id == itemID } }
+        notice(message, isError: true)
+    }
+
     private func modelPrompt(for item: ChatItem) -> String {
         let wire = MemoryWire()
-        let route = memoryLoaded && activeMemoryRoute?.allowsMemory == true ? activeMemoryRoute : nil
+        let route = activeHandoffTurn == nil && memoryLoaded && activeMemoryRoute?.allowsMemory == true ? activeMemoryRoute : nil
         memoryTurn = MemoryTurn(wire: wire, route: route, revision: memory.revision, source: item.id)
         guard let route else { return item.text }
         let recall = memory.context(for: route, matching: item.text).map {
@@ -356,7 +512,7 @@ final class AgentSession: ObservableObject, Identifiable {
     func enqueueFollowUp(_ prompt: String, route: AgentMemoryRoute) -> Bool {
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard isRunning, !isStopping, !text.isEmpty else { return false }
-        queuedFollowUps.append(QueuedFollowUp(text: text, route: route, steeringTurn: supportsSteering ? turn : nil))
+        queuedFollowUps.append(QueuedFollowUp(text: text, route: route))
         tryNextSteering()
         return true
     }
@@ -370,7 +526,7 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     func waitingForSteering(_ followUp: QueuedFollowUp) -> Bool {
-        isRunning && !isStopping && !followUpsPaused && followUp.steeringTurn == turn
+        isRunning && supportsSteering && !isStopping && !followUpsPaused && followUp.declinedSteeringTurn != turn
     }
 
     private func canSteerFollowUp(_ followUp: QueuedFollowUp) -> Bool {
@@ -392,15 +548,17 @@ final class AgentSession: ObservableObject, Identifiable {
         if followUpsPaused { followUpsPaused = false }
     }
 
+    var isReadyForQueuedFollowUp: Bool {
+        turnResult == true && !isRunning && !isSendingSteering && !followUpsPaused && !queuedFollowUps.isEmpty
+    }
+
     private func notifyReadyFollowUps() {
-        guard turnResult == true, !isRunning, !isSendingSteering,
-              !followUpsPaused, !queuedFollowUps.isEmpty else { return }
-        onTurnEnded?(self, true)
+        if isReadyForQueuedFollowUp { onTurnEnded?(self, true) }
     }
 
     private func completeTurn(success: Bool, stoppedSafely: Bool = false) {
-        let confirmed = success && turnResult != false
-        guard let followUp = forcedFollowUpID else {
+        let confirmed = success && turnResult != false && sandboxTurnVerification == nil
+        guard let followUp = forcedFollowUpID, sandboxTurnVerification == nil else {
             finalizeTurn(success: confirmed)
             return
         }
@@ -423,15 +581,45 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func finalizeTurn(success: Bool, forceSend: UUID? = nil) {
+        let handoff = activeHandoffTurn
+        activeHandoffTurn = nil
+        let reply = success ? handoff.flatMap(handoffReply) : nil
+        let sandboxEnded = sandboxTurnEnded
+        let sandboxEnd = sandboxTurnVerification.map(SandboxTurnEnd.requiresVerification) ?? .finished
+        sandboxTurnEnded = nil
+        sandboxTurnVerification = nil
         turnResult = success
         if !success { pauseQueuedFollowUps() }
         confirmStop = nil
         forcedFollowUpID = nil
         isStopping = false
         isRunning = false
+        sandboxEnded?(sandboxEnd)
         onChange?()
+        handoff?.onReply(reply)
         if let forceSend { onForcedFollowUpReady?(self, forceSend) }
-        else { notifyReadyFollowUps() }
+        else { onTurnEnded?(self, success) }
+    }
+
+    private func handoffReply(_ handoff: HandoffTurn) -> String? {
+        guard handoff.conversationID == handoffConversationID,
+              let index = items.firstIndex(where: { $0.id == handoff.itemID }) else { return nil }
+        return handoff.reportedReply ?? visibleReply(in: items.suffix(from: items.index(after: index)))
+    }
+
+    private func visibleReply(in turnItems: ArraySlice<ChatItem>) -> String? {
+        // Replies come from the final text segment. Earlier segments can be narration before tools.
+        let lastStep = turnItems.lastIndex { item in
+            if case .step = item.kind { return true }
+            return false
+        }
+        let start = lastStep.map { turnItems.index(after: $0) } ?? turnItems.startIndex
+        let reply = turnItems.suffix(from: start)
+            .filter { $0.kind == .agent && $0.handoffLabel == nil && !$0.isBlankAssistantMessage }
+            .map(\.text)
+            .joined(separator: "\n\n")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return reply.isEmpty ? nil : reply
     }
 
     private func noteTurnResult(success: Bool) {
@@ -439,7 +627,7 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func tryNextSteering() {
-        guard let followUp = queuedFollowUps.first(where: waitingForSteering) else { return }
+        guard let followUp = queuedFollowUps.first, waitingForSteering(followUp) else { return }
         _ = steer(followUp)
     }
 
@@ -465,6 +653,11 @@ final class AgentSession: ObservableObject, Identifiable {
                 self.queuedFollowUps.removeAll { $0.id == followUp.id }
                 if self.queuedFollowUps.isEmpty { self.resumeQueuedFollowUps() }
                 self.onChange?()
+            } catch SteeringDeliveryError.notDelivered {
+                // Keep the head of the queue for the next turn if this run couldn't accept it.
+                guard self.turn == turnID,
+                      let index = self.queuedFollowUps.firstIndex(where: { $0.id == followUp.id }) else { return }
+                self.queuedFollowUps[index].declinedSteeringTurn = turnID
             } catch {
                 guard self.turn == turnID else { return }
                 // An unacknowledged message might have arrived. Keep it queued for an explicit retry.
@@ -496,20 +689,29 @@ final class AgentSession: ObservableObject, Identifiable {
     /// message (not shown in the chat) so the agent never answers from an out-of-date picture.
     func send(_ prompt: String, harness: Harness, shell: GuestShell, ip: String, model: String, ollamaURL: String,
               provider: ModelProvider, apiKey: String?, tunnelTo: UInt16?, memoryRoute: AgentMemoryRoute? = nil,
-              verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil, screen: @escaping () async -> String?) {
-        guard !isRunning else { return }
+              verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil,
+              sandboxTurnEnded: ((SandboxTurnEnd) -> Void)? = nil, screen: @escaping () async -> String?) {
+        guard !isRunning else {
+            sandboxTurnEnded?(.finished)
+            return
+        }
+        self.sandboxTurnEnded = sandboxTurnEnded
         let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
+        let readScreen = activeHandoffTurn == nil
         isRunning = true
         self.harness = harness
         activeAccountProvider = nil
         turn = UUID().uuidString
         let turnID = turn
         Task { @MainActor in
-            async let now = screen()
+            async let now = readScreen ? screen() : nil
             let verified: AgentMemoryRoute? = if let memoryRoute, let verifyRoute { await verifyRoute(memoryRoute) } else { memoryRoute }
             let screen = await now
             guard turn == turnID, isRunning else { return }
-            activeMemoryRoute = verified
+            guard setVerifiedRoute(verified, expected: memoryRoute), handoffMayLaunch() else {
+                completeTurn(success: false, stoppedSafely: true)
+                return
+            }
             let promptForModel = modelPrompt(for: item)
             let message = screen.map { "[\($0)]\n\n\(promptForModel)" } ?? promptForModel
             start(message, harness: harness, shell: shell, ip: ip, model: model, ollamaURL: ollamaURL,
@@ -541,7 +743,6 @@ final class AgentSession: ObservableObject, Identifiable {
             self.process = process
             deepSeekSteering = steering
             submitSteering = steering.map { $0.send }
-            confirmStop = stopGuestTurn
             read(output, harness: harness, turnID: turn, inApp: false, sandboxSessionKey: sessionKey,
                  stopSandboxTurn: stopGuestTurn)
         } catch {
@@ -618,7 +819,8 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Runs one turn of Claude Code on the Mac for a box agent: no built-in tools, box's MCP only,
     /// its own config folder; the box key passes through the environment only.
     func sendOnBox(_ prompt: String, command: BoxClaudeCommand, claude: URL, boxToken: String, dataFolder: URL,
-                   memoryRoute: AgentMemoryRoute? = nil) {
+                   memoryRoute: AgentMemoryRoute? = nil,
+                   verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
         guard !isRunning else { return }
         var command = command
         let usesAccount = command.provider == .claudeAccount
@@ -627,7 +829,8 @@ final class AgentSession: ObservableObject, Identifiable {
         let mcp = folder.appendingPathComponent("mcp.json")
         runClaudeInApp(prompt, claude: claude, folder: folder, provider: command.provider,
                        accountProfile: usesAccount ? ClaudeAccount.profile(in: dataFolder) : nil,
-                       memoryRoute: memoryRoute, legacyResume: legacyResume, prepare: { configDir, promptForModel, resume in
+                       memoryRoute: memoryRoute, legacyResume: legacyResume, verifyRoute: verifyRoute,
+                       prepare: { configDir, promptForModel, resume in
             command.prompt = promptForModel
             command.resume = resume
             try Data(Box.mcpConfig.utf8).write(to: mcp, options: .atomic)
@@ -794,6 +997,10 @@ final class AgentSession: ObservableObject, Identifiable {
         let turnID = turn
         let launch = { [self] in
             guard turn == turnID, isRunning else { return }
+            guard handoffMayLaunch() else {
+                completeTurn(success: false, stoppedSafely: true)
+                return
+            }
             let resume = resumeOnRoute(activeMemoryRoute, legacy: legacyResume)
             startClaudeInApp(modelPrompt(for: item), resume: resume, claude: claude, folder: folder,
                              accountProfile: accountProfile, workingDirectory: workingDirectory, prepare: prepare,
@@ -803,7 +1010,10 @@ final class AgentSession: ObservableObject, Identifiable {
             Task { @MainActor in
                 let verified = await verifyRoute(memoryRoute)
                 guard turn == turnID, isRunning else { return }
-                activeMemoryRoute = verified
+                guard setVerifiedRoute(verified, expected: memoryRoute) else {
+                    completeTurn(success: false, stoppedSafely: true)
+                    return
+                }
                 launch()
             }
         } else {
@@ -849,13 +1059,14 @@ final class AgentSession: ObservableObject, Identifiable {
 
     private func read(_ output: TurnProcessOutput, harness: Harness, turnID: String, inApp: Bool,
                       sandboxSessionKey: String? = nil, stopSandboxTurn: (() async -> Bool)? = nil) {
-        Task { @MainActor [weak self] in
+        // The sandbox lease still needs settling if the user deletes its source agent.
+        Task { @MainActor [weak self, sandboxSession = inApp ? nil : self] in
             var claude = ClaudeStream()
             var deepSeek = DeepSeekStream()
             let isSandboxCodex = !inApp && harness == .codex
             var writerConflict: String?
             for await line in output.lines {
-                guard let self, self.turn == turnID else { continue }
+                guard let self = sandboxSession ?? self, self.turn == turnID else { continue }
                 switch line {
                 case let .output(line):
                     let events = switch harness {
@@ -880,10 +1091,20 @@ final class AgentSession: ObservableObject, Identifiable {
                 }
             }
             let (status, stderr) = await output.completion()
-            if status == 15 || status == 255, self?.forcedFollowUpID == nil {
-                _ = await stopSandboxTurn?()
+            guard let self = sandboxSession ?? self else { return }
+            let stoppedSafely: Bool
+            if let stopSandboxTurn {
+                // A successful SSH exit waited for the managed guest service. Failure may only
+                // mean the SSH connection ended, so verify the guest stopped before releasing it.
+                if status == 0, !self.isStopping, self.turn == turnID {
+                    stoppedSafely = true
+                } else {
+                    stoppedSafely = await stopSandboxTurn()
+                    if !stoppedSafely { self.sandboxTurnVerification = stopSandboxTurn }
+                }
+            } else {
+                stoppedSafely = inApp && (self.config.computer != .box || !self.hasUnfinishedToolSteps)
             }
-            guard let self else { return }
             if inApp {
                 self.appProcess = nil
                 self.closeClaudeMacTool()
@@ -892,7 +1113,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 self.process = nil
             }
             guard self.turn == turnID else {
-                self.completeTurn(success: false)
+                self.completeTurn(success: false, stoppedSafely: stoppedSafely)
                 return
             }
             let error = inApp ? stderr.split(separator: "\n")
@@ -901,9 +1122,8 @@ final class AgentSession: ObservableObject, Identifiable {
             if isSandboxCodex, writerConflict == nil {
                 writerConflict = SandboxTurnFailure.codexWriterMessage(for: error)
             }
-            let localStopped = inApp && (self.config.computer != .box || !self.hasUnfinishedToolSteps)
             self.finish(status: status, stderr: error, sandboxTurn: !inApp,
-                        writerConflict: writerConflict, stoppedSafely: localStopped)
+                        writerConflict: writerConflict, stoppedSafely: stoppedSafely)
         }
     }
 
@@ -913,13 +1133,14 @@ final class AgentSession: ObservableObject, Identifiable {
     private var hostedTask: Task<Void, Never>?
 
     func sendWithCodex(_ prompt: String, dataFolder: URL, model: String, baseURL: String = "", apiKey: String = "",
-                       memoryRoute: AgentMemoryRoute? = nil) {
+                       memoryRoute: AgentMemoryRoute? = nil,
+                       verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
         let runner = CodexAccountTurn()
         let config = config
         let usesBox = config.computer == .box
         let readiness: (Bool) -> Void = { [weak self] ready in self?.setSteeringReady(ready) }
         runHostedTurn(prompt, harness: .codex, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped, steer: runner.steer,
-                      memoryRoute: memoryRoute) { [weak self] promptForModel, resume, onEvent in
+                      memoryRoute: memoryRoute, verifyRoute: verifyRoute) { [weak self] promptForModel, resume, onEvent in
             if usesBox {
                 try await runner.runOnBox(prompt: promptForModel, resume: resume, dataFolder: dataFolder, agentID: config.id,
                                           model: model, provider: config.provider, baseURL: baseURL, apiKey: apiKey,
@@ -934,11 +1155,12 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     func sendWithDeepSeekOnBox(_ prompt: String, dataFolder: URL, model: String, baseURL: String, apiKey: String,
-                              memoryRoute: AgentMemoryRoute? = nil) {
+                              memoryRoute: AgentMemoryRoute? = nil,
+                              verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)? = nil) {
         let runner = DeepSeekTurn()
         let config = config
         runHostedTurn(prompt, harness: .deepSeek, stop: runner.stop, waitUntilStopped: runner.waitUntilStopped,
-                      steer: runner.steer, memoryRoute: memoryRoute) { promptForModel, resume, onEvent in
+                      steer: runner.steer, memoryRoute: memoryRoute, verifyRoute: verifyRoute) { promptForModel, resume, onEvent in
             try await runner.run(prompt: promptForModel, resume: resume, model: model, baseURL: baseURL, apiKey: apiKey,
                                  dataFolder: dataFolder, agentID: config.id, target: .box(config.boxName),
                                  onEvent: onEvent)
@@ -1000,8 +1222,9 @@ final class AgentSession: ObservableObject, Identifiable {
                     let verified = await verifyRoute(memoryRoute)
                     try Task.checkCancellation()
                     guard self.turn == turnID else { return }
-                    self.activeMemoryRoute = verified
+                    guard self.setVerifiedRoute(verified, expected: memoryRoute) else { return }
                 }
+                guard self.handoffMayLaunch() else { return }
                 let resume = self.resumeOnRoute(self.activeMemoryRoute, legacy: legacyResume)
                 try await run(self.modelPrompt(for: item), resume, { event in
                     guard self.turn == turnID else { return }
@@ -1040,6 +1263,11 @@ final class AgentSession: ObservableObject, Identifiable {
             var completed = false
             do {
                 try Task.checkCancellation()
+                guard self.handoffMayLaunch() else {
+                    self.saiTask = nil
+                    self.completeTurn(success: false, stoppedSafely: true)
+                    return
+                }
                 let session = self.resumeOnRoute(memoryRoute, legacy: self.sessions[.sai])
                 self.activeSaiSessionID = session
                 try await SaiAPI.run(message: self.modelPrompt(for: item), machine: machine, session: session, model: model) { event in
@@ -1164,6 +1392,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 return
             }
         }
+        handoffConversationID = UUID()
         memorySessions = [:]
         stop()
         if isRunning { turn = UUID().uuidString }
@@ -1179,6 +1408,7 @@ final class AgentSession: ObservableObject, Identifiable {
         boxSessions = [:]
         lastUsage = nil
         onChange?()
+        onHandoffConversationReset?(self)
     }
 
     private func apply(_ events: [ClaudeEvent], sandboxSessionKey: String? = nil) {
@@ -1220,6 +1450,10 @@ final class AgentSession: ObservableObject, Identifiable {
         case let .finished(result, isError, _):
             noteTurnResult(success: !isError)
             setSteeringReady(false)
+            if activeHandoffTurn != nil, !isError, let result {
+                let reply = MemoryWire.visibleText(result).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !reply.isEmpty { activeHandoffTurn?.reportedReply = reply }
+            }
             if isError { notice(result.map { "The agent stopped: \($0)" } ?? "The agent stopped with an error.", isError: true) }
         }
     }
@@ -1242,9 +1476,14 @@ final class AgentSession: ObservableObject, Identifiable {
     private func finish(status: Int32, stderr: String, sandboxTurn: Bool = false, writerConflict: String? = nil,
                         stoppedSafely: Bool = false) {
         endSteering()
-        let completed = status == 0 && turnResult == true && writerConflict == nil
+        let completed = status == 0 && turnResult == true && writerConflict == nil && sandboxTurnVerification == nil
         finishMemoryTurn(success: completed)
         defer { completeTurn(success: completed, stoppedSafely: stoppedSafely) }
+        if sandboxTurnVerification != nil {
+            notice("Couldn’t confirm the previous sandbox turn stopped. Waiting for cleanup before starting another turn.",
+                   isError: true)
+            return
+        }
         // 15: stopped by the user (SIGTERM).
         if status == 15 { notice("Stopped.", isError: false); return }
         if let writerConflict {

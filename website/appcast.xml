@@ -4,22 +4,25 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.4</title>
-            <pubDate>Wed, 25 Nov 2026 21:44:21 -0800</pubDate>
-            <sparkle:version>2</sparkle:version>
-            <sparkle:shortVersionString>0.3.4</sparkle:shortVersionString>
+            <title>0.3.7</title>
+            <pubDate>Fri, 27 Nov 2026 02:18:44 -0800</pubDate>
+            <sparkle:version>5</sparkle:version>
+            <sparkle:shortVersionString>0.3.7</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
-            <description><![CDATA[<ul>
-  <li>Reorder agents within their sidebar groups by dragging or using the available move actions.</li>
-  <li>Check for updates automatically or from the Agent S menu. Agent S saves the sandbox before restarting for an update.</li>
-  <li>Use the bundled DeepSeek Harness runtime, with a separate runtime per agent.</li>
-</ul>
+            <description sparkle:format="markdown"><![CDATA[## macOS
+
+- Mention another agent to send a task or share a previous reply. Review the exact message inline and choose when a reply should start a new turn.
+- Queued follow-ups reach a live turn when the harness can accept them. Shared sandbox turns wait for confirmed cleanup.
+- The Computer toolbar groups Chrome Password Manager and 1Password in one Passwords menu.
+- The sidebar has a Discord community button, and the production app has a refined indigo icon.
+
+This update also patches bundled runtime dependencies and tightens handoff privacy.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.4/Agent-S-macOS-0.3.4-arm64.dmg" length="178652428" type="application/octet-stream" sparkle:edSignature="uRPfBp30YIpd5VBsSA52+lJ/a2yLil58CX4TsOMr5r1uQ78WP/hNf5bAMym0tD99XzQOGo8HjGAlIwHS+bwlBQ=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.7/Agent-S-macOS-0.3.7-arm64.dmg" length="189587101" type="application/octet-stream" sparkle:edSignature="tmHY0QNpvaLfOwVFVQwn2HB72+BZVOQJokkLwSo1B8r8mP5vuNcwEYbid3G8Yqc6/8j/l8Atx4UxV0zKmJkQAA=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: cNHHTLwvWT+VWxl8BpFROLuS+HwYw7FxtvOW0lhMZYYD1Ytp1RJ5JTaR/ljgoSVuMhXMw2TA781gCrZWUB1tDQ==
-length: 1515
+edSignature: wDr9+839ZGmgGZcdk2eC5MC2p+b3devH/M6cHRSGuFsulpSTcIfZT2dGKZZvBwDvOpaLD3AjD29TQAbWFI6hCQ==
+length: 1761
 -->

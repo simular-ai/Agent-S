@@ -1,0 +1,23 @@
+name: Verify actions lockfile
+
+on:
+  pull_request:
+    paths:
+      - .github/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/**
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/gh-actions-lock@verify/v0.5.1

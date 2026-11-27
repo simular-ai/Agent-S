@@ -75,6 +75,11 @@ struct ContextView: View {
                 if let usage = agent.lastUsage {
                     row("Last turn", "\(usage.input.formatted()) tokens in · \(usage.output.formatted()) out")
                 }
+                if let spend = agent.openRouterSpendUSD {
+                    row("OpenRouter spend", OpenRouter.formattedSpend(spend))
+                } else if agent.config.harness != .sai, agent.config.provider == .openRouter {
+                    row("OpenRouter spend", "No usage recorded yet")
+                }
             }
 
             section("Instructions") {

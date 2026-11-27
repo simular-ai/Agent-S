@@ -57,7 +57,8 @@ struct MacTurnPanelView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 9) {
                     ForEach(history) { row in
-                        ChatTranscriptRow(row: row, isRunning: agent.isRunning)
+                        ChatTranscriptRow(row: row, isRunning: agent.isRunning,
+                                          onHandoffDecision: agent.decideHandoff)
                             .id(ScrollTarget.history(row.id))
                     }
                     ForEach(pendingApprovals) { item in

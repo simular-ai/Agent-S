@@ -13,10 +13,37 @@ struct Ollama {
         let size: Int64
         let digest: String?
         let usesRemoteInference: Bool
+        let remoteHost: String?
         var id: String { name }
 
         func matches(_ model: String) -> Bool {
             Ollama.normalizedName(name) == Ollama.normalizedName(model)
+        }
+    }
+
+    enum Billing {
+        case local, cloud, unknown
+
+        var label: String {
+            switch self {
+            case .local: "Local · No API charge"
+            case .cloud: "Ollama Cloud billing"
+            case .unknown: "Pricing unavailable"
+            }
+        }
+    }
+
+    static let cloudPricingURL = URL(string: "https://ollama.com/pricing")!
+
+    static func billing(for name: String, installed: Model?) -> Billing {
+        if let host = installed?.remoteHost {
+            return URL(string: host)?.host?.lowercased() == "ollama.com" ? .cloud : .unknown
+        }
+        if isCloudReference(name) { return .cloud }
+        if installed?.usesRemoteInference == true { return .unknown }
+        switch normalizedName(name) {
+        case nemotronNano4B, nemotronBoltE4B, "gemma4": return .local
+        default: return installed == nil ? .unknown : .local
         }
     }
 
@@ -69,9 +96,10 @@ struct Ollama {
               let list = json["models"] as? [[String: Any]] else { return [] }
         return list.compactMap { item in
             guard let name = item["name"] as? String else { return nil }
-            let isRemote = ["remote_model", "remote_host"].contains { (item[$0] as? String)?.isEmpty == false }
+            let remoteHost = (item["remote_host"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let isRemote = remoteHost != nil || (item["remote_model"] as? String)?.isEmpty == false
             return Model(name: name, size: (item["size"] as? NSNumber)?.int64Value ?? 0,
-                         digest: item["digest"] as? String, usesRemoteInference: isRemote)
+                         digest: item["digest"] as? String, usesRemoteInference: isRemote, remoteHost: remoteHost)
         }
     }
 

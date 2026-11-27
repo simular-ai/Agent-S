@@ -25,6 +25,7 @@ enum OpenRouter {
         let name: String
         let contextLength: Int?
         let inputCapability: ModelInputCapability?
+        let pricing: OpenRouterModelPricing
     }
 
     /// OpenRouter returns the full text-output model list when pagination is omitted.
@@ -36,8 +37,11 @@ enum OpenRouter {
             guard let id = item["id"] as? String else { return nil }
             let architecture = item["architecture"] as? [String: Any]
             let capability = ModelInputCapability.fromInputModalities(architecture?["input_modalities"] as? [String])
+            let prices = item["pricing"] as? [String: Any]
+            let pricing = OpenRouterModelPricing(modelID: id, prompt: prices?["prompt"] as? String,
+                                                 completion: prices?["completion"] as? String)
             return Model(id: id, name: item["name"] as? String ?? id,
-                         contextLength: item["context_length"] as? Int, inputCapability: capability)
+                         contextLength: item["context_length"] as? Int, inputCapability: capability, pricing: pricing)
         }
     }
 
@@ -68,20 +72,48 @@ enum OpenRouter {
     static func delete() -> Bool { keychain.delete() }
 }
 
+extension OpenRouterModelPricing {
+    var label: String {
+        switch self {
+        case let .rates(input, output) where input == 0 && output == 0:
+            "Free text tokens"
+        case let .rates(input, output):
+            "\(OpenRouter.formattedSpend(input)) in · \(OpenRouter.formattedSpend(output)) out / 1M tokens"
+        case .variable:
+            "Varies by routed model"
+        case .unavailable:
+            "Price unavailable"
+        }
+    }
+}
+
 /// A small HTTP proxy on 127.0.0.1:`OpenRouter.proxyPort`: one request per connection, forwarded
 /// to https://openrouter.ai/api with the key from the Keychain, the response streamed back (so
 /// server-sent events arrive as they are produced). Whatever key the client sent is dropped.
 final class OpenRouterProxy: @unchecked Sendable {
-    /// Required on every request (as the API key), so other apps on the Mac, or web pages
-    /// calling localhost, cannot spend the user's key. New on every launch; only Agent S’s own
-    /// turns in the computer are given it.
-    let token = "agent-s-" + UUID().uuidString
+    /// Only Agent S's harnesses get these launch-local credentials. The upstream key stays on the Mac.
+    private let tokenLock = NSLock()
+    private var tokens: [UUID: String] = [:]
+    @MainActor var onCharge: ((UUID, Decimal) -> Void)?
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "ai.simular.agent-s.openrouter-proxy")
     private let requiresZDR: @Sendable () -> Bool
 
     init(requiresZDR: @escaping @Sendable () -> Bool) {
         self.requiresZDR = requiresZDR
+    }
+
+    func token(for agentID: UUID) -> String {
+        tokenLock.withLock {
+            if let token = tokens[agentID] { return token }
+            let token = "agent-s-" + UUID().uuidString
+            tokens[agentID] = token
+            return token
+        }
+    }
+
+    func revokeToken(for agentID: UUID) {
+        tokenLock.withLock { tokens[agentID] = nil }
     }
 
     var isRunning: Bool { listener != nil }
@@ -154,7 +186,7 @@ final class OpenRouterProxy: @unchecked Sendable {
     private func forward(_ request: Request, to connection: NWConnection) async {
         let presented = request.headers.first { ["authorization", "x-api-key"].contains($0.0.lowercased()) }?.1
             .replacingOccurrences(of: "Bearer ", with: "")
-        guard presented == token else {
+        guard let presented, let agentID = tokenLock.withLock({ tokens.first { $0.value == presented }?.key }) else {
             respond(connection, status: 403, body: #"{"error":{"message":"Forbidden"}}"#)
             return
         }
@@ -192,9 +224,18 @@ final class OpenRouterProxy: @unchecked Sendable {
             upstream.httpBody = body
         }
 
+        let tracksUsage = OpenRouterUsage.tracks(method: request.method, path: url.path)
+        var usage: OpenRouterUsage?
+        var generationID: String?
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: upstream)
             let http = response as? HTTPURLResponse
+            if tracksUsage, let http {
+                generationID = OpenRouterUsage.generationID(http.value(forHTTPHeaderField: "X-Generation-Id"))
+                if (200..<300).contains(http.statusCode) {
+                    usage = OpenRouterUsage(isStreaming: http.mimeType == "text/event-stream")
+                }
+            }
             var head = "HTTP/1.1 \(http?.statusCode ?? 502) \(HTTPURLResponse.localizedString(forStatusCode: http?.statusCode ?? 502))\r\n"
             for (name, value) in http?.allHeaderFields ?? [:] {
                 let name = "\(name)"
@@ -209,14 +250,55 @@ final class OpenRouterProxy: @unchecked Sendable {
                 // Flush at line ends so streamed events reach the agent as they arrive.
                 if byte == 0x0A || chunk.count >= 16 << 10 {
                     send(connection, Self.chunked(chunk))
+                    usage?.receive(chunk)
                     chunk.removeAll(keepingCapacity: true)
                 }
             }
-            if !chunk.isEmpty { send(connection, Self.chunked(chunk)) }
+            if !chunk.isEmpty {
+                send(connection, Self.chunked(chunk))
+                usage?.receive(chunk)
+            }
             send(connection, Data("0\r\n\r\n".utf8), last: true)
         } catch {
             respond(connection, status: 502, body: #"{"error":{"message":"Could not reach OpenRouter."}}"#)
         }
+
+        // A stream can end before its usage event. Reconcile from OpenRouter's metadata
+        // after the response has been sent, using the same upstream key as the request.
+        let amount: Decimal?
+        if let reported = usage?.cost { amount = reported }
+        else if let generationID { amount = await Self.lookupCost(generationID: generationID, key: key) }
+        else { amount = nil }
+        if let amount {
+            await MainActor.run { onCharge?(agentID, amount) }
+        }
+    }
+
+    private static func lookupCost(generationID: String, key: String) async -> Decimal? {
+        var endpoint = URLComponents(url: OpenRouter.api.appendingPathComponent("v1/generation"), resolvingAgainstBaseURL: false)
+        endpoint?.queryItems = [URLQueryItem(name: "id", value: generationID)]
+        guard let url = endpoint?.url else { return nil }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 5)
+        request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+
+        for delay in [0, 500, 2_000] {
+            do {
+                if delay > 0 { try await Task.sleep(for: .milliseconds(delay)) }
+                let (body, response) = try await URLSession.shared.data(for: request)
+                guard let status = (response as? HTTPURLResponse)?.statusCode else { return nil }
+                switch status {
+                case 200:
+                    if let cost = OpenRouterUsage.generationCost(in: body) { return cost }
+                case 404, 429, 500...599: break
+                default: return nil
+                }
+            } catch is CancellationError {
+                return nil
+            } catch {
+                // Transient transport failure. The retry schedule is bounded.
+            }
+        }
+        return nil
     }
 
     static func chunked(_ data: Data) -> Data {

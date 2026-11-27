@@ -8,10 +8,42 @@ struct OpenRouterSettings: View {
 
     var body: some View {
         Section(ModelProvider.openRouter.displayName) {
-            if !model.hasOpenRouterKey { KeySetup.openRouter(model) }
+            if model.hasOpenRouterKey {
+                OpenRouterKeyUsageRows()
+            } else {
+                KeySetup.openRouter(model)
+            }
             OpenRouterZDRSetting(isOn: $model.openRouterRequiresZDR)
             OpenRouterModelSearch(selection: $model.openRouterModel)
         }
+    }
+}
+
+struct OpenRouterKeyUsageRows: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        switch model.openRouterKeyUsage {
+        case .idle:
+            refreshButton("Check OpenRouter spend")
+        case .loading:
+            ProgressView("Checking OpenRouter spend…").controlSize(.small)
+        case .loaded(let usage):
+            LabeledContent("Spent today", value: OpenRouter.formattedSpend(usage.daily))
+            LabeledContent("Spent this week", value: OpenRouter.formattedSpend(usage.weekly))
+            LabeledContent("Spent this month", value: OpenRouter.formattedSpend(usage.monthly))
+            LabeledContent("Total spent", value: OpenRouter.formattedSpend(usage.total))
+            Text("OpenRouter reports spend for all requests made with this key.")
+                .font(.caption).foregroundStyle(.secondary)
+            refreshButton("Refresh OpenRouter spend")
+        case .failed(let message):
+            Text(message).font(.caption).foregroundStyle(.secondary)
+            refreshButton("Check OpenRouter spend again")
+        }
+    }
+
+    private func refreshButton(_ title: String) -> some View {
+        Button(title) { Task { await model.refreshOpenRouterKeyUsage() } }
     }
 }
 
@@ -30,6 +62,7 @@ struct OpenRouterModelSearch: View {
             .task { await model.refreshOpenRouterModels() }
         let selectedID = selection.trimmingCharacters(in: .whitespacesAndNewlines)
         if !selectedID.isEmpty {
+            LabeledContent("Text token price", value: model.openRouterPricing(for: selectedID).label)
             if showsSelectedInput {
                 let selected = model.openRouterModels.first { $0.id == selectedID }
                 LabeledContent("Model input", value: selected?.inputCapability?.label ?? "Unknown")
@@ -138,6 +171,7 @@ struct OpenRouterCatalogView: View {
                 if found.name != found.id {
                     Text(found.id).font(.caption).foregroundStyle(.secondary)
                 }
+                Text(found.pricing.label).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {

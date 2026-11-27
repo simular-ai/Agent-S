@@ -26,12 +26,16 @@ struct SaiSettings: View {
             }
             Picker("Model", selection: $model.saiModel) {
                 ForEach(model.saiModels) { choice in
-                    Text(choice.allowed ? choice.name : "\(choice.name) (not on your plan)").tag(choice.id)
+                    let title = choice.optionTitle()
+                    Text(choice.allowed ? title : "\(title) (not on your plan)").tag(choice.id)
                 }
-                if !model.saiModels.contains(where: { $0.id == model.saiModel }) { Text(model.saiModel).tag(model.saiModel) }
+                if !model.saiModels.contains(where: { $0.id == model.saiModel }) {
+                    let title = model.saiModel == "auto" ? "Automatic" : model.saiModel
+                    Text("\(title) · Cost unavailable").tag(model.saiModel)
+                }
             }
             Button("Refresh") { Task { await model.refreshSai() } }
-            Text("With the Sai harness, Sai (Simular's agent) runs your tasks on the Sai computer you pick, using your Sai plan. Your key stays in this Mac's Keychain.")
+            Text("Sai runs tasks on the computer you pick using your Sai plan. Model cost tiers show relative credit costs. Your key stays in this Mac’s Keychain.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .task { await model.refreshSai() }
