@@ -6,6 +6,7 @@ import Foundation
 /// local computer.
 enum SaiAPI {
     static let base = URL(string: "https://api.simular.ai")!
+    static let maxAttachmentBytes = 25_000_000
     /// The picker's entry for Agent S’s own computer, until the API can drive it.
     static let localMachine = "saige-local"
 
@@ -211,16 +212,112 @@ enum SaiAPI {
         try await json("/v1/agents/abort", method: "POST", body: ["sessionId": session], timeout: timeout)
     }
 
+    struct ChatUpload {
+        fileprivate let files: [[String: Any]]
+        fileprivate let authorization: String
+    }
+
+    /// Uploads staged files for one turn. Sai's message endpoint takes the returned objects unchanged.
+    static func uploadChatAttachments(_ files: [URL]) async throws -> ChatUpload? {
+        guard !files.isEmpty else { return nil }
+        let inputs = try files.map(attachmentInput)
+        var upload = try request("/v1/agents/upload", method: "POST")
+        upload.timeoutInterval = 120
+        guard let authorization = upload.value(forHTTPHeaderField: "Authorization") else {
+            throw Failure(message: "Add your Sai API key in Settings.")
+        }
+        var attachments: [[String: Any]] = []
+        for (file, input) in zip(files, inputs) {
+            try Task.checkCancellation()
+            guard key().map({ "Bearer \($0)" }) == authorization else {
+                throw Failure(message: "The Sai API key changed during attachment upload.")
+            }
+            upload.setValue(input.name, forHTTPHeaderField: "x-filename")
+            let data: Data
+            let response: URLResponse
+            do {
+                (data, response) = try await attachmentSession.upload(for: upload, fromFile: file)
+            } catch {
+                try Task.checkCancellation()
+                throw Failure(message: "Couldn’t upload an attachment to Sai.")
+            }
+            try Task.checkCancellation()
+            guard let response = response as? HTTPURLResponse, response.url == upload.url else {
+                throw Failure(message: "Sai didn’t confirm the attachment upload.")
+            }
+            guard (200..<300).contains(response.statusCode) else {
+                throw attachmentUploadFailure(status: response.statusCode)
+            }
+            attachments.append(try uploadedAttachment(data, expectedSize: input.size))
+        }
+        guard key().map({ "Bearer \($0)" }) == authorization else {
+            throw Failure(message: "The Sai API key changed during attachment upload.")
+        }
+        return ChatUpload(files: attachments, authorization: authorization)
+    }
+
+    static func attachmentInput(_ file: URL) throws -> (name: String, size: Int) {
+        guard file.isFileURL, let properties = try? file.resourceValues(forKeys: [
+            .isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey,
+        ]), properties.isRegularFile == true, properties.isSymbolicLink != true,
+              let size = properties.fileSize else {
+            throw Failure(message: "An attachment could not be read.")
+        }
+        guard size > 0 else { throw Failure(message: "Sai can’t upload empty attachments.") }
+        guard size <= maxAttachmentBytes else { throw Failure(message: "Sai attachments must be 25 MB or smaller.") }
+        let characters = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+        guard let name = file.lastPathComponent.addingPercentEncoding(withAllowedCharacters: characters),
+              !name.isEmpty else { throw Failure(message: "An attachment has an invalid filename.") }
+        return (name, size)
+    }
+
+    static func uploadedAttachment(_ data: Data, expectedSize: Int) throws -> [String: Any] {
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let id = object["fileId"] as? String, !id.isEmpty,
+              let path = object["path"] as? String, !path.isEmpty,
+              let name = object["name"] as? String, !name.isEmpty,
+              let mime = object["mime"] as? String, !mime.isEmpty,
+              object["size"] as? Int == expectedSize else {
+            throw Failure(message: "Sai didn’t confirm a complete attachment upload.")
+        }
+        return object
+    }
+
+    private static func attachmentUploadFailure(status: Int) -> Failure {
+        switch status {
+        case 401: failure(status: status, body: [:])
+        case 402, 409: Failure(message: "Sai’s attachment storage limit was reached.")
+        case 413: Failure(message: "Sai attachments must be 25 MB or smaller.")
+        case 429: Failure(message: "Sai’s attachment upload limit was reached. Try again later.")
+        default: Failure(message: "Sai couldn’t accept an attachment (HTTP \(status)).")
+        }
+    }
+
+    private static let attachmentSession = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+
+    private final class NoRedirects: NSObject, URLSessionTaskDelegate {
+        func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                        newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+            completionHandler(nil)
+        }
+    }
+
     /// Runs one message as a task and hands each stream event (a JSON object) to `event`.
     static func run(message: String, machine: String, session: String?, model: String?,
+                    attachments: ChatUpload? = nil,
                     event: @escaping @MainActor ([String: Any]) -> Void) async throws {
         var body: [String: Any] = ["message": message, "machineId": machine]
         if let session { body["sessionId"] = session }
         // Sai retains the previous session model unless we send the new choice, including "auto".
         if let model { body["model"] = model }
+        if let attachments { body["attachments"] = attachments.files }
         var request = try request("/v1/agents/message", method: "POST", body: body, accept: "text/event-stream")
+        if let attachments, request.value(forHTTPHeaderField: "Authorization") != attachments.authorization {
+            throw Failure(message: "The Sai API key changed after attachment upload.")
+        }
         request.timeoutInterval = 60 * 60
-        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        let transport = attachments == nil ? URLSession.shared : attachmentSession
+        let (bytes, response) = try await transport.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
             var data = Data()

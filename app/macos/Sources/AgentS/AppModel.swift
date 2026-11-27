@@ -173,6 +173,7 @@ final class AppModel: ObservableObject {
     private func update(_ change: (inout AgentConfig) -> Void) {
         objectWillChange.send()
         change(&agent.config)
+        agent.invalidateArmedMacAutoApproval(for: memoryRoute(for: agent))
     }
     var privacy: PrivacyMode { agent.config.privacy }
     var harness: Harness {
@@ -308,6 +309,7 @@ final class AppModel: ObservableObject {
             return
         }
         session.stop()
+        removeChatAttachments(for: session)
         openRouterProxy.revokeToken(for: session.id)
         macTurnPanel.remove(session)
         agents.removeAll { $0.id == session.id }
@@ -400,6 +402,7 @@ final class AppModel: ObservableObject {
         }
         session.onHandoffConversationReset = { [weak self] session in
             self?.invalidateHandoffs(involving: session)
+            self?.removeChatAttachments(for: session)
         }
         session.onHandoffDecision = { [weak self, weak session] id, approve in
             guard let session else { return }
@@ -884,6 +887,9 @@ final class AppModel: ObservableObject {
             ollamaVersion = checkedVersion
             if ollamaModels != checkedModels {
                 ollamaModels = checkedModels
+                for session in agents where session.config.provider == .ollama {
+                    session.invalidateArmedMacAutoApproval(for: memoryRoute(for: session))
+                }
                 refreshInstalledOllamaInputs()
             }
             ollamaChecked = true
@@ -1864,9 +1870,18 @@ final class AppModel: ObservableObject {
         return send("Work on the checked items below.\n\n\(list)", to: session, verifiedRoute: route)
     }
 
+    func canAttachFiles(to session: AgentSession) -> Bool {
+        session.config.usesLocalComputer || session.config.privacy == .thisMac || session.config.harness == .sai
+    }
+
+    private func removeChatAttachments(for session: AgentSession) {
+        let folder = ChatAttachments.folder(in: files.root, agentID: session.id)
+        try? FileManager.default.removeItem(at: folder)
+    }
+
     @discardableResult
     func send(_ prompt: String, to session: AgentSession, verifiedRoute: AgentMemoryRoute? = nil,
-              isHandoff: Bool = false) -> Bool {
+              isHandoff: Bool = false, attachmentURLs: [URL] = [], isDirectChat: Bool = false) -> Bool {
         guard agents.contains(where: { $0 === session }), !session.isRunning, !session.isSendingSteering else { return false }
         // The private/cloud boundary is enforced here too, not only by what the settings offer.
         let config = session.config.enforcingPrivacy
@@ -1875,16 +1890,46 @@ final class AppModel: ObservableObject {
         let route = memoryRoute(for: session)
         guard verifiedRoute == nil || verifiedRoute == route else { return false }
         let verifyRoute = verifiedRoute == nil || isHandoff ? memoryRouteVerifier(for: config.provider) : nil
+        let dispatch = {
+            self.dispatchChatTurn(prompt, to: session, route: route, verifyRoute: verifyRoute,
+                                  isHandoff: isHandoff, isDirectChat: isDirectChat)
+        }
+        guard !attachmentURLs.isEmpty else { return dispatch() }
+        guard !isHandoff, canAttachFiles(to: session) else {
+            session.noticeFromApp("Attachments aren’t available for this destination.")
+            return false
+        }
+        do {
+            let attachments = try ChatAttachments.stage(attachmentURLs, in: files.root, agentID: session.id)
+            let sent = session.withChatAttachments(attachments, send: dispatch)
+            if !sent { attachments.discard() }
+            return sent
+        } catch {
+            session.noticeFromApp("Couldn’t attach the files. \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func dispatchChatTurn(_ prompt: String, to session: AgentSession, route: AgentMemoryRoute,
+                                  verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)?,
+                                  isHandoff: Bool, isDirectChat: Bool) -> Bool {
+        let config = session.config
         let harness = config.harness
         if harness == .sai {
-            session.sendToSai(prompt, machine: config.saiMachine, model: config.saiModel, memoryRoute: route)
+            let keyRevision = saiKeyRevision
+            session.sendToSai(prompt, machine: config.saiMachine, model: config.saiModel, memoryRoute: route) { [weak self, weak session] in
+                guard let self, let session, self.agents.contains(where: { $0 === session }) else { return false }
+                return self.saiKeyRevision == keyRevision && self.memoryRoute(for: session) == route
+            }
             return true
         }
         if config.computer == .box {
             return sendToBox(prompt, to: session, memoryRoute: route, verifyRoute: isHandoff ? verifyRoute : nil)
         }
         if config.privacy == .thisMac {
-            return sendToMac(prompt, to: session, memoryRoute: route, verifyRoute: verifyRoute)
+            let sent = sendToMac(prompt, to: session, memoryRoute: route, verifyRoute: verifyRoute)
+            if sent, isDirectChat { session.applyArmedMacAutoApproval(to: route) }
+            return sent
         }
         guard config.usesLocalComputer, sandboxTurnLease == nil,
               let ip = guestIP, let endpoint = localModelEndpoint(for: session) else { return false }

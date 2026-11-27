@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import AgentSCore
 
 /// The conversation: messages, replies, and expandable runs of tool steps.
@@ -10,6 +11,10 @@ struct ChatView: View {
     @Binding var showComputer: Bool
     @State private var drafts: [UUID: String] = [:]
     @State private var draftMentions: [UUID: DraftMention] = [:]
+    @State private var attachmentDrafts: [UUID: AttachmentDraft] = [:]
+    @State private var attachmentPickerConversation: UUID?
+    @State private var showsAttachmentPicker = false
+    @State private var isFileDropTargeted = false
     @State private var highlightedMentionID: UUID?
     @State private var dismissesMentionSuggestions = false
     @FocusState private var composerFocused: Bool
@@ -39,6 +44,17 @@ struct ChatView: View {
             let escaped = NSRegularExpression.escapedPattern(for: token)
             return text.range(of: #"(?<![\p{L}\p{N}\p{M}_@])"# + escaped + #"(?![\p{L}\p{N}\p{M}_-])"#,
                               options: .regularExpression) != nil
+        }
+    }
+
+    private struct AttachmentDraft {
+        var files: [ComposerFile] = []
+        var pendingDrops = 0
+        var error: String?
+
+        mutating func append(_ file: ComposerFile) {
+            guard !files.contains(where: { $0.url.standardizedFileURL == file.url.standardizedFileURL }) else { return }
+            files.append(file)
         }
     }
 
@@ -85,9 +101,14 @@ struct ChatView: View {
                 }
                 .frame(width: 520, height: 420)
             }
+            .fileImporter(isPresented: $showsAttachmentPicker, allowedContentTypes: [.data],
+                          allowsMultipleSelection: true, onCompletion: attachPickedFiles)
             .onChange(of: agent.id) {
                 highlightedMentionID = nil
                 dismissesMentionSuggestions = false
+            }
+            .onChange(of: model.agents.map(\.handoffConversationID)) { _, conversations in
+                attachmentDrafts = attachmentDrafts.filter { conversations.contains($0.key) }
             }
     }
 
@@ -136,6 +157,7 @@ struct ChatView: View {
             .frame(maxWidth: 820)
             .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
         }
+        .onDrop(of: [.fileURL, .image], isTargeted: $isFileDropTargeted, perform: acceptFileDrop)
     }
 
     private var transcript: some View {
@@ -245,7 +267,10 @@ struct ChatView: View {
         HStack(spacing: 12) {
             // Centred while there is room; slides left rather than under the Computer button.
             WindowHeaderSpace(minWidth: 16)
-            modelPill
+            HStack(spacing: 8) {
+                modelPill
+                if model.privacy == .thisMac { macAutoApprovalControl }
+            }
             WindowHeaderSpace(minWidth: 12)
             HStack {
                 if model.privacy == .thisMac {
@@ -259,6 +284,29 @@ struct ChatView: View {
             .padding(.trailing, 16)
         }
         .frame(height: Theme.titleBarHeight)
+    }
+
+    private var macAutoApprovalControl: some View {
+        let route = model.memoryRoute(for: agent)
+        let enabled = agent.macAutoApprovalEnabled(for: route)
+        return Button {
+            agent.setMacAutoApproval(!enabled, for: route)
+        } label: {
+            Label("Auto-approve", systemImage: enabled ? "checkmark.shield.fill" : "shield")
+                .font(.caption.weight(.medium))
+                .foregroundStyle(enabled ? Theme.onAccent : Color.secondary)
+                .padding(.horizontal, 10).padding(.vertical, 8)
+                .background(enabled ? Theme.accent : Theme.card, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.hairline))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+        .disabled(agent.isStopping)
+        .accessibilityValue(enabled ? "On" : "Off")
+        .help(agent.isRunning
+              ? "Auto-approve computer actions on this Mac for the rest of this task"
+              : "Auto-approve computer actions on this Mac for the next message you send directly")
     }
 
     /// Picks the harness, provider and model for the next message.
@@ -332,7 +380,8 @@ struct ChatView: View {
         } label: {
             HStack(spacing: 8) {
                 Image(systemName: model.privacy.location.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text("\(model.harness.displayName) · \(model.activeModel)").foregroundStyle(.secondary)
+                Text("\(model.harness.displayName) · \(model.activeModel)")
+                    .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
                 Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 16).padding(.vertical, 9)
@@ -343,7 +392,6 @@ struct ChatView: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .fixedSize()
         .disabled(agent.isRunning)
         .help(agent.isRunning ? "Switch after this answer" : "Switch the harness or the model")
     }
@@ -442,9 +490,76 @@ struct ChatView: View {
         !draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var attachmentDraft: AttachmentDraft { attachmentDrafts[agent.handoffConversationID] ?? AttachmentDraft() }
+
+    private var supportsAttachments: Bool { model.canAttachFiles(to: agent) }
+
     private var canSend: Bool {
-        !agent.isStopping && hasDraft &&
+        guard !agent.isStopping, attachmentDraft.pendingDrops == 0 else { return false }
+        if !attachmentDraft.files.isEmpty {
+            return supportsAttachments && !agent.isRunning && !agent.isSendingSteering && model.canChat
+                && draftMentions[agent.id] == nil
+        }
+        return hasDraft &&
             (draftMentions[agent.id] != nil || agent.isRunning || (model.canChat && !agent.isSendingSteering))
+    }
+
+    private func attachPickedFiles(_ result: Result<[URL], Error>) {
+        guard let conversation = attachmentPickerConversation else { return }
+        attachmentPickerConversation = nil
+        guard model.agents.contains(where: { $0.handoffConversationID == conversation }) else { return }
+        var draft = attachmentDrafts[conversation] ?? AttachmentDraft()
+        switch result {
+        case .success(let urls):
+            draft.error = nil
+            for url in urls where url.isFileURL { draft.append(ComposerFile(url: url)) }
+        case .failure(let error):
+            draft.error = "Couldn’t attach files. \(error.localizedDescription)"
+        }
+        attachmentDrafts[conversation] = draft
+        if model.agent.handoffConversationID == conversation { composerFocused = true }
+    }
+
+    private func acceptFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard supportsAttachments, attachmentDraft.pendingDrops == 0 else { return false }
+        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
+            || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
+        guard !files.isEmpty else { return false }
+        let conversation = agent.handoffConversationID
+        attachmentDrafts[conversation, default: AttachmentDraft()].pendingDrops = files.count
+        attachmentDrafts[conversation]?.error = nil
+        for item in files {
+            ComposerFile.load(from: item) { file in
+                Task { @MainActor in finishFileDrop(file, in: conversation) }
+            }
+        }
+        return true
+    }
+
+    private func finishFileDrop(_ file: ComposerFile?, in conversation: UUID) {
+        guard var draft = attachmentDrafts[conversation], draft.pendingDrops > 0,
+              model.agents.contains(where: { $0.handoffConversationID == conversation }) else { return }
+        if let file { draft.append(file) }
+        else { draft.error = "Couldn’t attach one or more dropped files." }
+        draft.pendingDrops -= 1
+        attachmentDrafts[conversation] = draft
+        if draft.pendingDrops == 0, model.agent.handoffConversationID == conversation { composerFocused = true }
+    }
+
+    private func removeAttachment(_ file: ComposerFile) {
+        let conversation = agent.handoffConversationID
+        attachmentDrafts[conversation]?.files.removeAll { $0.id == file.id }
+        attachmentDrafts[conversation]?.error = nil
+        composerFocused = true
+    }
+
+    private var attachmentFeedback: String? {
+        if !attachmentDraft.files.isEmpty {
+            if draftMentions[agent.id] != nil { return "Remove the attachments or the agent mention to continue." }
+            if agent.isRunning { return "Send attachments when the current task finishes." }
+            if !supportsAttachments { return "This agent can’t receive file attachments." }
+        }
+        return attachmentDraft.error
     }
 
     private func mentionRange(in text: String) -> Range<String.Index>? {
@@ -589,7 +704,10 @@ struct ChatView: View {
     }
 
     private func composer(suggestions: [AgentSession]) -> some View {
-        let stopsTurn = agent.isRunning && !hasDraft
+        let hasAttachments = !attachmentDraft.files.isEmpty
+        let isImporting = attachmentDraft.pendingDrops > 0
+        let isDropTarget = isFileDropTargeted && supportsAttachments && !isImporting
+        let stopsTurn = agent.isRunning && (!hasDraft || ((hasAttachments || isImporting) && suggestions.isEmpty))
         let submissionLabel = if !suggestions.isEmpty { "Select agent mention" }
             else if draftMentions[agent.id] != nil { "Draft agent handoff" }
             else if !agent.isRunning { "Send" }
@@ -597,35 +715,89 @@ struct ChatView: View {
             else { "Queue follow-up" }
         let stopLabel = agent.forcedFollowUpID == nil ? "Stop" : "Cancel follow-up after stopping"
         let actionSymbol = stopsTurn ? "stop.fill" : "arrow.up"
-        let actionEnabled = canSend || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
-        return HStack(alignment: .bottom, spacing: 10) {
-            TextField(placeholder, text: draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(1...6)
-                .focused($composerFocused)
-                .onSubmit { submit(suggestions: suggestions) }
-                .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
-                .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
-                .onKeyPress(.escape) {
-                    guard !suggestions.isEmpty else { return .ignored }
-                    dismissesMentionSuggestions = true
-                    highlightedMentionID = nil
-                    return .handled
+        let choosingMention = hasAttachments && !suggestions.isEmpty && !agent.isStopping
+        let actionEnabled = canSend || choosingMention || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
+        return VStack(alignment: .leading, spacing: 4) {
+            attachmentDraftDetails
+            HStack(alignment: .bottom, spacing: 10) {
+                if supportsAttachments { attachmentButton.disabled(isImporting) }
+                TextField(placeholder, text: draft, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .font(.body)
+                    .lineLimit(1...6)
+                    .focused($composerFocused)
+                    .onSubmit { submit(suggestions: suggestions) }
+                    .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
+                    .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
+                    .onKeyPress(.escape) {
+                        guard !suggestions.isEmpty else { return .ignored }
+                        dismissesMentionSuggestions = true
+                        highlightedMentionID = nil
+                        return .handled
+                    }
+                    .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
+                    .padding(.vertical, 9)
+                roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
+                    if stopsTurn { agent.stop() }
+                    else { submit(suggestions: suggestions) }
                 }
-                .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
-                .padding(.vertical, 9)
-            roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
-                if stopsTurn { agent.stop() }
-                else { submit(suggestions: suggestions) }
+                .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
+                .disabled(!actionEnabled)
+                .opacity(actionEnabled ? 1 : 0.4)
             }
-            .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
-            .disabled(!actionEnabled)
-            .opacity(actionEnabled ? 1 : 0.4)
+            .padding(.leading, supportsAttachments ? 8 : 18)
+            .padding(.trailing, 6)
         }
-        .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
+        .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 24).fill(Theme.card))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.hairline))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(isDropTarget ? Theme.accent : Theme.hairline, lineWidth: isDropTarget ? 2 : 1)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder private var attachmentDraftDetails: some View {
+        if !attachmentDraft.files.isEmpty {
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(attachmentDraft.files) { file in
+                        ChatAttachmentChip(name: file.url.lastPathComponent) { removeAttachment(file) }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.top, 4)
+        }
+        if attachmentDraft.pendingDrops > 0 {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini).accessibilityHidden(true)
+                Text("Attaching files…").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+        } else if let attachmentFeedback {
+            Text(attachmentFeedback)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+        }
+    }
+
+    private var attachmentButton: some View {
+        Button {
+            attachmentPickerConversation = agent.handoffConversationID
+            showsAttachmentPicker = true
+        } label: {
+            Image(systemName: "paperclip")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Attach files")
+        .help("Attach files")
     }
 
     private func roundButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
@@ -760,11 +932,102 @@ struct ChatView: View {
             return
         }
         let wasRunning = session.isRunning
-        let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
+        let conversation = session.handoffConversationID
+        let selectedURLs = attachmentDraft.files.map(\.url)
+        let accepted = wasRunning ? model.queueFollowUp(text, for: session)
+            : model.send(text, to: session, attachmentURLs: selectedURLs, isDirectChat: true)
         if accepted {
             if field.wrappedValue == original { field.wrappedValue = "" }
+            attachmentDrafts[conversation] = nil
             if !wasRunning || session.supportsSteering { followsLatest = true }
         }
+    }
+}
+
+private struct ComposerFile: Identifiable, Sendable {
+    let id = UUID()
+    let url: URL
+    var temporaryImage: DroppedComposerImage? = nil
+
+    static func load(from item: NSItemProvider, completion: @escaping @Sendable (ComposerFile?) -> Void) {
+        if item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            item.loadObject(ofClass: NSURL.self) { value, _ in
+                guard let url = value as? URL, url.isFileURL else {
+                    completion(nil)
+                    return
+                }
+                completion(ComposerFile(url: url))
+            }
+            return
+        }
+        let type = item.registeredTypeIdentifiers.compactMap { UTType($0) }.first { $0.conforms(to: .image) } ?? .image
+        item.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+            guard let url, let image = try? DroppedComposerImage(copying: url, type: type) else {
+                completion(nil)
+                return
+            }
+            completion(ComposerFile(url: image.url, temporaryImage: image))
+        }
+    }
+}
+
+/// A provider's image URL lasts for its completion handler. Keep a private copy for the draft.
+private final class DroppedComposerImage: Sendable {
+    let url: URL
+    private let directory: URL
+
+    init(copying source: URL, type: UTType) throws {
+        let metadata = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard metadata.isRegularFile == true, let bytes = metadata.fileSize, bytes <= ChatAttachments.maximumFileBytes else {
+            throw CocoaError(.fileReadTooLarge)
+        }
+        let files = FileManager.default
+        directory = files.temporaryDirectory.appendingPathComponent("agent-s-draft-\(UUID().uuidString)", isDirectory: true)
+        let suffix = type.preferredFilenameExtension ?? source.pathExtension
+        url = directory.appendingPathComponent(suffix.isEmpty ? "Image" : "Image.\(suffix)")
+        try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        do {
+            try files.copyItem(at: source, to: url)
+        } catch {
+            try? files.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    deinit { try? FileManager.default.removeItem(at: directory) }
+}
+
+private struct ChatAttachmentChip: View {
+    let name: String
+    var remove: (() -> Void)? = nil
+
+    var body: some View {
+        let type = UTType(filenameExtension: (name as NSString).pathExtension)
+        HStack(spacing: 6) {
+            Image(systemName: type?.conforms(to: .image) == true ? "photo" : "doc")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(verbatim: name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let remove {
+                Button(action: remove) {
+                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Remove \(name)")
+                .help("Remove attachment")
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: 220)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 8))
+        .help(name)
     }
 }
 
@@ -813,7 +1076,11 @@ struct ChatRow: View {
                             Text("Steering").font(.caption).foregroundStyle(.secondary)
                         }
                         handoffAttribution
-                        UserPromptBubble(prompt: item.text)
+                        let attachments = item.attachmentNames ?? []
+                        if !item.text.isEmpty || attachments.isEmpty { UserPromptBubble(prompt: item.text) }
+                        ForEach(Array(attachments.enumerated()), id: \.offset) { _, name in
+                            ChatAttachmentChip(name: name).fixedSize(horizontal: true, vertical: false)
+                        }
                     }
                 }
             }
