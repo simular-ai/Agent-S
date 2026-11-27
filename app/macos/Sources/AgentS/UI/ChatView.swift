@@ -264,14 +264,18 @@ struct ChatView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             // Centred while there is room; slides left rather than under the Computer button.
             WindowHeaderSpace(minWidth: 16)
-            HStack(spacing: 8) {
-                modelPill
-                if model.privacy == .thisMac { macAutoApprovalControl }
+            ViewThatFits(in: .horizontal) {
+                headerMenus(modelName: "\(model.harness.displayName) · \(headerModelName)")
+                    .fixedSize(horizontal: true, vertical: false)
+                headerMenus(modelName: headerModelName)
+                    .fixedSize(horizontal: true, vertical: false)
+                headerMenus(modelName: headerModelName, compactApproval: true)
             }
-            WindowHeaderSpace(minWidth: 12)
+            .layoutPriority(1)
+            WindowHeaderSpace(minWidth: 8)
             HStack {
                 if model.privacy == .thisMac {
                     CircleButton(systemImage: "pip", help: "Show floating chat") {
@@ -281,36 +285,76 @@ struct ChatView: View {
                 // While the panel is open, the button lives at the top of the panel instead.
                 if !showComputer { ComputerToggle(showComputer: $showComputer) }
             }
+            .fixedSize()
             .padding(.trailing, 16)
         }
         .frame(height: Theme.titleBarHeight)
     }
 
-    private var macAutoApprovalControl: some View {
+    private var headerModelName: String {
+        let identifier = model.activeModel
+        if model.harness == .sai, let name = model.saiModels.first(where: { $0.id == identifier })?.name {
+            return name
+        }
+        if model.provider == .openRouter, let name = model.openRouterModels.first(where: { $0.id == identifier })?.name,
+           name != identifier {
+            return name.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? name
+        }
+        return identifier.split(separator: "/").last.map(String.init) ?? identifier
+    }
+
+    private func headerMenus(modelName: String, compactApproval: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            modelPill(title: modelName).layoutPriority(1)
+            if model.privacy == .thisMac { macApprovalMenu(compact: compactApproval).fixedSize() }
+        }
+    }
+
+    private func macApprovalMenu(compact: Bool) -> some View {
         let route = model.memoryRoute(for: agent)
         let enabled = agent.macAutoApprovalEnabled(for: route)
-        return Button {
-            agent.setMacAutoApproval(!enabled, for: route)
+        let autoTitle = agent.isRunning ? "Auto-approve this task" : "Auto-approve next task"
+        return Menu {
+            Picker("This Mac approvals", selection: Binding(
+                get: { agent.macAutoApprovalEnabled(for: route) },
+                set: { agent.setMacAutoApproval($0, for: route) }
+            )) {
+                Text("Ask for approval").tag(false)
+                Text(autoTitle).tag(true)
+            }
+            .pickerStyle(.inline)
         } label: {
-            Label("Auto-approve", systemImage: enabled ? "checkmark.shield.fill" : "shield")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(enabled ? Theme.onAccent : Color.secondary)
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(enabled ? Theme.accent : Theme.card, in: Capsule())
-                .overlay(Capsule().strokeBorder(Theme.hairline))
-                .contentShape(Capsule())
+            headerMenuLabel(compact ? nil : (enabled ? "Auto-approve" : "Ask first"),
+                            icon: enabled ? "checkmark.shield.fill" : "shield", active: enabled)
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
-        .fixedSize()
+        .menuIndicator(.hidden)
         .disabled(agent.isStopping)
-        .accessibilityValue(enabled ? "On" : "Off")
-        .help(agent.isRunning
-              ? "Auto-approve computer actions on this Mac for the rest of this task"
-              : "Auto-approve computer actions on this Mac for the next message you send directly")
+        .accessibilityLabel("Computer approvals")
+        .accessibilityValue(enabled ? autoTitle : "Ask for approval")
+        .help(enabled ? "\(autoTitle) on this Mac" : "Ask for approval on this Mac")
+    }
+
+    private func headerMenuLabel(_ title: String?, icon: String, active: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.caption.weight(.semibold))
+            if let title {
+                Text(title).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.tail)
+            }
+            Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(active ? Theme.onAccent : Color.primary)
+        .frame(height: 16)
+        .padding(.horizontal, title == nil ? 8 : 12)
+        .padding(.vertical, 8)
+        .background(active ? Theme.accent : Theme.card, in: Capsule())
+        .overlay { Capsule().strokeBorder(Theme.hairline).allowsHitTesting(false) }
+        .contentShape(Capsule())
     }
 
     /// Picks the harness, provider and model for the next message.
-    private var modelPill: some View {
+    private func modelPill(title: String) -> some View {
         Menu {
             Section("Harness") {
                 ForEach(Harness.allowed(in: model.privacy, computer: model.computer)) { choice in
@@ -378,22 +422,15 @@ struct ChatView: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: model.privacy.location.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text("\(model.harness.displayName) · \(model.activeModel)")
-                    .lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary)
-                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(Capsule().fill(Theme.card).shadow(color: .black.opacity(0.08), radius: 6, y: 2))
-            .overlay(Capsule().stroke(Theme.hairline))
-            .contentShape(Capsule())
+            headerMenuLabel(title, icon: model.privacy.location.symbol)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .disabled(agent.isRunning)
-        .help(agent.isRunning ? "Switch after this answer" : "Switch the harness or the model")
+        .accessibilityLabel("Model")
+        .accessibilityValue("\(model.harness.displayName) · \(model.activeModel)")
+        .help("\(model.harness.displayName) · \(model.activeModel)\(agent.isRunning ? "\nSwitch after this answer" : "")")
     }
 
     /// The suggested OpenRouter models, plus the current one if it was picked in Settings.
