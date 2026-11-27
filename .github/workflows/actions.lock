@@ -18,7 +18,18 @@ workflows:
         - 'actions/checkout@v4.4.0'
         - 'actions/setup-dotnet@v4.3.1'
         - 'actions/upload-artifact@v4.6.2'
+    '.github/workflows/windows-release.yml':
+        - 'actions/checkout@v4.4.0'
+        - 'actions/setup-dotnet@v4.3.1'
+        - 'actions/upload-artifact@v4.6.2'
+        - 'azure/artifact-signing-action@v0.5.11'
+        - 'azure/login@v2.3.1'
 dependencies:
+    'actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809':
+        ref: 'v4.2.4'
+        commit: 'sha1-0400d5f644dc74513175e3cd8d07132dd4860809'
+        owner_id: 44036562
+        repo_id: 215566462
     'actions/checkout@v3.7.0':
         ref: 'v3.7.0'
         commit: 'sha1-a37ce9120846195fa4ece8f58b268e6043cb2f26'
@@ -76,6 +87,18 @@ dependencies:
         repo_id: 496012378
         uses:
             - 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'
+    'azure/artifact-signing-action@v0.5.11':
+        ref: 'v0.5.11'
+        commit: 'sha1-1d365fec12862c4aa68fcac418143d73f0cea293'
+        owner_id: 6844498
+        repo_id: 771200572
+        uses:
+            - 'actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809'
+    'azure/login@v2.3.1':
+        ref: 'v2.3.1'
+        commit: 'sha1-7184910d9eb2b1c5e48f7073824a90609bb9b6d6'
+        owner_id: 6844498
+        repo_id: 210798615
     'github/gh-actions-lock@verify/v0.5.1':
         ref: 'verify/v0.5.1'
         commit: 'sha1-5fa07d19c267d19e29f4341f10fdf7f516375038'
