@@ -757,39 +757,41 @@ struct ChatView: View {
         let actionEnabled = canSend || choosingMention || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
         return VStack(alignment: .leading, spacing: 4) {
             attachmentDraftDetails
-            HStack(alignment: .bottom, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 if supportsAttachments { attachmentButton.disabled(isImporting) }
-                TextField(placeholder, text: draft, axis: .vertical)
-                    .textFieldStyle(.plain)
-                    .font(.body)
-                    .lineLimit(1...6)
-                    .focused($composerFocused)
-                    .onSubmit { submit(suggestions: suggestions) }
-                    .onKeyPress(.return, phases: [.down, .repeat]) { press in
-                        let modifiers = press.modifiers.intersection([.shift, .command, .control, .option])
-                        let window = NSApp.currentEvent?.window ?? NSApp.keyWindow
-                        guard modifiers == .shift, let editor = window?.firstResponder as? NSTextView,
-                              !editor.hasMarkedText() else { return .ignored }
-                        editor.insertNewlineIgnoringFieldEditor(nil)
-                        return .handled
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField(placeholder, text: draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(1...6)
+                        .focused($composerFocused)
+                        .onSubmit { submit(suggestions: suggestions) }
+                        .onKeyPress(.return, phases: [.down, .repeat]) { press in
+                            let modifiers = press.modifiers.intersection([.shift, .command, .control, .option])
+                            let window = NSApp.currentEvent?.window ?? NSApp.keyWindow
+                            guard modifiers == .shift, let editor = window?.firstResponder as? NSTextView,
+                                  !editor.hasMarkedText() else { return .ignored }
+                            editor.insertNewlineIgnoringFieldEditor(nil)
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
+                        .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
+                        .onKeyPress(.escape) {
+                            guard !suggestions.isEmpty else { return .ignored }
+                            dismissesMentionSuggestions = true
+                            highlightedMentionID = nil
+                            return .handled
+                        }
+                        .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
+                        .padding(.vertical, 9)
+                    roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
+                        if stopsTurn { agent.stop() }
+                        else { submit(suggestions: suggestions) }
                     }
-                    .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
-                    .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
-                    .onKeyPress(.escape) {
-                        guard !suggestions.isEmpty else { return .ignored }
-                        dismissesMentionSuggestions = true
-                        highlightedMentionID = nil
-                        return .handled
-                    }
-                    .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
-                    .padding(.vertical, 9)
-                roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
-                    if stopsTurn { agent.stop() }
-                    else { submit(suggestions: suggestions) }
+                    .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
+                    .disabled(!actionEnabled)
+                    .opacity(actionEnabled ? 1 : 0.4)
                 }
-                .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
-                .disabled(!actionEnabled)
-                .opacity(actionEnabled ? 1 : 0.4)
             }
             .padding(.leading, supportsAttachments ? 8 : 18)
             .padding(.trailing, 6)
