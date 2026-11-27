@@ -71,6 +71,21 @@ jobs:
           }
           Write-Host "Tag $env:TAG already points at the built commit $env:GITHUB_SHA."
 
+      - name: Derive the build version from the tag
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Require the same v-prefixed form as the existing v0.3.x releases; a
+          # bare 0.4.0 would create an inconsistent tag series.
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Tag $env:TAG must look like vMAJOR.MINOR.PATCH (for example v0.4.0). The numeric version is stamped into Settings > Check for Updates..., so it has to be a plain v-prefixed release version."
+          }
+          $version = $env:TAG.Substring(1)
+          "BUILD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Building version $version from tag $env:TAG."
+
       - uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: '10.0.x'
@@ -81,11 +96,26 @@ jobs:
       - name: Publish native WinUI app
         shell: pwsh
         run: |
-          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -o "$env:OUT_DIR"
+          # The csproj hardcodes a version that goes stale; stamp the release
+          # tag's version so the installed app reports the build it came from.
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -p:Version=$env:BUILD_VERSION -o "$env:OUT_DIR"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "$env:OUT_DIR/resources.pri")) {
             throw "Published XAML resource index is missing."
           }
+
+      - name: Verify the binary reports the release version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:OUT_DIR "AgentS.Windows.exe"
+          if (-not (Test-Path $exe)) { throw "Published executable not found at $exe." }
+          $reported = (Get-Item $exe).VersionInfo.FileVersion
+          if (-not $reported) { throw "Could not read a file version from $exe." }
+          if (-not $reported.StartsWith($env:BUILD_VERSION)) {
+            throw "Binary reports $reported but the release tag says $env:BUILD_VERSION."
+          }
+          Write-Host "Binary reports $reported, matching tag version $env:BUILD_VERSION."
 
       - name: Native startup smoke test (no credentials)
         shell: powershell
@@ -164,9 +194,25 @@ jobs:
           if ($nowSha -ne $env:GITHUB_SHA) {
             throw "Tag $env:TAG now points at $nowSha; refusing to upload assets built from $env:GITHUB_SHA."
           }
-          # Safe to clobber: this tag is proven to point at the commit we built,
-          # so a re-run only replaces its own assets.
-          gh release upload $env:TAG $zip "$zip.sha256" --clobber
+          # --clobber deletes each asset before writing its replacement, so a
+          # failed re-run can leave users with no ZIP or a checksum that does not
+          # match it. Only upload a genuinely absent pair, and never clobber.
+          $zipName = "$env:ZIP_NAME.zip"
+          $shaName = "$env:ZIP_NAME.zip.sha256"
+          $existing = @(gh release view $env:TAG --json assets --jq '.assets[].name')
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not list assets on release ${env:TAG}."
+          }
+          $hasZip = $existing -contains $zipName
+          $hasSha = $existing -contains $shaName
+          if ($hasZip -and $hasSha) {
+            Write-Host "Release $env:TAG already publishes $zipName and its checksum; leaving them untouched."
+            exit 0
+          }
+          if ($hasZip -or $hasSha) {
+            throw "Release $env:TAG has only one of $zipName / $shaName. Refusing to overwrite a partial release; resolve it by hand."
+          }
+          gh release upload $env:TAG $zip "$zip.sha256"
           if ($LASTEXITCODE -ne 0) {
             throw "Failed to upload assets to release $env:TAG."
           }
