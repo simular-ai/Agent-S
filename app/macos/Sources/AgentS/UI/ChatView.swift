@@ -962,11 +962,15 @@ private struct ComposerFile: Identifiable, Sendable {
         }
         let type = item.registeredTypeIdentifiers.compactMap { UTType($0) }.first { $0.conforms(to: .image) } ?? .image
         item.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
-            guard let url, let image = try? DroppedComposerImage(copying: url, type: type) else {
-                completion(nil)
+            if let url {
+                let image = try? DroppedComposerImage(copying: url, type: type)
+                completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
                 return
             }
-            completion(ComposerFile(url: image.url, temporaryImage: image))
+            item.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                let image = data.flatMap { try? DroppedComposerImage(data: $0, type: type) }
+                completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
+            }
         }
     }
 }
@@ -976,18 +980,30 @@ private final class DroppedComposerImage: Sendable {
     let url: URL
     private let directory: URL
 
-    init(copying source: URL, type: UTType) throws {
+    convenience init(copying source: URL, type: UTType) throws {
         let metadata = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard metadata.isRegularFile == true, let bytes = metadata.fileSize, bytes <= ChatAttachments.maximumFileBytes else {
             throw CocoaError(.fileReadTooLarge)
         }
+        try self.init(suffix: type.preferredFilenameExtension ?? source.pathExtension) { target in
+            try FileManager.default.copyItem(at: source, to: target)
+        }
+    }
+
+    convenience init(data: Data, type: UTType) throws {
+        guard data.count <= ChatAttachments.maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
+        try self.init(suffix: type.preferredFilenameExtension ?? "") { target in
+            try data.write(to: target, options: .withoutOverwriting)
+        }
+    }
+
+    private init(suffix: String, write: (URL) throws -> Void) throws {
         let files = FileManager.default
         directory = files.temporaryDirectory.appendingPathComponent("agent-s-draft-\(UUID().uuidString)", isDirectory: true)
-        let suffix = type.preferredFilenameExtension ?? source.pathExtension
         url = directory.appendingPathComponent(suffix.isEmpty ? "Image" : "Image.\(suffix)")
         try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
         do {
-            try files.copyItem(at: source, to: url)
+            try write(url)
         } catch {
             try? files.removeItem(at: directory)
             throw error
