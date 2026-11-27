@@ -115,7 +115,7 @@ final class DeepSeekTurn {
 
     /// Sends more input to the running turn. The runtime reads it before the turn ends.
     func steer(_ text: String) async throws {
-        guard let runtime, !stopped else { throw CancellationError() }
+        guard let runtime, !stopped else { throw SteeringDeliveryError.notDelivered }
         try await runtime.steer(text)
     }
 
@@ -217,6 +217,7 @@ final class DeepSeekRuntime {
         let approveMac: ((String) async -> Bool)?
         let macCommand = HarnessMacCommand()
         var macCommandBusy = false
+        private(set) var terminalResult: Result<Void, Error>?
         var finish: CheckedContinuation<Void, Error>?
         var commits: [String: CheckedContinuation<Void, Error>] = [:]
 
@@ -228,6 +229,8 @@ final class DeepSeekRuntime {
         }
 
         func end(_ result: Result<Void, Error>) {
+            guard terminalResult == nil else { return }
+            terminalResult = result
             finish?.resume(with: result)
             finish = nil
             let waiting = commits
@@ -316,12 +319,14 @@ final class DeepSeekRuntime {
         let turn = ActiveTurn(sessionId: session, approveMac: approveMac, onEvent: onEvent)
         self.turn = turn
         defer {
+            turn.end(.failure(CancellationError()))
             turn.macCommand.stop()
             if self.turn === turn { self.turn = nil }
         }
         try await send(prompt, in: turn)
         try await withCheckedThrowingContinuation { (finish: CheckedContinuation<Void, Error>) in
             if exited { finish.resume(throwing: exitError()) }
+            else if let result = turn.terminalResult { finish.resume(with: result) }
             else if turn.tracker.isFinished { finish.resume() }
             else { turn.finish = finish }
         }
@@ -329,14 +334,17 @@ final class DeepSeekRuntime {
     }
 
     func steer(_ text: String) async throws {
-        guard let turn, turn.tracker.started, !exited else { throw CancellationError() }
+        guard let turn, turn.terminalResult == nil, turn.tracker.started, !turn.tracker.isFinished, !exited else {
+            throw SteeringDeliveryError.notDelivered
+        }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.utf8.count <= 65_536 else {
-            throw DeepSeekFailure("The steering message is too long.")
+            throw SteeringDeliveryError.notDelivered
         }
         let id = try await send(text, in: turn)
         guard !turn.tracker.isCommitted(id) else { return }
         try await withCheckedThrowingContinuation { (committed: CheckedContinuation<Void, Error>) in
-            if self.turn !== turn || exited { committed.resume(throwing: CancellationError()) }
+            // The turn can end while the RPC is in flight. Input was sent, so delivery is uncertain.
+            if self.turn !== turn || exited || turn.terminalResult != nil { committed.resume(throwing: CancellationError()) }
             else { turn.commits[id] = committed }
         }
     }

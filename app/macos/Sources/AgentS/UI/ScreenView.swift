@@ -12,6 +12,8 @@ struct ComputerPanel: View {
     @Binding var maximized: Bool
     @Binding var takeOver: Bool
     @State private var showOnePassword = false
+    @State private var openingChromePasswords = false
+    @State private var chromePasswordError: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -87,6 +89,14 @@ struct ComputerPanel: View {
         }
         .background(Theme.sidebar)
         .sheet(isPresented: $showOnePassword) { OnePasswordSheet() }
+        .alert("Chrome Passwords", isPresented: Binding(
+            get: { chromePasswordError != nil },
+            set: { if !$0 { chromePasswordError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(chromePasswordError ?? "")
+        }
     }
 
     private var header: some View {
@@ -129,14 +139,54 @@ struct ComputerPanel: View {
                 .disabled(model.vm.machine == nil || model.isSavingSandbox)
                 .accessibilityLabel("Take over the sandbox")
                 .help(takeOver ? "Release control and return to watching" : "Control the sandbox with your keyboard and mouse")
-            Button { showOnePassword = true } label: { Label("1Password", systemImage: "key") }
-                .disabled(model.phase != .ready || model.isSavingSandbox)
-                .accessibilityLabel("Fill a login from 1Password")
-                .help("Fill a login from 1Password on this Mac")
+            passwordMenu
             powerButton
         }
         .labelStyle(labelStyle)
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var passwordMenu: some View {
+        Menu {
+            Button("Fill from 1Password…") { showOnePassword = true }
+            Button("Open Chrome Passwords") { Task { await openChromePasswords() } }
+                .disabled(openingChromePasswords)
+        } label: {
+            Label("Passwords", systemImage: "key")
+        }
+        .disabled(model.phase != .ready || model.isSavingSandbox)
+        .accessibilityLabel("Passwords")
+        .help("Fill from 1Password or search saved logins in Chrome on this Mac")
+    }
+
+    private func openChromePasswords() async {
+        guard !openingChromePasswords else { return }
+        let workspace = NSWorkspace.shared
+        guard let chrome = workspace.urlForApplication(withBundleIdentifier: "com.google.Chrome") else {
+            chromePasswordError = "Install Google Chrome on this Mac to open its password manager."
+            return
+        }
+
+        openingChromePasswords = true
+        defer { openingChromePasswords = false }
+        let site = await model.currentSite()
+        guard model.phase == .ready, !model.isSavingSandbox, model.agent.config.usesLocalComputer else { return }
+        guard let site, !site.isEmpty else {
+            chromePasswordError = "Open a website in the sandbox browser first, then try again."
+            return
+        }
+
+        var search = URLComponents()
+        search.scheme = "chrome"
+        search.host = "password-manager"
+        search.path = "/passwords"
+        search.queryItems = [URLQueryItem(name: "q", value: site)]
+        guard let url = search.url else { return }
+        do {
+            _ = try await workspace.open([url], withApplicationAt: chrome, configuration: .init())
+        } catch {
+            chromePasswordError = "Couldn’t open Google Chrome. Open it on this Mac and try again."
+        }
     }
 
     private var showsSavedSandbox: Bool {

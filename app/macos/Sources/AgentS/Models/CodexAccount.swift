@@ -548,7 +548,7 @@ final class CodexAccountTurn {
     func steer(_ prompt: String) async throws {
         try checkRunning()
         guard let steering, let connection else {
-            throw CodexFailure("The Codex turn is no longer available for steering.")
+            throw SteeringDeliveryError.notDelivered
         }
         let result = try await connection.request("turn/steer", [
             "threadId": steering.threadID,

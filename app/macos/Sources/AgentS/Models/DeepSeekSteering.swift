@@ -1,6 +1,11 @@
 import Darwin
 import Foundation
 
+/// The transport can prove this follow-up never reached the model.
+enum SteeringDeliveryError: Error {
+    case notDelivered
+}
+
 /// The input side of one headless DeepSeek turn. Delivery is confirmed by the harness.
 @MainActor
 final class DeepSeekSteering {
@@ -15,8 +20,9 @@ final class DeepSeekSteering {
     }
 
     func send(_ prompt: String) async throws {
-        guard !isClosed, pending == nil else { throw CancellationError() }
-        guard prompt.utf8.count <= 65_536 else { throw Failure.tooLong }
+        guard !isClosed, pending == nil, prompt.utf8.count <= 65_536 else {
+            throw SteeringDeliveryError.notDelivered
+        }
         let id = UUID().uuidString
         var line = try JSONSerialization.data(withJSONObject: ["type": "agent_s_steer", "id": id, "text": prompt])
         line.append(0x0A)
@@ -36,7 +42,7 @@ final class DeepSeekSteering {
         guard let request = pending, request.id == id else { return }
         pending = nil
         if accepted { request.reply.resume() }
-        else { request.reply.resume(throwing: Failure.turnEnded) }
+        else { request.reply.resume(throwing: SteeringDeliveryError.notDelivered) }
     }
 
     func close() {
@@ -54,16 +60,5 @@ final class DeepSeekSteering {
         pending = nil
         close()
         request.reply.resume(throwing: error)
-    }
-
-    private enum Failure: LocalizedError {
-        case tooLong, turnEnded
-
-        var errorDescription: String? {
-            switch self {
-            case .tooLong: "The steering message is too long."
-            case .turnEnded: "The turn finished before it could read this instruction."
-            }
-        }
     }
 }

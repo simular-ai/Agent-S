@@ -137,8 +137,8 @@ public enum AgentInstructions {
         say briefly what you did and what you found. Files the user shares are in /mnt/sai.
 
         Never ask the user to type a password or username in the chat. When a sign-in form needs \
-        credentials, click into its first field, then tell the user: "Click the key button in the \
-        Computer panel to fill it from 1Password, then tell me to continue." and stop.
+        credentials, click into its first field, then tell the user: "Use Take over to sign in. The \
+        Passwords menu in the Computer panel can help you find the login. Tell me when I can continue." and stop.
         """
     }
 }

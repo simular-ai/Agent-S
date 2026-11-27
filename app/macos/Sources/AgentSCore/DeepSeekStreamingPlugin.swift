@@ -58,6 +58,14 @@ public enum DeepSeekStreamingPlugin {
       let disposed = false
       const pending = new Map()
       const result = (id, accepted) => write({ type: 'agent_s_steer_result', id, accepted })
+      const announce = (agent, number) => {
+        if (announced || disconnected || finished || !Number.isInteger(number)) return
+        rootAgent ??= agent
+        if (agent !== rootAgent) return
+        announced = true
+        activeTurn = { agent, number }
+        write({ type: 'agent_s_steer_ready' })
+      }
       const stdin = process.stdin
       const input = createInterface({ input: stdin, crlfDelay: Infinity })
       const appReady = ctx.get('appReady')
@@ -124,6 +132,7 @@ public enum DeepSeekStreamingPlugin {
 
       ctx.on('session/event', (session, event) => {
         if (session !== rootAgent?.session) return
+        if (event.type === 'turn/start') announce(rootAgent, event.data.turn)
         if (event.type === 'turn/end') finished = true
         if (!activeTurn) return
         if (event.type === 'user/message') {
@@ -144,12 +153,7 @@ public enum DeepSeekStreamingPlugin {
         }
       })
 
-      return (agent, number) => {
-        if (announced || disconnected || finished) return
-        announced = true
-        activeTurn = { agent, number }
-        write({ type: 'agent_s_steer_ready' })
-      }
+      return announce
     }
     """#
 }
