@@ -522,8 +522,7 @@ struct ChatView: View {
 
     private func acceptFileDrop(_ providers: [NSItemProvider]) -> Bool {
         guard supportsAttachments, attachmentDraft.pendingDrops == 0 else { return false }
-        let files = providers.filter { $0.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
-            || $0.hasItemConformingToTypeIdentifier(UTType.image.identifier) }
+        let files = providers.filter(ComposerFile.accepts)
         guard !files.isEmpty else { return false }
         let conversation = agent.handoffConversationID
         attachmentDrafts[conversation, default: AttachmentDraft()].pendingDrops = files.count
@@ -949,6 +948,20 @@ private struct ComposerFile: Identifiable, Sendable {
     let url: URL
     var temporaryImage: DroppedComposerImage? = nil
 
+    private static let standardImages: [UTType] = [.png, .jpeg, .gif, .tiff, .heic, .heif, .bmp, .ico, .svg, .webP, .image]
+
+    static func accepts(_ item: NSItemProvider) -> Bool {
+        item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) || imageType(for: item) != nil
+    }
+
+    private static func imageType(for item: NSItemProvider) -> UTType? {
+        item.registeredTypeIdentifiers.lazy.compactMap { identifier -> UTType? in
+            if let type = standardImages.first(where: { $0.identifier == identifier }) { return type }
+            guard let type = UTType(identifier), type.conforms(to: .image) else { return nil }
+            return type
+        }.first
+    }
+
     static func load(from item: NSItemProvider, completion: @escaping @Sendable (ComposerFile?) -> Void) {
         if item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
             item.loadObject(ofClass: NSURL.self) { value, _ in
@@ -960,7 +973,10 @@ private struct ComposerFile: Identifiable, Sendable {
             }
             return
         }
-        let type = item.registeredTypeIdentifiers.compactMap { UTType($0) }.first { $0.conforms(to: .image) } ?? .image
+        guard let type = imageType(for: item) else {
+            completion(nil)
+            return
+        }
         item.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
             if let url {
                 let image = try? DroppedComposerImage(copying: url, type: type)
