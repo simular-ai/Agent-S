@@ -27,9 +27,9 @@ jobs:
       ZIP_NAME: AgentS-Windows-x64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4.4.0
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4.3.1
         with:
           dotnet-version: '10.0.x'
 
@@ -58,14 +58,14 @@ jobs:
       # Requires: certificate profile exists, and this app has the
       # "Artifact Signing Certificate Profile Signer" role on it.
       - name: Azure login (OIDC, no stored secret)
-        uses: azure/login@v2
+        uses: azure/login@v2.3.1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Sign exe and native DLLs
-        uses: azure/trusted-signing-action@v0
+        uses: azure/trusted-signing-action@v0.5.11
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload smoke evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.2
         with:
           name: windows-release-smoke-evidence
           path: ${{ runner.temp }}/agent-s-evidence/
