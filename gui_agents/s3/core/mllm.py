@@ -316,7 +316,7 @@ class LMMAgent:
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image;base64,{base64_image}"
+                                    "url": f"data:image/png;base64,{base64_image}"
                                 },
                             }
                         )
@@ -326,7 +326,7 @@ class LMMAgent:
                     message["content"].append(
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:image;base64,{base64_image}"},
+                            "image_url": {"url": f"data:image/png;base64,{base64_image}"},
                         }
                     )
 
