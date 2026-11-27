@@ -34,7 +34,6 @@ struct ChatView: View {
     private struct DraftMention {
         let recipientID: UUID
         let token: String
-        var includeLastReply = false
 
         func isPresent(in text: String) -> Bool {
             let escaped = NSRegularExpression.escapedPattern(for: token)
@@ -90,9 +89,6 @@ struct ChatView: View {
                 highlightedMentionID = nil
                 dismissesMentionSuggestions = false
             }
-            .onChange(of: agent.latestReplyForHandoff != nil) {
-                if agent.latestReplyForHandoff == nil { draftMentions[agent.id]?.includeLastReply = false }
-            }
     }
 
     private var accountSelection: String? {
@@ -135,9 +131,6 @@ struct ChatView: View {
             VStack(spacing: 4) {
                 if !agent.queuedFollowUps.isEmpty { queuedFollowUps }
                 if !suggestions.isEmpty { mentionPicker(suggestions) }
-                if let mention = draftMentions[agent.id], agent.latestReplyForHandoff != nil {
-                    includeReplyOption(for: mention)
-                }
                 composer(suggestions: suggestions)
             }
             .frame(maxWidth: 820)
@@ -522,23 +515,6 @@ struct ChatView: View {
         composerFocused = true
     }
 
-    private func includeReplyOption(for mention: DraftMention) -> some View {
-        let id = agent.id
-        return Toggle("Include last reply", isOn: Binding(
-            get: { draftMentions[id]?.includeLastReply ?? false },
-            set: { includeReply in
-                if draftMentions[id]?.recipientID == mention.recipientID {
-                    draftMentions[id]?.includeLastReply = includeReply
-                }
-            }
-        ))
-        .toggleStyle(.checkbox)
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .help("Review the last reply before sharing it with the mentioned agent")
-    }
-
     private func moveMention(by offset: Int, in suggestions: [AgentSession]) -> KeyPress.Result {
         guard !suggestions.isEmpty else { return .ignored }
         let index = suggestions.firstIndex { $0.id == highlightedMentionID } ?? 0
@@ -615,7 +591,7 @@ struct ChatView: View {
     private func composer(suggestions: [AgentSession]) -> some View {
         let stopsTurn = agent.isRunning && !hasDraft
         let submissionLabel = if !suggestions.isEmpty { "Select agent mention" }
-            else if draftMentions[agent.id] != nil { "Send agent handoff" }
+            else if draftMentions[agent.id] != nil { "Draft agent handoff" }
             else if !agent.isRunning { "Send" }
             else if agent.supportsSteering { "Steer the current turn" }
             else { "Queue follow-up" }
@@ -778,8 +754,7 @@ struct ChatView: View {
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
         if let mention = draftMentions[session.id] {
             followsLatest = true
-            if model.startHandoff(text, from: session, to: mention.recipientID,
-                                  includeLastReply: mention.includeLastReply), field.wrappedValue == original {
+            if model.startHandoff(text, from: session, to: mention.recipientID), field.wrappedValue == original {
                 field.wrappedValue = ""
             }
             return
@@ -952,6 +927,14 @@ private struct HandoffShareCard: View {
                     Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                if share.state == .drafting {
+                    Spacer(minLength: 0)
+                    ProgressView().controlSize(.small).accessibilityHidden(true)
+                    if let onDecision {
+                        Button("Cancel", role: .cancel) { onDecision(share.id, false) }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    }
+                }
             }
             if isAwaiting {
                 messagePreview
@@ -965,7 +948,7 @@ private struct HandoffShareCard: View {
                     }
                     .controlSize(.small)
                 }
-            } else {
+            } else if share.state != .drafting && !text.isEmpty {
                 DisclosureGroup(isReply ? "View reply" : "View message") {
                     messagePreview.padding(.top, 4)
                 }
@@ -987,6 +970,7 @@ private struct HandoffShareCard: View {
         }
         let name = share.destination.name
         switch share.state {
+        case .drafting: return "Preparing message for \(name)…"
         case .awaitingApproval: return "Share with \(name)?"
         case .queued: return "Queued to share with \(name)"
         case .sending: return "Sending to \(name)"
@@ -1000,9 +984,9 @@ private struct HandoffShareCard: View {
     private var subtitle: String {
         guard isReply else { return share.route }
         switch share.state {
+        case .drafting, .sending: return share.route
         case .awaitingApproval: return "Continue using \(share.route)"
         case .queued: return "Continuation queued"
-        case .sending: return share.route
         case .shared: return "Continued with reply"
         case .canceled: return "Dismissed"
         case .failed: return "Couldn’t continue"
