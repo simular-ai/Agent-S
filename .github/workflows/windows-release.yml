@@ -51,7 +51,7 @@ jobs:
           # Resolve via the API rather than `git ls-remote`: an annotated tag's
           # ref points at a tag object, not a commit, so the raw SHA would never
           # match. `commits/<ref>` peels the tag to its commit for us.
-          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" 2>&1
           if ($LASTEXITCODE -ne 0) {
             # Only this specific message means "tag not created yet" (GitHub
             # answers 422 "No commit found for SHA: <tag>"). Everything else -
@@ -174,49 +174,102 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ inputs.tag }}
         run: |
-          $zip = Join-Path $env:RUNNER_TEMP "$env:ZIP_NAME.zip"
           $zipName = "$env:ZIP_NAME.zip"
-          $shaName = "$env:ZIP_NAME.zip.sha256"
-          $existing = @(gh release view $env:TAG --json assets --jq '.assets[].name' 2>&1)
-          $releaseExists = $LASTEXITCODE -eq 0
-          if (-not $releaseExists -and "$existing" -ne 'release not found') {
-            throw "Could not look up release ${env:TAG}: $existing"
+          $shaName = "$zipName.sha256"
+          $zip = Join-Path $env:RUNNER_TEMP $zipName
+          $checksum = "$zip.sha256"
+
+          function Get-ReleaseForTag {
+            # The release-by-tag REST endpoint only returns published releases.
+            # An authenticated release listing includes drafts.
+            $filter = '.[] | select(.tag_name == "{0}")' -f $env:TAG
+            $releases = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq $filter)
+            if ($LASTEXITCODE -ne 0) { throw "Could not list releases for $env:TAG." }
+            if ($releases.Count -gt 1) { throw "Multiple releases match $env:TAG." }
+            if ($releases.Count -eq 1) { return ($releases[0] | ConvertFrom-Json) }
           }
 
-          # Recheck after the build. Only a new release may create a missing tag.
-          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/$env:TAG" 2>&1
-          if ($LASTEXITCODE -eq 0) {
-            $nowSha = ("$out" | ConvertFrom-Json).sha
-            if ($nowSha -ne $env:GITHUB_SHA) {
-              throw "Tag $env:TAG now points at $nowSha; refusing to publish assets built from $env:GITHUB_SHA."
+          function Assert-ReleaseTag($release) {
+            $tag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>&1
+            if ($LASTEXITCODE -eq 0) {
+              if ("$tag" -ne $env:GITHUB_SHA) {
+                throw "Tag $env:TAG points at $tag; expected $env:GITHUB_SHA."
+              }
+            } elseif (($release -and -not $release.draft) -or "$tag" -notmatch 'No commit found for SHA') {
+              throw "Could not resolve tag ${env:TAG}: $tag"
             }
-          } elseif ($releaseExists -or "$out" -notmatch 'No commit found for SHA') {
-            throw "Could not resolve tag ${env:TAG} before publishing: $out"
+            if ($release.draft -and $release.target_commitish -ne $env:GITHUB_SHA) {
+              throw "Draft $env:TAG targets $($release.target_commitish); expected $env:GITHUB_SHA."
+            }
           }
 
-          if (-not $releaseExists) {
-            # With asset arguments, gh uploads to a draft before publishing it.
-            gh release create $env:TAG $zip "$zip.sha256" --title $env:TAG --generate-notes --target $env:GITHUB_SHA
-            if ($LASTEXITCODE -ne 0) {
-              throw "Failed to create release $env:TAG with both Windows assets."
+          $release = Get-ReleaseForTag
+          Assert-ReleaseTag $release
+          if (-not $release) {
+            gh release create $env:TAG --draft --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create draft for $env:TAG." }
+            $release = Get-ReleaseForTag
+            if (-not $release.draft) { throw "Expected a draft for $env:TAG after creation." }
+            Assert-ReleaseTag $release
+          }
+
+          $incomplete = @($release.assets | Where-Object {
+            $_.name -in @($zipName, $shaName) -and ($_.state -ne 'uploaded' -or $_.size -le 0)
+          })
+          if ($incomplete.Count -gt 0) {
+            throw "Release $env:TAG contains an incomplete Windows upload. Remove the incomplete asset before rerunning."
+          }
+          $hasZip = $release.assets.name -contains $zipName
+          $hasChecksum = $release.assets.name -contains $shaName
+          if (-not $release.draft) {
+            if ($hasZip -and $hasChecksum) {
+              Write-Host "Release $env:TAG already has both Windows assets."
+              exit 0
             }
+            if ($hasZip -or $hasChecksum) {
+              throw "Published release $env:TAG has only one Windows asset; resolve the partial pair by hand."
+            }
+            gh release upload $env:TAG $zip $checksum
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload Windows assets to $env:TAG." }
             exit 0
           }
 
-          # Preserve an existing complete asset pair and leave partial pairs for repair.
-          $hasZip = $existing -contains $zipName
-          $hasSha = $existing -contains $shaName
-          if ($hasZip -and $hasSha) {
-            Write-Host "Release $env:TAG already publishes $zipName and its checksum; leaving them untouched."
-            exit 0
+          # Build the checksum from the ZIP that will actually be published.
+          # A rebuilt and signed ZIP can differ from one uploaded by a prior run.
+          if ($hasZip) {
+            $zip = Join-Path $env:RUNNER_TEMP "draft-$zipName"
+            gh release download $env:TAG --pattern $zipName --output $zip
+            if ($LASTEXITCODE -ne 0) { throw "Failed to read the existing ZIP on draft $env:TAG." }
           }
-          if ($hasZip -or $hasSha) {
-            throw "Release $env:TAG has only one of $zipName / $shaName. Refusing to overwrite a partial release; resolve it by hand."
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumLine = "$hash  $zipName"
+          if ($hasChecksum) {
+            $draftChecksum = Join-Path $env:RUNNER_TEMP "draft-$shaName"
+            gh release download $env:TAG --pattern $shaName --output $draftChecksum
+            if ($LASTEXITCODE -ne 0) { throw "Failed to read the existing checksum on draft $env:TAG." }
+            if ((Get-Content $draftChecksum -Raw).Trim() -ne $checksumLine) {
+              throw "Draft $env:TAG has a checksum that does not match the ZIP. Resolve the mismatch before rerunning."
+            }
           }
-          gh release upload $env:TAG $zip "$zip.sha256"
-          if ($LASTEXITCODE -ne 0) {
-            throw "Failed to upload assets to release $env:TAG."
+          if (-not $hasZip) {
+            gh release upload $env:TAG $zip
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the ZIP to draft $env:TAG." }
           }
+          if (-not $hasChecksum) {
+            $checksumLine | Out-File -FilePath $checksum -Encoding ascii -NoNewline
+            gh release upload $env:TAG $checksum
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the checksum to draft $env:TAG." }
+          }
+
+          $ready = Get-ReleaseForTag
+          $uploaded = @($ready.assets | Where-Object { $_.state -eq 'uploaded' -and $_.size -gt 0 })
+          if ($ready.id -ne $release.id -or -not $ready.draft -or
+              $uploaded.name -notcontains $zipName -or $uploaded.name -notcontains $shaName) {
+            throw "Draft $env:TAG changed or is missing a Windows asset; refusing to publish."
+          }
+          Assert-ReleaseTag $ready
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($ready.id)" -F draft=false --silent
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish draft $env:TAG." }
 
       - name: Upload smoke evidence
         if: always()
