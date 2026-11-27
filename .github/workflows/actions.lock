@@ -7,7 +7,7 @@ workflows:
         - 'actions/checkout@v4.4.0'
     '.github/workflows/lint.yml':
         - 'actions/checkout@v3.7.0'
-        - 'actions/setup-python@v4.9.1'
+        - 'actions/setup-python@v7.1.0'
     '.github/workflows/pages.yml':
         - 'actions/checkout@v6.1.0'
         - 'actions/configure-pages@v5.0.0'
@@ -67,9 +67,9 @@ dependencies:
         commit: 'sha1-67a3573c9a986a3f9c594539f4ab511d57bb3ce9'
         owner_id: 44036562
         repo_id: 192625306
-    'actions/setup-python@v4.9.1':
-        ref: 'v4.9.1'
-        commit: 'sha1-7f4fc3e22c37d6ff65e88745f38bd3157c663f7c'
+    'actions/setup-python@v7.1.0':
+        ref: 'v7.1.0'
+        commit: 'sha1-6d4fd22b20465ccc0f7354476588e8df7c9ca0e0'
         owner_id: 44036562
         repo_id: 192625525
     'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02':
