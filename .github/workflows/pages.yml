@@ -31,7 +31,7 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5.0.0
       - name: Upload website
-        uses: actions/upload-pages-artifact@v4.0.0
+        uses: actions/upload-pages-artifact@v5.0.0
         with:
           path: website
       - name: Publish website

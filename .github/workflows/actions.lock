@@ -10,7 +10,7 @@ workflows:
         - 'actions/checkout@v6.1.0'
         - 'actions/configure-pages@v5.0.0'
         - 'actions/deploy-pages@v5.0.1'
-        - 'actions/upload-pages-artifact@v4.0.0'
+        - 'actions/upload-pages-artifact@v5.0.0'
     '.github/workflows/verify-lockfile.yml':
         - 'actions/checkout@v7.0.1'
         - 'github/gh-actions-lock@verify/v0.5.1'
@@ -70,9 +70,9 @@ dependencies:
         commit: 'sha1-7f4fc3e22c37d6ff65e88745f38bd3157c663f7c'
         owner_id: 44036562
         repo_id: 192625525
-    'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02':
-        ref: 'v4.6.2'
-        commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
+    'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f':
+        ref: 'v7.0.0'
+        commit: 'sha1-bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
         owner_id: 44036562
         repo_id: 192625955
     'actions/upload-artifact@v4.6.2':
@@ -80,13 +80,13 @@ dependencies:
         commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
         owner_id: 44036562
         repo_id: 192625955
-    'actions/upload-pages-artifact@v4.0.0':
-        ref: 'v4.0.0'
-        commit: 'sha1-7b1f4a764d45c48632c6b24a0339c27f5614fb0b'
+    'actions/upload-pages-artifact@v5.0.0':
+        ref: 'v5.0.0'
+        commit: 'sha1-fc324d3547104276b827a68afc52ff2a11cc49c9'
         owner_id: 44036562
         repo_id: 496012378
         uses:
-            - 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02'
+            - 'actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f'
     'azure/artifact-signing-action@v0.5.11':
         ref: 'v0.5.11'
         commit: 'sha1-1d365fec12862c4aa68fcac418143d73f0cea293'
