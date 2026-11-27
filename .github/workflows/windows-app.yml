@@ -35,7 +35,7 @@ jobs:
           & powershell.exe -NoProfile -STA -File app/windows/scripts/smoke.ps1 -Executable "${{ runner.temp }}/agent-s-windows/AgentS.Windows.exe" -EvidenceDirectory "${{ runner.temp }}/agent-s-evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload Windows build
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: agent-s-windows-x64
           path: ${{ runner.temp }}/agent-s-windows/
@@ -43,7 +43,7 @@ jobs:
           if-no-files-found: error
       - name: Upload smoke report and real window captures
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-smoke-evidence
           path: ${{ runner.temp }}/agent-s-evidence/

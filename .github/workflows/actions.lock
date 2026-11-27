@@ -17,11 +17,11 @@ workflows:
     '.github/workflows/windows-app.yml':
         - 'actions/checkout@v4.4.0'
         - 'actions/setup-dotnet@v4.3.1'
-        - 'actions/upload-artifact@v4.6.2'
+        - 'actions/upload-artifact@v7.0.2'
     '.github/workflows/windows-release.yml':
         - 'actions/checkout@v4.4.0'
         - 'actions/setup-dotnet@v4.3.1'
-        - 'actions/upload-artifact@v4.6.2'
+        - 'actions/upload-artifact@v7.0.2'
         - 'azure/artifact-signing-action@v0.5.11'
         - 'azure/login@v2.3.1'
 dependencies:
@@ -75,9 +75,9 @@ dependencies:
         commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
         owner_id: 44036562
         repo_id: 192625955
-    'actions/upload-artifact@v4.6.2':
-        ref: 'v4.6.2'
-        commit: 'sha1-ea165f8d65b6e75b540449e92b4886f43607fa02'
+    'actions/upload-artifact@v7.0.2':
+        ref: 'v7.0.2'
+        commit: 'sha1-cf430e030ddbb5b0abf93d22962f4752f3646cd9'
         owner_id: 44036562
         repo_id: 192625955
     'actions/upload-pages-artifact@v4.0.0':
