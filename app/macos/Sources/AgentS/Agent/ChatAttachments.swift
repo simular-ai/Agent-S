@@ -59,18 +59,73 @@ struct ChatAttachments {
     func discard() { try? FileManager.default.removeItem(at: folder) }
 
     func copyToSandbox(shell: GuestShell, ip: String) async throws -> [String] {
-        let destination = "/home/\(GuestSetup.user)/work/Agent S Attachments/\(folder.lastPathComponent)"
-        var paths: [String] = []
-        for (index, file) in files.enumerated() {
+        guard !files.isEmpty else { return [] }
+        try Task.checkCancellation()
+        let destination = "/home/\(GuestSetup.user)/.agent-s-attachments-\(UUID().uuidString)"
+        let batch = Self.quote(destination)
+        let owner = ".agent-s-owner"
+        let token = Self.quote(UUID().uuidString)
+        let enterBatch = "test ! -L \(batch) && cd -- \(batch) && test ! -L \(owner) && "
+            + "test -f \(owner) && test \"$(cat -- \(owner))\" = \(token)"
+        let create = """
+        umask 077
+        mkdir -m 700 -- \(batch) && cd -- \(batch) || exit $?
+        set -C
+        printf '%s\\n' \(token) > \(owner)
+        """
+        do {
+            try await shell.run(create, on: ip, timeout: 15)
+            var paths: [String] = []
+            for (index, file) in files.enumerated() {
+                try Task.checkCancellation()
+                let relativePath = "\(index)/\(file.lastPathComponent)"
+                let path = Self.quote(relativePath)
+                let data = try Data(contentsOf: file, options: .mappedIfSafe)
+                let command = """
+                umask 077
+                \(enterBatch) || exit 1
+                set -C
+                mkdir -m 700 -- \(index) || exit $?
+                stat -c '%d:%i' -- \(index) > .directory-\(index) || exit $?
+                test ! -e \(path) && test ! -L \(path) || exit 1
+                exec 3> \(path) || exit $?
+                stat -Lc '%d:%i' -- /proc/self/fd/3 > .file-\(index) || exit $?
+                base64 -d >&3
+                """
+                try await shell.run(command, on: ip, input: data.base64EncodedString(), timeout: 60)
+                paths.append("\(destination)/\(relativePath)")
+            }
             try Task.checkCancellation()
-            let directory = "\(destination)/\(index)"
-            let path = "\(directory)/\(file.lastPathComponent)"
-            let data = try Data(contentsOf: file, options: .mappedIfSafe)
-            let command = "umask 077; mkdir -p -- \(Self.quote(directory)) && base64 -d > \(Self.quote(path))"
-            try await shell.run(command, on: ip, input: data.base64EncodedString(), timeout: 60)
-            paths.append(path)
+            return paths
+        } catch {
+            // A cancellation or lost response can occur after mkdir. Verify this batch’s marker
+            // before removing anything, including when the creation call did not return success.
+            let cleanupFiles = files.enumerated().map { index, file in
+                let path = Self.quote("\(index)/\(file.lastPathComponent)")
+                return """
+                if test ! -L \(index) && test -d \(index) &&
+                   test ! -L .directory-\(index) && test -s .directory-\(index) &&
+                   test "$(stat -c '%d:%i' -- \(index))" = "$(cat -- .directory-\(index))"; then
+                    if test ! -L \(path) && test -f \(path) &&
+                       test ! -L .file-\(index) && test -s .file-\(index) &&
+                       test "$(stat -c '%d:%i' -- \(path))" = "$(cat -- .file-\(index))"; then
+                        rm -f -- \(path)
+                    fi
+                    if rmdir -- \(index); then rm -f -- .directory-\(index) .file-\(index); fi
+                fi
+                """
+            }.joined(separator: "\n")
+            let cleanup = """
+            \(enterBatch) || exit 0
+            \(cleanupFiles)
+            test . -ef \(batch) && rm -- \(owner) && rmdir -- \(batch)
+            """
+            // The transfer task may be canceled. Give cleanup its own bounded SSH request.
+            await Task.detached {
+                _ = try? await shell.run(cleanup, on: ip, timeout: 10)
+            }.value
+            throw error
         }
-        return paths
     }
 
     static func prompt(_ request: String, paths: [String]) -> String {
