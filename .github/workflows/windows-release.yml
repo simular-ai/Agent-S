@@ -386,7 +386,7 @@ jobs:
 
       - name: Upload smoke evidence
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: windows-release-smoke-evidence
           path: ${{ runner.temp }}/agent-s-evidence/
