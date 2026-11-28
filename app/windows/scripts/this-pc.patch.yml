@@ -29,6 +29,8 @@
     root: !!js process.env.AGENT_S_DSH_SESSIONS
     compression: none
 - insert:
+    - id: agent-s-live-text
+      name: ./deepseek-live-text.mjs
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
       config:

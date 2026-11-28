@@ -41,7 +41,9 @@ internal static class ThisPcDeepSeek
         var home = Directory.CreateDirectory(Path.Combine(root, "profile")).FullName;
         var sessions = Directory.CreateDirectory(Path.Combine(root, "sessions")).FullName;
         var patch = Path.Combine(home, "tools.patch.yml");
-        File.Copy(Path.Combine(AppContext.BaseDirectory, "DeepSeekRuntime", "this-pc.patch.yml"), patch, overwrite: true);
+        var assets = Path.Combine(AppContext.BaseDirectory, "DeepSeekRuntime");
+        File.Copy(Path.Combine(assets, "this-pc.patch.yml"), patch, overwrite: true);
+        File.Copy(Path.Combine(assets, "deepseek-live-text.mjs"), Path.Combine(home, "deepseek-live-text.mjs"), overwrite: true);
 
         using var tool = new ThisPcMcpBridge(command, token);
         tool.Start();
@@ -75,21 +77,38 @@ internal static class ThisPcDeepSeek
         var messageId = sent.String("messageId") ?? throw new PrivateComputerException("DeepSeek did not accept the message.");
         yield return new HarnessStarted(sessionId);
 
-        bool committed = false;
+        bool committed = false, streaming = false;
         string? completion = null;
         while (true)
         {
             var message = await rpc.Next(token);
             var p = message.Get("params");
+            var method = message.String("method");
+            if (method == "agent_s/stream")
+            {
+                switch (p.String("type"))
+                {
+                    case "ready":
+                        streaming = true;
+                        break;
+                    case "delta" when committed && p.String("id") is { Length: > 0 } deltaId && p.String("text") is { Length: > 0 } delta:
+                        yield return new HarnessTextDelta(deltaId, delta);
+                        break;
+                    case "snapshot" when committed && p.String("id") is { Length: > 0 } snapshotId && p.String("text") is { } snapshot:
+                        yield return new HarnessTextSnapshot(snapshotId, snapshot);
+                        break;
+                }
+                continue;
+            }
             if (p.String("sessionId") != sessionId) continue;
-            if (message.String("method") == "session.status" && p.String("status") == "idle" && committed && completion is not null)
+            if (method == "session.status" && p.String("status") == "idle" && committed && completion is not null)
             {
                 tool.CanRun = false;
                 bool success = completion == "completed";
                 yield return new HarnessFinished(success ? null : "The DeepSeek turn did not complete. Check the selected model and provider.", !success);
                 yield break;
             }
-            if (message.String("method") != "session.event") continue;
+            if (method != "session.event") continue;
             var item = p.Get("event");
             var data = item.Get("data");
             switch (item.String("type"))
@@ -101,8 +120,9 @@ internal static class ThisPcDeepSeek
                     completion = data.Get("reason").String("kind") ?? "unknown";
                     break;
                 case "assistant/message" when committed && data.Get("message").Get("content") is { ValueKind: JsonValueKind.Array } blocks:
-                    foreach (var block in blocks.EnumerateArray())
-                        if (block.String("type") == "text" && block.String("text") is { } text) yield return new HarnessText(text);
+                    if (!streaming)
+                        foreach (var block in blocks.EnumerateArray())
+                            if (block.String("type") == "text" && block.String("text") is { } text) yield return new HarnessText(text);
                     var usage = data.Get("usage");
                     if (usage.Get("inputTokens").TryInt(out int input) && usage.Get("outputTokens").TryInt(out int output))
                         yield return new HarnessUsage(input, output);
