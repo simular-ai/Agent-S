@@ -31,24 +31,18 @@ struct ChatActivityBar: View {
         let status = summary
         return VStack(alignment: .leading, spacing: 0) {
             Button { expanded.toggle() } label: {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        statusIcon(status).frame(width: 14)
-                        Text(status.title).font(.callout.weight(.medium)).lineLimit(1)
-                        Spacer(minLength: 0)
-                        if let count = status.count {
-                            Text(count).font(.caption).foregroundStyle(.secondary).fixedSize()
-                        }
-                        if let issue = status.issue {
-                            Text(issue).font(.caption).foregroundStyle(status.hasFailure ? Color.red : .secondary).fixedSize()
-                        }
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
+                HStack(spacing: 8) {
+                    statusIcon(status).frame(width: 14, height: 16)
+                    Text(status.title).font(.callout.weight(.medium)).lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let count = status.count {
+                        Text(count).font(.caption).foregroundStyle(.secondary).fixedSize()
                     }
-                    if !expanded, let preview = status.preview {
-                        Text(preview).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                            .padding(.leading, 22)
+                    if let issue = status.issue {
+                        Text(issue).font(.caption).foregroundStyle(status.hasFailure ? Color.red : .secondary).fixedSize()
                     }
+                    Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                        .font(.caption2.weight(.semibold)).foregroundStyle(.tertiary)
                 }
                 .padding(.horizontal, 12).padding(.vertical, 8)
                 .contentShape(Rectangle())
@@ -74,12 +68,11 @@ struct ChatActivityBar: View {
         let title: String
         let count: String?
         let issue: String?
-        let preview: String?
         let isWorking: Bool
         let hasFailure: Bool
 
         var accessibilityValue: String {
-            [count, issue, isWorking ? "Running" : (issue == nil ? "Completed" : nil), preview]
+            [count, issue, isWorking ? "Running" : (issue == nil ? "Completed" : nil)]
                 .compactMap { $0 }.joined(separator: ", ")
         }
     }
@@ -101,20 +94,15 @@ struct ChatActivityBar: View {
             }
         }
 
-        let count = steps.count == 1 ? "1 step" : "\(steps.count) steps"
+        let count = steps.count > 1 ? "\(steps.count) steps" : nil
         let titles = [failureCount > 0 ? "\(failureCount) failed" : nil, unfinished > 0 ? "\(unfinished) unfinished" : nil]
             .compactMap { $0 }
-        let action = active.flatMap(stepTitle)
         let isWorking = active != nil || showsWorking
-        let single = steps.count == 1 ? steps.first.flatMap(stepTitle) : nil
-        let preview: String? = if !isWorking, single == nil, let title = lastFailure.flatMap(stepTitle) {
-            "Last failed step · \(title)"
-        } else if showsWorking, action == nil, let title = steps.last.flatMap(stepTitle) {
-            "Last step · \(title)"
-        } else { nil }
-        return Summary(title: action ?? (isWorking ? "Working…" : single ?? "Activity"),
-                       count: single != nil && !isWorking ? nil : count,
-                       issue: titles.isEmpty ? nil : titles.joined(separator: " · "), preview: preview,
+        let workingStep = active ?? steps.last
+        let finishedStep = lastFailure ?? (steps.count == 1 ? steps.first : nil)
+        let title = (isWorking ? workingStep : finishedStep).flatMap(stepTitle) ?? "Activity"
+        return Summary(title: title, count: count,
+                       issue: titles.isEmpty ? nil : titles.joined(separator: " · "),
                        isWorking: isWorking, hasFailure: failureCount > 0)
     }
 
