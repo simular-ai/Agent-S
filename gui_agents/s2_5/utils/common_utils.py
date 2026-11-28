@@ -4,6 +4,24 @@ import time
 from typing import Tuple
 
 
+TERMINAL_ACTIONS = ("DONE", "FAIL")
+
+
+def terminal_action(code: str):
+    """Returns "DONE" or "FAIL" if `code` is the output of the agent's done()/fail()
+    action, otherwise None.
+
+    The done()/fail() grounding actions return exactly "DONE"/"FAIL" rather than
+    pyautogui code. Callers must compare exactly: substring matching on the code
+    string would misfire on any typed text that happens to contain those words
+    (e.g. agent.type(text="All done, thanks")).
+    """
+    if not isinstance(code, str):
+        return None
+    normalized = code.strip().upper()
+    return normalized if normalized in TERMINAL_ACTIONS else None
+
+
 def call_llm_safe(agent, temperature: float = 0.0, use_thinking: bool = False) -> str:
     # Retry if fails
     max_retries = 3  # Set the maximum number of retries
