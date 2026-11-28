@@ -207,13 +207,22 @@ h1 {
   font-weight: 650;
 }
 
-.hero-copy .requirements {
-  display: flex;
-  flex-wrap: wrap;
-  gap: .3rem 1rem;
-  margin-top: .8rem;
+.download-option {
+  display: grid;
+  justify-items: start;
+  gap: .4rem;
+}
+
+.requirements {
   font-size: .875rem;
   color: #45413c;
+}
+
+.source-links {
+  display: flex;
+  flex: 0 0 100%;
+  flex-wrap: wrap;
+  gap: .35rem 1rem;
 }
 
 .section {

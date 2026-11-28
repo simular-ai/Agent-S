@@ -4,9 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#faf8f5">
-  <meta name="description" content="Agent S is a fully open-source, on-device computer-use agent for code, browsers, and desktop apps. Available for macOS. Windows coming soon.">
+  <meta name="description" content="Agent S is a fully open-source, on-device computer-use agent for code, browsers, and desktop apps. Available for macOS and Windows.">
   <meta property="og:title" content="Agent S — The private computer-use agent">
-  <meta property="og:description" content="Fully open-source computer use with local inference and a private sandbox. Available for macOS. Windows coming soon.">
+  <meta property="og:description" content="Fully open-source computer use with local inference and a private sandbox. Available for macOS and Windows.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://agent-s.ai/">
   <link rel="canonical" href="https://agent-s.ai/">
@@ -39,13 +39,19 @@
           <h1 id="hero-title">The private computer-use agent</h1>
           <p>Agent S is fully open source. Run a model on your own computer and give your agent a private sandbox for code, the web, and desktop apps.</p>
           <div class="actions">
-            <a class="button" id="mac-release" href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.8/Agent-S-macOS-0.3.8-arm64.dmg">Download for Mac</a>
-            <a class="text-link" href="https://github.com/simular-ai/Agent-S/blob/main/app/macos/README.md#build-and-run">Build from source</a>
+            <div class="download-option">
+              <a class="button" id="mac-release" aria-describedby="mac-requirements" href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.9/Agent-S-macOS-0.3.9-arm64.dmg">Download for Mac</a>
+              <span class="requirements" id="mac-requirements">Apple Silicon · macOS 14 or later</span>
+            </div>
+            <div class="download-option">
+              <a class="button" id="windows-release" aria-describedby="windows-requirements" href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.9/AgentS-Windows-x64.zip">Download for Windows</a>
+              <span class="requirements" id="windows-requirements">Windows 11 · x64</span>
+            </div>
+            <div class="source-links">
+              <a class="text-link" href="https://github.com/simular-ai/Agent-S/blob/main/app/macos/README.md#build-and-run">Build for Mac</a>
+              <a class="text-link" href="https://github.com/simular-ai/Agent-S/blob/main/app/windows/README.md#build">Build for Windows</a>
+            </div>
           </div>
-          <p class="requirements">
-            <span>Apple Silicon · macOS 14 or later</span>
-            <strong>Windows coming soon</strong>
-          </p>
         </div>
       </div>
     </section>
