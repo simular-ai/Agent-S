@@ -17,7 +17,7 @@ internal static class ThisPcRunner
     private static string LocalAppData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     /// <summary>No spaces in this path (usually), so the agent can type the tool's path plainly.</summary>
     private static string ToolsFolder => Path.Combine(LocalAppData, "Simular", "agent-s-tools");
-    private static string ProfileFolder => Path.Combine(LocalAppData, "Simular", "Agent S", "claude-this-pc");
+    private static string ProfileFolder => Path.Combine(AppIdentity.LocalFolder, "claude-this-pc");
     /// <summary>The `pc` tool as Claude Code's Bash (Git Bash) runs it.</summary>
     public static string PcToolPath => Path.Combine(ToolsFolder, "pc").Replace('\\', '/');
     public static string ScreenshotPath => Path.Combine(ToolsFolder, ThisPcAgent.ScreenshotName);

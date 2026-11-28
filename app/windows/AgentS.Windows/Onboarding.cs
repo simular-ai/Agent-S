@@ -15,8 +15,16 @@ public sealed partial class MainWindow
 {
     /// <summary>Opens New agent on Cloud (from "Set up a cloud agent…").</summary>
     private bool preferCloud;
-    /// <summary>The Private computer's memory when it starts, for the model memory check (WSL takes what it needs; 2 GB as on macOS).</summary>
-    private const ulong PrivateComputerMemory = 2UL << 30;
+    /// <summary>The Private computer's memory when it starts, for the model memory check: the chosen limit, else 2 GB as on macOS.</summary>
+    private static ulong PrivateComputerMemory => (ulong)(WslComputer.MemoryGB ?? PrivateComputer.MemoryChoices[0]) << 30;
+
+    /// <summary>"Computer memory": 2, 4 or 6 GB, as macOS's "Sandbox memory".</summary>
+    private static ComboBox MemoryPicker(int selectedGB) => new()
+    {
+        Header = "Computer memory", HorizontalAlignment = HorizontalAlignment.Stretch,
+        ItemsSource = PrivateComputer.MemoryChoices.Select(gb => $"{gb} GB").ToArray(),
+        SelectedIndex = Math.Max(0, Array.IndexOf(PrivateComputer.MemoryChoices, selectedGB)),
+    };
 
     private bool ShowsOnboarding => !AppSettings.Current.FinishedFirstAgentSetup && conversations.Count == 0;
 
@@ -29,6 +37,10 @@ public sealed partial class MainWindow
 
         var form = new StackPanel { Spacing = 14 };
         var where = Card("Private · Linux computer on this PC", "\uE7F4", "Your agent gets a separate desktop that runs on this PC.");
+        var memory = MemoryPicker(AppSettings.Current.ComputerMemoryGB ?? PrivateComputer.MemoryChoices[0]);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(memory, "FirstAgentMemory");
+        ((StackPanel)where.Child).Children.Add(memory);
+        ((StackPanel)where.Child).Children.Add(Muted("The most its desktop and apps can use. Ollama runs the model in this PC's memory separately. You can change it in Settings."));
         form.Children.Add(where);
 
         var harness = new ComboBox { Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = FirstAgentHarnesses.Select(h => h.DisplayName()).ToArray(), SelectedIndex = 0 };
@@ -45,11 +57,11 @@ public sealed partial class MainWindow
         modelRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         modelRow.Children.Add(details); Grid.SetColumn(browse, 1); modelRow.Children.Add(browse);
         var zdr = ZdrToggle(AppSettings.Current.OpenRouterRequiresZdr);
-        var openRouterModel = OpenRouterModelBox(ThisPcAgent.SuggestedOpenRouterModels[0]);
+        var openRouterModel = OpenRouterModelBox(ThisPcAgent.SuggestedOpenRouterModels[0], out var openRouterField);
         var ollamaPart = new StackPanel { Spacing = 8 };
         ollamaPart.Children.Add(models); ollamaPart.Children.Add(modelRow);
         var openRouterPart = new StackPanel { Spacing = 8, Visibility = Visibility.Collapsed };
-        openRouterPart.Children.Add(zdr); openRouterPart.Children.Add(openRouterModel);
+        openRouterPart.Children.Add(zdr); openRouterPart.Children.Add(openRouterField);
         form.Children.Add(harness); form.Children.Add(provider); form.Children.Add(providerNote); form.Children.Add(ollamaPart); form.Children.Add(openRouterPart);
 
         async void FillModels()
@@ -82,9 +94,11 @@ public sealed partial class MainWindow
         create.Click += async (_, _) =>
         {
             bool openRouter = provider.SelectedIndex == 1;
-            var model = openRouter ? (openRouterModel.Text ?? "").Trim() : selectedModel;
+            var model = openRouter ? ModelText(openRouterModel) : selectedModel;
             if (model.Length == 0) return;
-            if (openRouter) { AppSettings.Current.OpenRouterRequiresZdr = zdr.IsOn; AppSettings.Current.Save(); }
+            if (openRouter) AppSettings.Current.OpenRouterRequiresZdr = zdr.IsOn;
+            AppSettings.Current.ComputerMemoryGB = PrivateComputer.MemoryChoices[Math.Max(0, memory.SelectedIndex)];
+            AppSettings.Current.Save();
             var agent = new Conversation
             {
                 Name = "Agent", Target = ConversationTarget.Private, Harness = FirstAgentHarnesses[Math.Max(0, harness.SelectedIndex)],
@@ -250,53 +264,101 @@ public sealed partial class MainWindow
         OnContent = "On · applies to all OpenRouter agents", OffContent = "Off · applies to all OpenRouter agents",
     };
 
-    /// <summary>An editable OpenRouter model box: suggestions at once, the full list (with ZDR availability) as it loads.</summary>
-    private static ComboBox OpenRouterModelBox(string current)
+    /// <summary>An editable OpenRouter model box: suggestions at once, the full list as it loads. <paramref name="field"/> holds it with its browser and details.</summary>
+    private static ComboBox OpenRouterModelBox(string current, out FrameworkElement field)
     {
-        var box = new ComboBox { Header = "Model", IsEditable = true, HorizontalAlignment = HorizontalAlignment.Stretch, Text = current,
-            Description = "Search by name, provider or model ID, or type any id from openrouter.ai/models." };
+        var box = new ComboBox { Header = "Model ID", IsEditable = true, HorizontalAlignment = HorizontalAlignment.Stretch, Text = current,
+            PlaceholderText = ThisPcAgent.SuggestedOpenRouterModels[0] };
         var suggestions = ThisPcAgent.SuggestedOpenRouterModels.Prepend(current).Distinct().ToArray();
         box.ItemsSource = suggestions;
         box.SelectedItem = current;
         box.Loaded += async (_, _) =>
         {
-            var all = await OpenRouterProxy.Models();
+            var (all, _) = await ModelBrowser.LoadOpenRouter();
             if (all.Length == 0) return;
             var keep = box.Text;
-            box.ItemsSource = suggestions.Concat(all.Except(suggestions)).ToArray();
+            box.ItemsSource = suggestions.Concat(all.Select(m => m.Id).Except(suggestions)).ToArray();
             box.Text = keep;
         };
-        return WithBrowser(box, [ModelProvider.OpenRouter]);
-    }
-
-    /// <summary>Puts "Browse all models…" (the full list, with sizes, ZDR and which agents use each) beside a model box's header.</summary>
-    private static ComboBox WithBrowser(ComboBox box, IReadOnlyList<ModelProvider> providers, Action<ModelProvider>? providerChosen = null, Func<ModelProvider>? startOn = null)
-    {
-        var header = new Grid { ColumnSpacing = 8, MinWidth = 300 };
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        header.Children.Add(new TextBlock { Text = box.Header as string ?? "Model", VerticalAlignment = VerticalAlignment.Center });
-        var browse = new HyperlinkButton
-        {
-            Content = providers.Count == 1 && providers[0] == ModelProvider.OpenRouter ? "Browse OpenRouter models…" : "Browse all models…",
-            Padding = new Thickness(0), FontSize = 12,
-        };
-        browse.Click += (_, _) => ModelBrowser.ShowAt(browse, providers, (provider, model) =>
-        {
-            providerChosen?.Invoke(provider);
-            box.Text = model;
-            if (box.ItemsSource is IEnumerable<string> items && items.Contains(model)) box.SelectedItem = model;
-        }, startOn);
-        Grid.SetColumn(browse, 1); header.Children.Add(browse);
-        box.Header = header;
+        field = WithBrowser(box, [ModelProvider.OpenRouter]);
         return box;
     }
+
+    /// <summary>The model box's current text (typed, or the chosen item).</summary>
+    private static string ModelText(ComboBox box) => ((box.SelectedItem as string) is { Length: > 0 } item && item == box.Text ? item : box.Text ?? "").Trim();
+
+    /// <summary>
+    /// macOS's model field: "Browse … models…" above the box (the full list, with prices, ZDR and which agents use each),
+    /// and for an OpenRouter model, its text token price, input and Zero Data Retention below it. The returned field
+    /// follows the box's visibility, so callers keep showing and hiding the box.
+    /// </summary>
+    private static FrameworkElement WithBrowser(ComboBox box, IReadOnlyList<ModelProvider> providers, Action<ModelProvider>? providerChosen = null, Func<ModelProvider>? startOn = null)
+    {
+        bool openRouterOnly = providers.Count == 1 && providers[0] == ModelProvider.OpenRouter;
+        var field = new StackPanel { Spacing = 6, Visibility = box.Visibility };
+        var details = new StackPanel { Spacing = 4 };
+        var browse = new Button { Content = openRouterOnly ? "Browse OpenRouter models…" : "Browse all models…" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(browse, openRouterOnly ? "BrowseOpenRouterModels" : "BrowseAllModels");
+        ModelBrowser.Attach(browse, providers, (provider, model) =>
+        {
+            providerChosen?.Invoke(provider);
+            if (box.ItemsSource is IEnumerable<string> items && !items.Contains(model)) box.ItemsSource = items.Prepend(model).ToArray();
+            box.SelectedItem = model;
+            box.Text = model;
+            _ = ShowDetails();
+        }, startOn, () => ModelText(box));
+        field.Children.Add(browse); field.Children.Add(box); field.Children.Add(details);
+        // Callers show and hide the box; the field (with its button and details) follows.
+        box.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => field.Visibility = box.Visibility);
+
+        Grid Pair(string label, FrameworkElement value)
+        {
+            var row = new Grid { ColumnSpacing = 12 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.Children.Add(new TextBlock { Text = label, FontSize = 13 });
+            Grid.SetColumn(value, 1); row.Children.Add(value);
+            return row;
+        }
+        TextBlock Value(string text) => new() { Text = text, FontSize = 13, Opacity = 0.75, HorizontalAlignment = HorizontalAlignment.Right };
+        TextBlock Caption(string text) => new() { Text = text, FontSize = 12, Opacity = 0.7, TextWrapping = TextWrapping.Wrap };
+
+        async Task ShowDetails()
+        {
+            var id = ModelText(box);
+            bool openRouter = openRouterOnly || startOn?.Invoke() == ModelProvider.OpenRouter;
+            details.Children.Clear();
+            if (!openRouter || id.Length == 0) return;
+            details.Children.Add(Caption("Checking price and ZDR…"));
+            var (models, zdr) = await ModelBrowser.LoadOpenRouter();
+            if (ModelText(box) != id) return;
+            details.Children.Clear();
+            var found = models.FirstOrDefault(m => m.Id == id);
+            details.Children.Add(Pair("Text token price", Value(found?.PriceText ?? OpenRouterModel.PriceLabel(id))));
+            details.Children.Add(Pair("Model input", Value(found?.Input is { } input ? OllamaModels.InputLabel(input) : "Unknown")));
+            var availability = zdr?.Availability(id, isPublicModel: found is not null) ?? OpenRouterZdrAvailability.Unknown;
+            details.Children.Add(Pair("Zero Data Retention", ModelBrowser.ZdrIndicator(availability, 13)));
+            if (availability == OpenRouterZdrAvailability.SafetyRetentionOnly)
+                details.Children.Add(Caption("Using this model with ZDR requested requires allowing Safety Retention in OpenRouter."));
+            else if (availability == OpenRouterZdrAvailability.Unavailable)
+                details.Children.Add(Caption("OpenRouter may reject this model when ZDR is requested."));
+        }
+        box.SelectionChanged += (_, _) => _ = ShowDetails();
+        box.TextSubmitted += (_, _) => _ = ShowDetails();
+        box.LostFocus += (_, _) => _ = ShowDetails();
+        box.Loaded += (_, _) => _ = ShowDetails();
+        field.Tag = (Func<Task>)ShowDetails;
+        return field;
+    }
+
+    /// <summary>Refreshes a model field's details after something outside it changed (its provider).</summary>
+    private static void RefreshModelField(FrameworkElement field) { if (field.Tag is Func<Task> show) _ = show(); }
 
     private StackPanel Page(string title, string subtitle)
     {
         var page = new StackPanel { Spacing = 18, MaxWidth = 520, Padding = new Thickness(28), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         var head = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Center };
-        var logo = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentS.png");
+        var logo = Path.Combine(AppContext.BaseDirectory, "Assets", AppIdentity.LogoFile);
         if (File.Exists(logo)) head.Children.Add(new Image { Width = 44, Height = 44, Source = new BitmapImage(new Uri(logo)) });
         head.Children.Add(new TextBlock { Text = title, FontSize = 22, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center });
         if (subtitle.Length > 0) head.Children.Add(new TextBlock { Text = subtitle, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, Opacity = 0.75, HorizontalAlignment = HorizontalAlignment.Center });

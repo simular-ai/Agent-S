@@ -3,6 +3,8 @@ using System.Reflection;
 using System.Text.Json;
 using AgentS.Core;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
+using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Controls;
 using global::Windows.System;
 
@@ -47,7 +49,64 @@ public sealed partial class MainWindow
             content.Children.Add(setUp);
             content.Children.Add(Muted("Downloads Debian and creates the private Linux computer. Windows may need one restart to turn on its virtual machine feature."));
         }
-        else content.Children.Add(Muted("Windows gives the computer memory as it needs it; Ollama uses this PC's memory separately."));
+        else if (PrivateComputer.UsesWsl)
+        {
+            // WSL has one memory limit for every Linux distro on the PC, kept in the person's .wslconfig.
+            // Agent S reads it, never changes it, and caps its own computer below it.
+            string? wslconfig = null;
+            try
+            {
+                var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".wslconfig");
+                if (File.Exists(path) && new FileInfo(path).Length < 64_000) wslconfig = File.ReadAllText(path);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            var total = (ulong)Math.Max(0, GC.GetGCMemoryInfo().TotalAvailableMemoryBytes);
+            var (limit, configured) = WslConfig.MemoryLimit(wslconfig, total);
+            // 2/4/6 GB as on macOS, applied through the computer's memory cgroup; "WSL's limit" is no cap of its own
+            // (setups from before the choice).
+            var wslLimit = $"WSL's limit ({WslConfig.FormatGiB(limit)})";
+            var memory = new ComboBox
+            {
+                Header = "Memory", HorizontalAlignment = HorizontalAlignment.Stretch,
+                ItemsSource = PrivateComputer.MemoryChoices.Select(gb => $"{gb} GB").Append(wslLimit).ToArray(),
+                SelectedIndex = WslComputer.MemoryGB is { } gb ? Array.IndexOf(PrivateComputer.MemoryChoices, gb) : PrivateComputer.MemoryChoices.Length,
+                Description = $"The most the computer's desktop and apps can use. Applies to the next task. It can't exceed WSL's limit of {WslConfig.FormatGiB(limit)}"
+                    + (configured ? ", set in .wslconfig" : ", half of this PC's memory") + ", which covers every Linux system on this PC. Ollama runs the model in this PC's memory separately.",
+            };
+            AutomationProperties.SetAutomationId(memory, "ComputerMemory");
+            memory.SelectionChanged += (_, _) =>
+            {
+                if (memory.SelectedIndex < 0) return;
+                AppSettings.Current.ComputerMemoryGB = memory.SelectedIndex < PrivateComputer.MemoryChoices.Length
+                    ? PrivateComputer.MemoryChoices[memory.SelectedIndex] : null;
+                AppSettings.Current.Save();
+            };
+            content.Children.Add(memory);
+            content.Children.Add(new HyperlinkButton
+            {
+                Content = "How to change WSL's limit",
+                NavigateUri = new Uri("https://learn.microsoft.com/windows/wsl/wsl-config#main-wsl-settings"),
+                Padding = new Thickness(0),
+            });
+        }
+        else
+        {
+            var memory = new ComboBox
+            {
+                Header = "Memory", HorizontalAlignment = HorizontalAlignment.Stretch,
+                ItemsSource = PrivateComputer.MemoryChoices.Select(gb => $"{gb} GB").ToArray(),
+                SelectedIndex = Array.IndexOf(PrivateComputer.MemoryChoices, PrivateComputer.MemoryGB),
+                Description = "Applies the next time the computer starts. Stop computer to apply it now. Ollama runs the model in this PC's memory separately.",
+            };
+            AutomationProperties.SetAutomationId(memory, "ComputerMemory");
+            memory.SelectionChanged += (_, _) =>
+            {
+                if (memory.SelectedIndex < 0) return;
+                AppSettings.Current.ComputerMemoryGB = PrivateComputer.MemoryChoices[memory.SelectedIndex];
+                AppSettings.Current.Save();
+            };
+            content.Children.Add(memory);
+        }
 
         // ---- Accounts ----
         content.Children.Add(Header("Accounts"));
@@ -83,7 +142,7 @@ public sealed partial class MainWindow
         content.Children.Add(Header("Updates"));
         var version = Assembly.GetExecutingAssembly().GetName().Version;
         var current = version is null ? "0.0.0" : $"{version.Major}.{version.Minor}.{version.Build}";
-        var updateStatus = Muted($"Agent S {current}");
+        var updateStatus = Muted($"{AppIdentity.Name} {current}");
         var checkUpdates = new Button { Content = "Check for Updates…" };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(checkUpdates, "CheckForUpdates");
         checkUpdates.Click += async (_, _) =>
@@ -114,7 +173,7 @@ public sealed partial class MainWindow
         {
             panel.Children.Clear();
             panel.Children.Add(new TextBlock { Text = kind.Service, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
-            if (kind.Read() is not null)
+            if (kind.Read() is { } savedKey)
             {
                 var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
                 var saved = new TextBlock { Text = "✓ Saved", Foreground = Green, VerticalAlignment = VerticalAlignment.Center };
@@ -128,6 +187,7 @@ public sealed partial class MainWindow
                 };
                 row.Children.Add(remove);
                 panel.Children.Add(row);
+                if (kind.AutomationId == "OpenRouterApiKey") panel.Children.Add(OpenRouterUsageControls(savedKey));
             }
             else
             {
@@ -167,6 +227,47 @@ public sealed partial class MainWindow
         }
         Render();
         return new Border { Child = panel, Padding = new Thickness(12), CornerRadius = new CornerRadius(10), Background = Theme("ChipBackground") };
+    }
+
+
+    private static FrameworkElement OpenRouterUsageControls(string key)
+    {
+        var usage = new StackPanel { Spacing = 6 };
+        var result = Muted("");
+        result.Visibility = Visibility.Collapsed;
+        AutomationProperties.SetLiveSetting(result, AutomationLiveSetting.Polite);
+        var check = new Button { Content = "Check OpenRouter spend" };
+        check.Click += async (_, _) =>
+        {
+            check.IsEnabled = false;
+            result.Visibility = Visibility.Visible;
+            result.Text = "Checking OpenRouter spend...";
+            try
+            {
+                var spend = await OpenRouterKeyUsage.Read(key);
+                result.Text = $"Spent today: {OpenRouterKeyUsage.FormatSpend(spend.Daily)}\n"
+                    + $"Spent this week: {OpenRouterKeyUsage.FormatSpend(spend.Weekly)}\n"
+                    + $"Spent this month: {OpenRouterKeyUsage.FormatSpend(spend.Monthly)}\n"
+                    + $"Total spent: {OpenRouterKeyUsage.FormatSpend(spend.Total)}";
+                check.Content = "Refresh OpenRouter spend";
+            }
+            catch (HttpRequestException error) when (error.StatusCode is System.Net.HttpStatusCode.Unauthorized
+                or System.Net.HttpStatusCode.Forbidden)
+            {
+                result.Text = "OpenRouter rejected the saved key.";
+            }
+            catch (Exception error) when (error is HttpRequestException or JsonException or IOException or OperationCanceledException)
+            {
+                result.Text = "Could not load OpenRouter spend. Try again.";
+            }
+            finally
+            {
+                check.IsEnabled = true;
+            }
+        };
+        usage.Children.Add(check);
+        usage.Children.Add(result);
+        return usage;
     }
 
     /// <summary>

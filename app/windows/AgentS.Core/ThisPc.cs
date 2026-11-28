@@ -94,6 +94,22 @@ public static class ThisPcAgent
         };
     }
 
+    /// <summary>
+    /// A `pc` command that works in the PC's apps (apps, open, focus, tree, click, type, key, screenshot): the
+    /// floating Agent Activity window shows while these run, as macOS's MacAgent.isUICommand.
+    /// </summary>
+    public static bool IsUICommand(string tool, JsonElement input, string pcToolPath)
+    {
+        if (tool == "Read") return IsOwnScreenshot(input, pcToolPath);
+        if (tool != "Bash" || input.ValueKind != JsonValueKind.Object || !input.TryGetProperty("command", out var value) ||
+            value.ValueKind != JsonValueKind.String) return false;
+        var command = value.GetString()!.TrimStart();
+        var prefix = ToolCommand(pcToolPath) + " ";
+        if (!command.StartsWith(prefix, StringComparison.Ordinal)) return false;
+        var verb = command[prefix.Length..].TrimStart().Split(' ', 2)[0];
+        return verb is "apps" or "open" or "focus" or "tree" or "click" or "type" or "key" or "screenshot";
+    }
+
     /// <summary>Reading the screenshot `pc screenshot` just saved is looking too.</summary>
     private static bool IsOwnScreenshot(JsonElement input, string pcToolPath)
     {

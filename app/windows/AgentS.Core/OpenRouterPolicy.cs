@@ -83,29 +83,35 @@ public sealed class OpenRouterZdrCatalog
 /// <summary>A model in OpenRouter's public list: what the model browser shows.</summary>
 /// <param name="PromptPrice">US dollars per million input tokens (null when OpenRouter doesn't say).</param>
 public sealed record OpenRouterModel(string Id, string Name, int? ContextLength, string[] InputModalities,
-    decimal? PromptPrice = null, decimal? CompletionPrice = null)
+    decimal? PromptPrice = null, decimal? CompletionPrice = null, bool VariablePrice = false)
 {
     public static readonly Uri ListUrl = new("https://openrouter.ai/api/v1/models");
 
-    /// <summary>"$3 / $15 per M tokens", "Free".</summary>
-    public string PriceText => (PromptPrice, CompletionPrice) switch
-    {
-        (0m, 0m) => "Free",
-        ({ } input, { } output) => $"${Money(input)} / ${Money(output)} per M tokens",
-        _ => "",
-    };
+    /// <summary>The macOS label: "$3.00 in · $15.00 out / 1M tokens", "Free text tokens", "Varies by routed model", "Price unavailable".</summary>
+    public string PriceText => PriceLabel(Id, PromptPrice, CompletionPrice, VariablePrice);
 
-    private static string Money(decimal value) => value >= 10 ? value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)
-        : value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+    /// <summary>The price label for a model id, also before the list has loaded (openrouter/auto always varies).</summary>
+    public static string PriceLabel(string id, decimal? input = null, decimal? output = null, bool variable = false) =>
+        variable || id == "openrouter/auto" ? "Varies by routed model"
+        : (input, output) switch
+        {
+            (0m, 0m) => "Free text tokens",
+            ({ } i, { } o) => $"{Money(i)} in · {Money(o)} out / 1M tokens",
+            _ => "Price unavailable",
+        };
+
+    /// <summary>US dollars with 2 to 8 decimals, as macOS formats them.</summary>
+    private static string Money(decimal value) => "$" + value.ToString("#,0.00######", System.Globalization.CultureInfo.InvariantCulture);
 
     public ModelInput? Input => OllamaCatalog.FromModalities(InputModalities);
 
-    /// <summary>OpenRouter's per-token price (a decimal string) as dollars per million tokens.</summary>
-    private static decimal? PerMillion(JsonElement model, string field) =>
+    /// <summary>OpenRouter's per-token price (a decimal string); -1 means it varies by the routed model.</summary>
+    private static decimal? PerToken(JsonElement model, string field) =>
         model.TryGetProperty("pricing", out var pricing) && pricing.ValueKind == JsonValueKind.Object
         && pricing.TryGetProperty(field, out var value) && value.ValueKind == JsonValueKind.String
         && decimal.TryParse(value.GetString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var perToken)
-        && perToken >= 0 ? Math.Round(perToken * 1_000_000m, 4) : null;
+        ? perToken : null;
+    private static decimal? PerMillion(decimal? perToken) => perToken is >= 0 ? perToken * 1_000_000m : null;
     public static OpenRouterModel[] Parse(string json)
     {
         using var document = JsonDocument.Parse(json);
@@ -117,7 +123,9 @@ public sealed record OpenRouterModel(string Id, string Name, int? ContextLength,
             int? context = m.TryGetProperty("context_length", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out var n) ? n : null;
             var inputs = m.TryGetProperty("architecture", out var a) && a.ValueKind == JsonValueKind.Object && a.TryGetProperty("input_modalities", out var i) && i.ValueKind == JsonValueKind.Array
                 ? i.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray() : [];
-            return new OpenRouterModel(id, Str(m, "name") ?? id, context, inputs, PerMillion(m, "prompt"), PerMillion(m, "completion"));
+            decimal? prompt = PerToken(m, "prompt"), completion = PerToken(m, "completion");
+            return new OpenRouterModel(id, Str(m, "name") ?? id, context, inputs, PerMillion(prompt), PerMillion(completion),
+                VariablePrice: prompt == -1 || completion == -1);
         }).OfType<OpenRouterModel>().OrderBy(m => m.Id, StringComparer.Ordinal).ToArray();
     }
 
@@ -126,7 +134,15 @@ public sealed record OpenRouterModel(string Id, string Name, int? ContextLength,
         || query.Split(' ', StringSplitOptions.RemoveEmptyEntries).All(word =>
             Id.Contains(word, StringComparison.OrdinalIgnoreCase) || Name.Contains(word, StringComparison.OrdinalIgnoreCase));
 
-    public string ContextText => ContextLength is { } tokens ? tokens >= 1000 ? $"{tokens / 1000:N0}K context" : $"{tokens} context" : "";
+    /// <summary>"131K context", "1M context", as macOS's compact numbers.</summary>
+    public string ContextText => ContextLength is { } tokens ? $"{Compact(tokens)} context" : "";
+
+    private static string Compact(int value) => value switch
+    {
+        >= 1_000_000 => (value / 1_000_000d).ToString(value >= 10_000_000 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture) + "M",
+        >= 1_000 => (value / 1_000d).ToString(value >= 10_000 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture) + "K",
+        _ => value.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
 }
 
 /// <summary>
@@ -139,9 +155,9 @@ public sealed class OpenRouterCatalog(HttpMessageHandler? handler = null)
     private (DateTime Until, OpenRouterModel[] Models, OpenRouterZdrCatalog? Zdr)? cached;
 
     /// <returns>The models (empty if the list couldn't be read) and the ZDR catalog (null if it couldn't be read).</returns>
-    public async Task<(OpenRouterModel[] Models, OpenRouterZdrCatalog? Zdr)> Load(CancellationToken cancellation = default)
+    public async Task<(OpenRouterModel[] Models, OpenRouterZdrCatalog? Zdr)> Load(CancellationToken cancellation = default, bool force = false)
     {
-        if (cached is { } fresh && fresh.Until > DateTime.UtcNow) return (fresh.Models, fresh.Zdr);
+        if (!force && cached is { } fresh && fresh.Until > DateTime.UtcNow) return (fresh.Models, fresh.Zdr);
         var models = Task.Run(async () =>
         {
             try { return OpenRouterModel.Parse(await http.GetStringAsync(OpenRouterModel.ListUrl, cancellation)); }

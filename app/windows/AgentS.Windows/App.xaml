@@ -57,6 +57,13 @@
           <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="#111111" />
           <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#111111" />
           <SolidColorBrush x:Key="ProgressBarForeground" Color="#111111" />
+          <!-- Solid popups: WinUI's acrylic lets the fields behind a dropdown or menu show through its items. -->
+          <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#E4E4E4" />
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#E4E4E4" />
+          <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="AutoSuggestBoxSuggestionsListBackground" Color="#FFFFFF" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="SidebarBackground" Color="#1F1F1F" />
@@ -107,6 +114,12 @@
           <SolidColorBrush x:Key="RadioButtonOuterEllipseCheckedStroke" Color="#F2F2F2" />
           <SolidColorBrush x:Key="CheckBoxCheckBackgroundStrokeChecked" Color="#F2F2F2" />
           <SolidColorBrush x:Key="ProgressBarForeground" Color="#F2F2F2" />
+          <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#262626" />
+          <SolidColorBrush x:Key="ComboBoxDropDownBorderBrush" Color="#333333" />
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBackground" Color="#262626" />
+          <SolidColorBrush x:Key="MenuFlyoutPresenterBorderBrush" Color="#333333" />
+          <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#262626" />
+          <SolidColorBrush x:Key="AutoSuggestBoxSuggestionsListBackground" Color="#262626" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
