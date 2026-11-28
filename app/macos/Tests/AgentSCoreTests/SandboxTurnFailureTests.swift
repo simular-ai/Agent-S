@@ -3,6 +3,15 @@ import Testing
 
 @Suite("Sandbox turn failures")
 struct SandboxTurnFailureTests {
+    @Test func reportsOnlyTheManagedServiceOutOfMemoryMarker() throws {
+        let marker = SandboxTurnFailure.outOfMemoryMarker
+        let message = try #require(SandboxTurnFailure.outOfMemoryMessage(for: "unrelated stderr\n\(marker)\n"))
+        #expect(message.contains("ran out of memory"))
+        #expect(message.contains("Settings → Computer"))
+        #expect(SandboxTurnFailure.outOfMemoryMessage(for: "command: echo \(marker)") == nil)
+        #expect(SandboxTurnFailure.outOfMemoryMessage(for: "npm: JavaScript heap out of memory") == nil)
+    }
+
     @Test(arguments: [
         "thread-store conflict: thread 12345678-1234-1234-1234-123456789abc already has an active writer",
         "thread 12345678-1234-1234-1234-123456789abc already has an active writer",

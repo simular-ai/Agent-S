@@ -36,6 +36,7 @@ struct SandboxCodexTurnTests {
         #expect(!launch.contains("systemd-run --user"))
         #expect(!launch.contains("systemctl --user"))
         #expect(launch.contains("--property=KillMode=control-group"))
+        #expect(launch.contains(#"--property='ExecStopPost=-/bin/sh -c "if [ \"$$SERVICE_RESULT\" = oom-kill ]; then echo; echo AGENT_S_SANDBOX_TURN_OOM; fi >&2"'"#))
         #expect(launch.contains("--property=UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS"))
         #expect(launch.contains(#"exec /bin/bash -c "$2""#))
         #expect(launch.contains(#"9>&- &"#))
