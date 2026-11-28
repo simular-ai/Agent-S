@@ -1757,7 +1757,9 @@ final class AgentSession: ObservableObject, Identifiable {
         if status != 0 {
             let reason = stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             let message: String
-            if sandboxTurn, status == 255 {
+            if sandboxTurn, let recovery = SandboxTurnFailure.outOfMemoryMessage(for: reason) {
+                message = recovery
+            } else if sandboxTurn, status == 255 {
                 message = reason.contains("remote port forwarding failed")
                     ? "The sandbox couldn't open the model connection. A previous connection may still be closing."
                     : "The sandbox connection ended before Agent S could confirm the turn finished. Check the result before sending again."

@@ -36,12 +36,14 @@ public struct SandboxCodexTurn: Sendable {
 
         # Use the guest's system manager because streaming needs a D-Bus socket.
         # The transient service still runs with the SSH user's identity and profile.
+        # Report the service's OOM result even when the harness cannot write a final event.
         exec 8<&0
         sudo -n /usr/bin/systemd-run --system --quiet --wait --pipe --collect --expand-environment=no \
           --uid="$uid" --gid="$gid" --working-directory="$HOME" \
           --setenv="HOME=$HOME" --setenv="PATH=$PATH" --setenv="XDG_RUNTIME_DIR=$runtime" \
           --service-type=exec --property=KillMode=control-group --property=TimeoutStopSec=10s \
           --property=UnsetEnvironment=DBUS_SESSION_BUS_ADDRESS \
+          --property='ExecStopPost=-/bin/sh -c "if [ \"$$SERVICE_RESULT\" = oom-kill ]; then echo; echo \#(SandboxTurnFailure.outOfMemoryMarker); fi >&2"' \
           --unit="$unit" --description="$description" -- \
           /bin/bash -c 'if [ -f "$1" ]; then exit 70; fi; exec /bin/bash -c "$2"' bash \
           "$cancelled" \#(Self.quote(command)) <&8 8<&- 9>&- &
