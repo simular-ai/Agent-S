@@ -4,24 +4,23 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.8</title>
-            <pubDate>Fri, 27 Nov 2026 20:01:33 -0800</pubDate>
-            <sparkle:version>6</sparkle:version>
-            <sparkle:shortVersionString>0.3.8</sparkle:shortVersionString>
+            <title>0.3.9</title>
+            <pubDate>Sat, 28 Nov 2026 00:33:29 -0800</pubDate>
+            <sparkle:version>7</sparkle:version>
+            <sparkle:shortVersionString>0.3.9</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[## macOS
 
-- When you mention another agent, the sending agent drafts a message from your request and conversation context. Review the exact message before it’s sent.
-- Add images and files to sandbox, This Mac, and Sai chats using the plus button or drag and drop.
-- Send follow-ups from the floating This Mac chat and use **Take over**, **Resume**, or **Stop**. New Mac actions pause while you type.
-- Choose **Ask for approval** or **Auto-approve** for the current or next This Mac task from the chat header.
-- Tool activity now shows a compact list of steps with clearer titles and expandable details. Press **Shift–Return** to add a line break to a draft.
+- Press Command-V in the main chat to add a clipboard image as an attachment.
+- Chat activity summaries fit on a single line.
+- Approval preferences persist across runs and are available on each computer type.
+- If a sandbox task runs out of memory, Agent S explains how to increase the sandbox’s memory.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.8/Agent-S-macOS-0.3.8-arm64.dmg" length="189810009" type="application/octet-stream" sparkle:edSignature="eLcCRhiPPAePzlWF5WmxjC3AgOYCzKh08KpUs2Bsp3/nT91qJAVpILRDTxeHdQav9+IWAiUV+XawupgEBsCnDw=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.9/Agent-S-macOS-0.3.9-arm64.dmg" length="192161975" type="application/octet-stream" sparkle:edSignature="3cYsDiTJmjwC3zQpB0T/JUAwABSnOnwOT7jD5bZ9v0C1L8Of6rP3gAtmbDuJyKvMjClgws7tIorCW0H87ThbBg=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: x+T2aq2qGdJi5fXuWCwHgbsVUjDBKTCCR3gJX+/7yumUEaBYVLr1iCdrKWZ6Z07CLrwNQpa+oCJuugic/44OCA==
-length: 1875
+edSignature: 1B8mf3woB3oo8PKlRtzZYm3IaPc5iKtrJjQUqHl/sZb5cKA5W+arROGmWqolkyMmhNDFFvTQQvJ/s2fvgijsCQ==
+length: 1528
 -->
