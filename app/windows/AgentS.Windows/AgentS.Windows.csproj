@@ -4,6 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
     <UseWinUI>true</UseWinUI>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Required for PRI/XAML resource indexing even when WindowsPackageType is None. -->
     <EnableMsixTooling>true</EnableMsixTooling>
     <ProjectPriFileName>resources.pri</ProjectPriFileName>
@@ -39,6 +40,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.7.0" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.9457" PrivateAssets="all" />
+    <PackageReference Include="Velopack" Version="1.2.161" />
     <ProjectReference Include="../AgentS.Core/AgentS.Core.csproj" />
   </ItemGroup>
   <ItemGroup>

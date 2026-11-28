@@ -144,15 +144,33 @@ public sealed partial class MainWindow
         var current = version is null ? "0.0.0" : $"{version.Major}.{version.Minor}.{version.Build}";
         var updateStatus = Muted($"{AppIdentity.Name} {current}");
         var checkUpdates = new Button { Content = "Check for Updates…" };
+        var restartUpdate = new Button { Content = "Restart to update", Visibility = Visibility.Collapsed };
         Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(checkUpdates, "CheckForUpdates");
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(restartUpdate, "RestartToUpdate");
+        void RefreshUpdate()
+        {
+            if (availableUpdate is not { } available) return;
+            updateStatus.Text = $"Agent S {available.TargetFullRelease.Version} is available.";
+            restartUpdate.Visibility = Visibility.Visible;
+        }
+        RefreshUpdate();
         checkUpdates.Click += async (_, _) =>
         {
             checkUpdates.IsEnabled = false;
             updateStatus.Text = "Checking…";
-            updateStatus.Text = await CheckForUpdates(current);
+            updateStatus.Text = updateManager is not null
+                ? await CheckInstalledUpdate(notify: false) : await CheckForUpdates(current);
+            restartUpdate.Visibility = availableUpdate is not null ? Visibility.Visible : Visibility.Collapsed;
             checkUpdates.IsEnabled = true;
         };
-        content.Children.Add(updateStatus); content.Children.Add(checkUpdates);
+        restartUpdate.Click += async (_, _) =>
+        {
+            checkUpdates.IsEnabled = restartUpdate.IsEnabled = false;
+            updateStatus.Text = "Preparing the update…";
+            updateStatus.Text = await RestartWithUpdate();
+            checkUpdates.IsEnabled = restartUpdate.IsEnabled = true;
+        };
+        content.Children.Add(updateStatus); content.Children.Add(checkUpdates); content.Children.Add(restartUpdate);
 
         content.Children.Add(Muted("Ollama runs models on this PC. Simular Box agents run their harness on this PC and use the Box's tools. Agent S adds your OpenRouter key to each OpenRouter request itself."));
         dialog = new ContentDialog
@@ -288,13 +306,14 @@ public sealed partial class MainWindow
             if (latest.Length == 0) return "Couldn't read the latest release.";
             if (OllamaModels.IsAtLeast(current, latest)) return $"Agent S {current} is up to date.";
             var asset = root.TryGetProperty("assets", out var assets) && assets.ValueKind == JsonValueKind.Array
-                ? assets.EnumerateArray().FirstOrDefault(a => a.TryGetProperty("name", out var n) && n.GetString() is { } name
-                    && name.Contains("windows", StringComparison.OrdinalIgnoreCase)
-                    && (name.EndsWith(".msix", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".zip", StringComparison.OrdinalIgnoreCase)))
+                ? assets.EnumerateArray().Where(a => a.TryGetProperty("name", out var n)
+                    && n.GetString() is "AgentS-Windows-x64-Setup.exe" or "AgentS-Windows-x64.zip")
+                    .OrderByDescending(a => a.GetProperty("name").GetString() == "AgentS-Windows-x64-Setup.exe")
+                    .FirstOrDefault()
                 : default;
             var page = asset.ValueKind == JsonValueKind.Object && asset.TryGetProperty("browser_download_url", out var u) ? u.GetString()
                 : root.TryGetProperty("html_url", out var h) ? h.GetString() : null;
-            if (page is null || !Uri.TryCreate(page, UriKind.Absolute, out var uri) || uri.Scheme != "https" || !uri.Host.EndsWith("github.com", StringComparison.OrdinalIgnoreCase))
+            if (page is null || !Uri.TryCreate(page, UriKind.Absolute, out var uri) || uri.Scheme != "https" || uri.Host != "github.com")
                 return $"Agent S {latest} is available.";
             var open = await Dialog("Update available", $"Agent S {latest} is available (you have {current}).{(asset.ValueKind == JsonValueKind.Object ? "" : " It doesn't include a Windows download yet; the release page has the details.")}",
                 asset.ValueKind == JsonValueKind.Object ? "Download" : "Open release page").ShowAsync();

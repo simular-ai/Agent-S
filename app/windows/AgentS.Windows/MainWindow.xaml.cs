@@ -65,7 +65,7 @@ public sealed partial class MainWindow : Window
         InitializeComputerView();
         InitializeChatExtras();
         ModelBrowser.Agents = () => conversations;
-        Closed += (_, _) => { run?.Cancel(); client?.Dispose(); };
+        Closed += (_, _) => { updateTimer?.Stop(); run?.Cancel(); client?.Dispose(); };
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -83,6 +83,7 @@ public sealed partial class MainWindow : Window
         }
         catch (Exception error) { Error(error); }
         Controls();
+        StartUpdateChecks();
     }
 
     private bool IsPrivate => selected?.Target == ConversationTarget.Private;
@@ -1860,6 +1861,7 @@ public sealed partial class MainWindow : Window
 
     private async void Closing(AppWindow sender, AppWindowClosingEventArgs args)
     {
+        if (restartingForUpdate && !allowClose) { args.Cancel = true; return; }
         if (allowClose || !running || runOwner is not { } owner) return;
         args.Cancel = true;
         if (closing) return;
