@@ -567,6 +567,29 @@ struct ChatView: View {
         if model.agent.handoffConversationID == conversation { composerFocused = true }
     }
 
+    private func pasteImages() -> Bool {
+        guard supportsAttachments else { return false }
+        let conversation = agent.handoffConversationID
+        var draft = attachmentDraft
+        var handled = false
+        var errorMessage: String?
+        for item in NSPasteboard.general.pasteboardItems ?? [] {
+            do {
+                guard let file = try ComposerFile.clipboardImage(from: item) else { continue }
+                draft.append(file)
+                handled = true
+            } catch CocoaError.fileReadTooLarge {
+                errorMessage = "A clipboard image exceeds the 25 MB attachment limit."
+            } catch {
+                errorMessage = "Couldn’t attach an image from the clipboard."
+            }
+        }
+        guard handled || errorMessage != nil else { return false }
+        draft.error = errorMessage
+        attachmentDrafts[conversation] = draft
+        return true
+    }
+
     private func acceptFileDrop(_ providers: [NSItemProvider]) -> Bool {
         guard supportsAttachments, attachmentDraft.pendingDrops == 0 else { return false }
         let files = providers.filter(ComposerFile.accepts)
@@ -791,6 +814,8 @@ struct ChatView: View {
                             return .handled
                         }
                         .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
+                        .background(ComposerPasteShortcut(isEnabled: composerFocused && supportsAttachments,
+                                                          paste: pasteImages))
                         .padding(.vertical, 9)
                     roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
                         if stopsTurn { agent.stop() }
@@ -1020,20 +1045,35 @@ private struct ChatButtonHover: ViewModifier {
 private struct ComposerFile: Identifiable, Sendable {
     let id = UUID()
     let url: URL
-    var temporaryImage: DroppedComposerImage? = nil
+    var temporaryImage: TemporaryComposerImage? = nil
 
     private static let standardImages: [UTType] = [.png, .jpeg, .gif, .tiff, .heic, .heif, .bmp, .ico, .svg, .webP, .image]
 
     static func accepts(_ item: NSItemProvider) -> Bool {
-        item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) || imageType(for: item) != nil
+        item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) || imageType(in: item.registeredTypeIdentifiers) != nil
     }
 
-    private static func imageType(for item: NSItemProvider) -> UTType? {
-        item.registeredTypeIdentifiers.lazy.compactMap { identifier -> UTType? in
-            if let type = standardImages.first(where: { $0.identifier == identifier }) { return type }
+    private static func imageType(in identifiers: [String]) -> UTType? {
+        identifiers.lazy.compactMap { identifier -> UTType? in
             guard let type = UTType(identifier), type.conforms(to: .image) else { return nil }
             return type
         }.first
+    }
+
+    static func clipboardImage(from item: NSPasteboardItem) throws -> ComposerFile? {
+        if let address = item.string(forType: .fileURL), let url = URL(string: address), url.isFileURL,
+           UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) == true {
+            return ComposerFile(url: url)
+        }
+        let identifiers = item.types.map(\.rawValue)
+        // Clipboard copies can represent the same image as both PNG and TIFF.
+        let type = standardImages.first { identifiers.contains($0.identifier) } ?? imageType(in: identifiers)
+        guard let type else { return nil }
+        guard let data = item.data(forType: NSPasteboard.PasteboardType(type.identifier)), !data.isEmpty else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        let image = try TemporaryComposerImage(data: data, type: type)
+        return ComposerFile(url: image.url, temporaryImage: image)
     }
 
     static func load(from item: NSItemProvider, completion: @escaping @Sendable (ComposerFile?) -> Void) {
@@ -1047,26 +1087,26 @@ private struct ComposerFile: Identifiable, Sendable {
             }
             return
         }
-        guard let type = imageType(for: item) else {
+        guard let type = imageType(in: item.registeredTypeIdentifiers) else {
             completion(nil)
             return
         }
         item.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
             if let url {
-                let image = try? DroppedComposerImage(copying: url, type: type)
+                let image = try? TemporaryComposerImage(copying: url, type: type)
                 completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
                 return
             }
             item.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
-                let image = data.flatMap { try? DroppedComposerImage(data: $0, type: type) }
+                let image = data.flatMap { try? TemporaryComposerImage(data: $0, type: type) }
                 completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
             }
         }
     }
 }
 
-/// A provider's image URL lasts for its completion handler. Keep a private copy for the draft.
-private final class DroppedComposerImage: Sendable {
+/// Holds a private copy of image data for as long as it remains in the draft.
+private final class TemporaryComposerImage: Sendable {
     let url: URL
     private let directory: URL
 
