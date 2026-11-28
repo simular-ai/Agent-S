@@ -82,6 +82,7 @@ class LMMEngineAnthropic(LMMEngine):
         self.model = model
         self.thinking = thinking
         self.api_key = api_key
+        self.base_url = base_url or None
         self.llm_client = None
         self.temperature = temperature
 
@@ -94,7 +95,7 @@ class LMMEngineAnthropic(LMMEngine):
             raise ValueError(
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named ANTHROPIC_API_KEY"
             )
-        self.llm_client = Anthropic(api_key=api_key)
+        self.llm_client = Anthropic(api_key=api_key, base_url=self.base_url)
         # Use the instance temperature if not specified in the call
         temp = self.temperature if temperature is None else temperature
         if self.thinking:
@@ -134,7 +135,7 @@ class LMMEngineAnthropic(LMMEngine):
             raise ValueError(
                 "An API Key needs to be provided in either the api_key parameter or as an environment variable named ANTHROPIC_API_KEY"
             )
-        self.llm_client = Anthropic(api_key=api_key)
+        self.llm_client = Anthropic(api_key=api_key, base_url=self.base_url)
         full_response = self.llm_client.messages.create(
             system=messages[0]["content"][0]["text"],
             model=self.model,
