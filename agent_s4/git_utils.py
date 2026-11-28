@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import shlex
 import subprocess
 
 logger = logging.getLogger("agent_s4.git_utils")
@@ -111,7 +112,8 @@ def git_archive_variant(source_clone: str, tag: str, dest_dir: str) -> None:
     os.makedirs(dest_shadow, exist_ok=True)
     inner = shadow_path(source_clone)
     proc = subprocess.run(
-        f"git -C {inner} archive {tag} | tar -x -C {dest_shadow}",
+        f"git -C {shlex.quote(inner)} archive {shlex.quote(tag)} "
+        f"| tar -x -C {shlex.quote(dest_shadow)}",
         shell=True,
         capture_output=True,
         text=True,
