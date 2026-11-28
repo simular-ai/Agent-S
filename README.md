@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.7/Agent-S-macOS-0.3.7-arm64.dmg">
+  <a href="https://github.com/simular-ai/Agent-S/releases/download/v0.3.8/Agent-S-macOS-0.3.8-arm64.dmg">
     <img src="https://img.shields.io/badge/Download%20Agent%20S-0969da?style=for-the-badge&amp;logo=apple&amp;logoColor=white" alt="Download Agent S for Mac">
   </a>
   <br>
@@ -53,6 +53,7 @@
 **Agent S** is an open-source computer use agent framework from [Simular](https://www.simular.ai). Give it a task in plain English. It looks at the screen and completes the task by clicking, typing, and scrolling in ordinary desktop and web apps. It runs on macOS, Windows, and Linux.
 
 ## 🥳 Updates
+- [x] **2026/11/27** — Released **[Agent S v0.3.8 for macOS](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.8)** with chat attachments, contextual handoff drafts, and a redesigned floating chat.
 - [x] **2026/11/27** — Released **[Agent S v0.3.7 for macOS](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.7)** with agent handoffs, inline sharing approvals, a Passwords menu, and security fixes.
 - [x] **2026/11/26** — Released **[Agent S v0.3.6 for macOS](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.6)** with model pricing, OpenRouter spend, expandable prompts, and a sandbox shutdown fix.
 - [x] **2026/11/26** — Released **[Agent S v0.3.5 for macOS](https://github.com/simular-ai/Agent-S/releases/tag/v0.3.5)** with sandbox VPN support.
