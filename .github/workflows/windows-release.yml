@@ -215,10 +215,13 @@ jobs:
               $bad += "$($file.Name): $($sig.Status)"
               continue
             }
-            # A valid signature alone is not enough: it must be our certificate,
-            # and timestamped so it outlives the certificate's own expiry.
-            if ($sig.SignerCertificate.Subject -notlike '*O="Simular, Inc."*') {
-              $bad += "$($file.Name): unexpected signer $($sig.SignerCertificate.Subject)"
+            # DirectML can report its valid Microsoft Windows Publisher signature.
+            # Every other file must report Simular as its signer.
+            $subject = $sig.SignerCertificate.Subject
+            $microsoftDirectML = $file.Name -ieq 'DirectML.dll' -and
+              $subject -ceq 'CN=Microsoft Windows Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US'
+            if (-not $microsoftDirectML -and $subject -notlike '*O="Simular, Inc."*') {
+              $bad += "$($file.Name): unexpected signer $subject"
             }
             if (-not $sig.TimeStamperCertificate) {
               $bad += "$($file.Name): signature is not timestamped"
