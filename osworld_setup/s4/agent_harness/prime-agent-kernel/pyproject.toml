@@ -12,7 +12,7 @@ dependencies = [
   "nest-asyncio",
   "numpy",
   "pandas",
-  "pillow>=10",
+  "pillow>=13.0.0",
   "pydantic",
   "python-dotenv",
   "pyyaml",
