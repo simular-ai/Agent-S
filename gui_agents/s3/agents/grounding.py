@@ -1,3 +1,4 @@
+import os
 import re
 from collections import defaultdict
 from io import BytesIO
@@ -388,12 +389,20 @@ class OSWorldACI(ACI):
                 False
             ), f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
 
-    @agent_action
-    def open(self, app_or_filename: str):
-        """Open any application or file with name app_or_filename. Use this action to open applications or files on the desktop, do not open manually.
-        Args:
-            app_or_filename:str, the name of the application or filename to open
-        """
+    @staticmethod
+    def _looks_like_path(app_or_filename: str) -> bool:
+        """Returns True when the argument is a filesystem path rather than a
+        bare application or file name (e.g. "/home/user/report.xlsx",
+        "~/Documents/notes.txt" or "C:\\Users\\me\\budget.xlsx")."""
+        s = app_or_filename.strip()
+        if s.startswith(("/", "~")):
+            return True
+        if re.match(r"^[A-Za-z]:[\\/]", s):
+            return True
+        return "/" in s or "\\" in s
+
+    def _search_and_launch_code(self, app_or_filename: str) -> str:
+        """Code that opens an app or file by typing its name into the OS launcher."""
         if self.platform == "linux":
             return f"import pyautogui; import time; pyautogui.hotkey('win'); time.sleep(0.5); pyautogui.write({repr(app_or_filename)}); time.sleep(1.0); pyautogui.hotkey('enter'); time.sleep(0.5)"
         elif self.platform == "darwin":
@@ -409,6 +418,47 @@ class OSWorldACI(ACI):
             assert (
                 False
             ), f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
+
+    def _open_path_code(self, path: str) -> str:
+        """Code that opens a file path with its default application.
+
+        The OS launcher used by `_search_and_launch_code` searches by name, so
+        typing a full path into it does nothing useful. Paths are handed to the
+        platform's opener instead. If the path does not exist on the target
+        machine (e.g. the model hallucinated a directory), fall back to
+        searching for the file by its basename.
+        """
+        if self.platform == "linux":
+            opener = "subprocess.Popen(['xdg-open', _path])"
+        elif self.platform == "darwin":
+            opener = "subprocess.Popen(['open', _path])"
+        elif self.platform == "windows":
+            opener = "os.startfile(_path)"
+        else:
+            assert (
+                False
+            ), f"Unsupported platform: {self.platform}. Supported platforms are: darwin, linux, windows."
+
+        basename = os.path.basename(path.rstrip("/\\").replace("\\", "/")) or path
+        fallback = self._search_and_launch_code(basename)
+        return (
+            "import os; import subprocess; import time\n"
+            f"_path = os.path.expanduser({repr(path)})\n"
+            "if os.path.exists(_path):\n"
+            f"    {opener}; time.sleep(1.0)\n"
+            "else:\n"
+            f"    {fallback}"
+        )
+
+    @agent_action
+    def open(self, app_or_filename: str):
+        """Open any application or file with name app_or_filename. Use this action to open applications or files on the desktop, do not open manually.
+        Args:
+            app_or_filename:str, the name of the application or filename to open. A full file path (e.g. "/home/user/Documents/report.xlsx") is also accepted and opens that file directly with its default application.
+        """
+        if self._looks_like_path(app_or_filename):
+            return self._open_path_code(app_or_filename)
+        return self._search_and_launch_code(app_or_filename)
 
     @agent_action
     def type(
