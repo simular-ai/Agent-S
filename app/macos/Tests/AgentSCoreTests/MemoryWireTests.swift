@@ -118,6 +118,25 @@ struct MemoryWireTests {
         #expect(completion.operations == nil)
     }
 
+    @Test func showsTheReplyAfterSteeringPastAnEarlierMemoryTrailer() {
+        var wire = MemoryWire()
+        let markers = markers(in: wire)
+        let initialReply = "I’m checking the available options."
+        let earlierProposal = #"{"operations":[{"op":"add","kind":"decision","text":"Use the first option."}]}"#
+        let priorText = initialReply + markers.open + earlierProposal + markers.close
+        #expect(wire.consume(.textDelta(id: "initial", text: priorText)) ==
+                [.textDelta(id: "initial", text: initialReply)])
+
+        #expect(wire.consume(.userInputReceived).isEmpty)
+        let followUpReply = "The second option meets your requirements."
+        let finalProposal = #"{"operations":[{"op":"add","kind":"decision","text":"Use the second option."}]}"#
+        #expect(wire.consume(.textDelta(id: "follow-up", text: followUpReply)) ==
+                [.textDelta(id: "follow-up", text: followUpReply)])
+        #expect(wire.consume(.textSnapshot(id: "follow-up",
+                                           text: followUpReply + markers.open + finalProposal + markers.close)).isEmpty)
+        #expect(wire.finish().operations == [.add(kind: .decision, text: "Use the second option.")])
+    }
+
     @Test func decodesFencedPayloadWithStrictOperationFields() {
         var wire = MemoryWire()
         let markers = markers(in: wire)
