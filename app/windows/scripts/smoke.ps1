@@ -114,6 +114,23 @@ try {
     }
     Assert-State ($null -ne $localSetup -and (Reveal-Control $localSetup)) 'Private setup or local model is reachable in the dialog'
     Capture 'private-agent'
+    $thisPcTarget = Find-Element 'TargetThisPc'
+    $thisPcTarget.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    $harness = Find-Element 'PcHarness'
+    Assert-State (Reveal-Control $harness) 'This PC has a reachable harness selector'
+    $picker = $harness.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+    $picker.Expand()
+    foreach ($harnessName in 'Claude Code', 'Codex', 'DeepSeek') {
+        $namedHarness = New-Object System.Windows.Automation.PropertyCondition(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $harnessName)
+        $option = $null
+        for ($attempt = 0; $attempt -lt 20 -and $null -eq $option; $attempt++) {
+            $option = $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $namedHarness)
+            if ($null -eq $option) { Start-Sleep -Milliseconds 100 }
+        }
+        Assert-State ($null -ne $option) "This PC offers $harnessName"
+    }
+    $picker.Collapse()
     $boxTarget = Find-Element 'TargetBox'
     $boxTarget.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
     Assert-State (Reveal-Control (Find-Element 'BoxName')) 'Simular Box is selectable and its box name field is reachable'

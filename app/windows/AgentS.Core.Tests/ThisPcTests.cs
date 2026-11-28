@@ -21,6 +21,16 @@ internal static class ThisPcTests
             "This PC target and provider are saved by name");
         check(!JsonSerializer.Serialize(new ChatEntry { Text = "x", LocalAnswer = _ => { } }).Contains("LocalAnswer"), "Pending approvals are never saved to history");
 
+        check(restored.ThisPcHarness == PrivateHarness.ClaudeCode, "Older This PC agents keep Claude Code");
+        foreach (var harness in new[] { PrivateHarness.Codex, PrivateHarness.DeepSeek })
+        {
+            restored.Harness = harness;
+            restored.HarnessSessions[harness] = "fixture-session";
+            var loaded = JsonSerializer.Deserialize<Conversation>(JsonSerializer.Serialize(restored))!;
+            check(loaded.ThisPcHarness == harness && loaded.HarnessSessions[harness] == "fixture-session",
+                $"This PC persists its selected {harness} harness and session");
+        }
+
         // ---- What runs without asking ----
         JsonElement Input(string json) { using var d = JsonDocument.Parse(json); return d.RootElement.Clone(); }
         JsonElement Bash(string command) => Input(JsonSerializer.Serialize(new { command }));

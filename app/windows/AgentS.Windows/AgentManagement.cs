@@ -206,7 +206,12 @@ public sealed partial class MainWindow
         }
         else
         {
-            var harnesses = agent.Target == ConversationTarget.Private ? Harnesses.All : [PrivateHarness.ClaudeCode];
+            var harnesses = agent.Target switch
+            {
+                ConversationTarget.Private => Harnesses.All,
+                ConversationTarget.ThisPc => Harnesses.ThisPc,
+                _ => [PrivateHarness.ClaudeCode],
+            };
             harness = new ComboBox { Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = harnesses.Select(h => h.DisplayName()).ToArray(),
                 SelectedIndex = Math.Max(0, Array.IndexOf(harnesses, agent.Harness ?? (agent.Target == ConversationTarget.Private ? PrivateHarness.AgentS : PrivateHarness.ClaudeCode))),
                 IsEnabled = harnesses.Length > 1 };
@@ -259,7 +264,12 @@ public sealed partial class MainWindow
         if (saiModel?.SelectedItem is SaiModel model) agent.ModelId = model.Id;
         if (harness is not null && provider is not null && !isRunning)
         {
-            var harnesses = agent.Target == ConversationTarget.Private ? Harnesses.All : [PrivateHarness.ClaudeCode];
+            var harnesses = agent.Target switch
+            {
+                ConversationTarget.Private => Harnesses.All,
+                ConversationTarget.ThisPc => Harnesses.ThisPc,
+                _ => [PrivateHarness.ClaudeCode],
+            };
             agent.Harness = harnesses[Math.Max(0, harness.SelectedIndex)];
             if (provider.SelectedIndex == 1 && (openRouterModel is null ? "" : ModelText(openRouterModel)) is { Length: > 0 } hostedModel)
             { agent.Provider = ModelProvider.OpenRouter; agent.ModelId = hostedModel; }

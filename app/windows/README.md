@@ -34,7 +34,7 @@ Create a **Private** agent and enter the installed Ollama model tag. To exercise
 
 ## Coding-agent harnesses
 
-As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Harness** inside the Private computer, or the app's built-in **Agent S** loop. Choose the harness in **New agent › This PC**, or switch an existing agent from the model menu above the chat. New Private agents default to Claude Code; agents created before harness support keep the built-in loop.
+As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Harness** inside the Private computer, or the app's built-in **Agent S** loop. Choose the harness in **New agent › Private**, or switch an existing agent from the model menu above the chat. New Private agents default to Claude Code; agents created before harness support keep the built-in loop.
 
 - The harnesses use the macOS app's commands: `claude -p --output-format stream-json`, `codex exec --json --oss`, and `dsh --profile headless --json` with the same pinned version and privacy overlay. Their JSON events become chat messages and activity rows, and each harness's session ID is kept per agent so the next message continues the session.
 - They drive the screen with the same `web` (Playwright over Chromium's loopback debugging port) and `ui` (simulang accessibility tree) shell commands as the macOS guest. The screen panel refreshes while a harness works.
@@ -47,14 +47,28 @@ As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Ha
 
 ## This PC
 
-Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps, shell and files. Choose **This PC · your apps and files** in **New agent**. These agents use the Claude Code CLI installed on the PC, with Ollama or OpenRouter as the model provider.
+Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps, shell and files. Choose **This PC · your apps and files** in **New agent**. Choose **Claude Code**, **Codex**, or **DeepSeek** in the **Harness** field. Existing agents can switch in **Agent Settings**. All three use Ollama or OpenRouter, and keep separate sessions.
 
-- **Requirements:** [Claude Code](https://code.claude.com/docs/en/setup) and Git for Windows, whose Git Bash Claude Code uses for its Bash tool. New agent checks for both. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
-- **Approvals:** every tool use waits for you. Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied.
+- **Requirements:** Git for Windows provides Git Bash for This PC commands. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup) or the [Codex CLI](https://developers.openai.com/codex/cli) to use its harness. DeepSeek setup is below. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
+- **Approvals:** Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied. Codex runs without execution environments, and DeepSeek uses the restricted SDK profile. Both request the app's approval through the same Windows command tool.
 - **Using apps:** the agent uses `pc`, a PowerShell tool built on Windows UI Automation and the Windows counterpart of the Mac's `mac` tool. It needs nothing installed. Its commands are `pc apps`, `pc open`, `pc focus`, `pc tree` (the front window with refs), `pc click`, `pc type`, `pc key` and `pc screenshot`. The screen panel shows the agent's latest screenshot.
 - **OpenRouter:** add a key in **Settings** or in New agent. It is stored in Windows Credential Locker. A loopback proxy adds it to requests to `https://openrouter.ai/api/v1` and requires a per-launch token, so the agent never holds the key. Prompts and what the agent reads go to OpenRouter and the model's provider. Pick any model in the model browser or type an id from openrouter.ai/models.
 - **Zero Data Retention:** as on macOS, **Request Zero Data Retention (ZDR)** is on by default and applies to every OpenRouter agent. With it on, the proxy forwards only model requests and adds `"provider": {"zdr": true}` to each, so OpenRouter routes them only to ZDR endpoints. Turn it off in **Settings** or next to the OpenRouter model field.
 - **OpenRouter on the Private computer:** every Private harness can use OpenRouter, the built-in Agent S loop included (OpenAI chat completions through the proxy). The relay forwards a second guest port, `127.0.0.1:11435`, to the same proxy. The guest gets only the proxy's per-launch token, never the key. With OpenRouter, prompts and what the agent reads leave the PC, so only choose it when that's acceptable.
+
+### Set up DeepSeek on This PC
+
+Install Node.js 24 and run this in PowerShell from the directory containing the published `AgentS.Windows.exe`. Set `$channel` to `'Agent S'` for the production build.
+
+```powershell
+$channel = 'Agent S Dev'
+$runtime = Join-Path $env:LOCALAPPDATA "Simular/$channel/DeepSeekRuntime"
+New-Item -ItemType Directory -Force $runtime | Out-Null
+Copy-Item -LiteralPath './DeepSeekRuntime/package.json','./DeepSeekRuntime/package-lock.json' -Destination $runtime
+npm.cmd ci --prefix $runtime --omit=dev --ignore-scripts --no-audit --no-fund
+```
+
+Agent S Dev also accepts `AGENT_S_DSH_RUNTIME` for a development runtime directory with the locked packages and an optional portable Node binary at `bin/node.exe`.
 
 ## Matching the macOS app
 
@@ -120,7 +134,7 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Sai cloud chat, named conversations, approvals | Implemented, pending Windows/live verification | Streaming/recovery and approval UX validation |
 | Computer display and context | Live screen, Take over and Maximize (Private), Action items, Open work, Memory, Session and instructions | Take over on a Box, saved/resumed sandbox state |
 | Composer | Follow-up queue with Stop & send | Live steering of a running DeepSeek turn; several agents working at once |
-| This Mac → This PC | Claude Code with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Codex with a Codex account, Claude Code account sign-in and DeepSeek on the host |
+| This Mac → This PC | Claude Code, Codex and DeepSeek with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Claude Code and Codex account sign-in |
 | Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
 | Simular Box | Claude Code with Ollama or OpenRouter, screenshot and live view | Verify a live Box turn, session resume, wake and stop; Codex, DeepSeek and account sign-in remain follow-ups |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |

@@ -1,0 +1,56 @@
+- id: llm-deepseek
+  disabled: true
+- id: session-log-deepseek
+  disabled: true
+- id: plugin-package-inventory-deepseek
+  disabled: true
+- id: deepseek-llm-api-extensions
+  disabled: true
+- id: tool-fs
+  disabled: true
+- id: tool-working-directory
+  disabled: true
+- id: persistent-bash
+  disabled: true
+- id: persistent-pwsh
+  disabled: true
+- id: terminal-bash
+  disabled: true
+- id: terminal-pwsh
+  disabled: true
+- id: pty
+  disabled: true
+- id: subprocess
+  disabled: true
+- id: mcp-resources
+  disabled: true
+- id: sessions
+  config:
+    root: !!js process.env.AGENT_S_DSH_SESSIONS
+    compression: none
+- insert:
+    - id: llm-pi-ai
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          agent-s:
+            api: openai-completions
+            apiKeyEnv: AGENT_S_MODEL_TOKEN
+            baseURL: !!js process.env.AGENT_S_MODEL_URL
+            models:
+              - id: !!js process.env.AGENT_S_MODEL
+                contextWindow: !!js Number(process.env.AGENT_S_MODEL_CONTEXT)
+                maxTokens: !!js Number(process.env.AGENT_S_MODEL_OUTPUT)
+    - id: mcp-agent_s
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: agent_s
+        transport: streamable-http
+        url: !!js process.env.AGENT_S_PC_URL
+        headers:
+          Authorization: !!js process.env.AGENT_S_PC_AUTHORIZATION
+        startupTimeoutMs: 10000
+        toolCallTimeoutMs: 1800000
+        reconnect:
+          enabled: false
+        failOnStartupError: true

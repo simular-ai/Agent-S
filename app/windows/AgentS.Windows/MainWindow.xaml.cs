@@ -178,7 +178,7 @@ public sealed partial class MainWindow : Window
         IEnumerable<(string Id, string Label)> choices;
         if (owner.Target is ConversationTarget.ThisPc or ConversationTarget.Box)
         {
-            // Claude Code on this PC (or driving a Box): a model from Ollama, or from OpenRouter with the saved key.
+            // This PC and Box can use Ollama, or OpenRouter with the saved key.
             string[] installed = [];
             try { using var agent = new LocalAgent(); installed = await agent.Models(); } catch { }
             void AddChoice(ModelProvider provider, string id)
@@ -195,6 +195,23 @@ public sealed partial class MainWindow : Window
             var openRouterChoices = ThisPcAgent.SuggestedOpenRouterModels.ToList();
             if (owner.Provider == ModelProvider.OpenRouter && owner.ModelId is { } current && !openRouterChoices.Contains(current)) openRouterChoices.Insert(0, current);
             if (Secrets.ReadOpenRouter() is not null) foreach (var id in openRouterChoices) AddChoice(ModelProvider.OpenRouter, id);
+            if (owner.Target == ConversationTarget.ThisPc)
+            {
+                var harnessMenu = new MenuFlyoutSubItem { Text = "Harness", IsEnabled = owner != runOwner };
+                foreach (var harness in Harnesses.ThisPc)
+                {
+                    var item = new ToggleMenuFlyoutItem { Text = harness.DisplayName(), IsChecked = owner.ThisPcHarness == harness };
+                    item.Click += async (_, _) =>
+                    {
+                        if (owner == runOwner) return;
+                        owner.Harness = harness;
+                        Row(owner).Refresh(); Controls(); await Persist();
+                    };
+                    harnessMenu.Items.Add(item);
+                }
+                menu.Items.Add(new MenuFlyoutSeparator());
+                menu.Items.Add(harnessMenu);
+            }
             AddBrowse(); menu.ShowAt(ModelPill);
             return;
         }
@@ -678,9 +695,15 @@ public sealed partial class MainWindow : Window
         var cloud = new StackPanel { Spacing = 12 };
         cloud.Children.Add(keyPanel); cloud.Children.Add(loading); cloud.Children.Add(cloudNotice); cloud.Children.Add(choices);
 
-        // ---- This PC: Claude Code on the PC itself, Ollama or OpenRouter ----
+        // ---- This PC harness selection and the model providers shared with Box ----
         var claudePath = ThisPcRunner.FindClaude();
-        bool hasGitBash = ThisPcRunner.FindGitBash() is not null;
+        var pcHarness = new ComboBox
+        {
+            Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = Harnesses.ThisPc.Select(h => h.DisplayName()).ToArray(), SelectedIndex = 0,
+        };
+        Id(pcHarness, "PcHarness");
+        PrivateHarness SelectedPcHarness() => Harnesses.ThisPc[Math.Max(0, pcHarness.SelectedIndex)];
         string[] openRouterModels = ThisPcAgent.SuggestedOpenRouterModels;
         var pcNotice = new InfoBar { IsClosable = false, Severity = InfoBarSeverity.Warning };
         var pcInstall = new HyperlinkButton { Content = "How to install Claude Code", NavigateUri = ThisPcRunner.ClaudeSetup };
@@ -708,10 +731,7 @@ public sealed partial class MainWindow : Window
         const string boxNote = "Harness: Claude Code, installed on this PC, with no tools on this PC: it works only through your Box's tools (browser, desktop, shell and files on the Box).";
         var desktopNote = Note(pcNote);
         desktop.Children.Add(desktopNote);
-        desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModelField);
-        pcNotice.IsOpen = claudePath is null || !hasGitBash;
-        pcNotice.Message = claudePath is null ? "Claude Code isn't installed on this PC." : "Claude Code on Windows needs Git for Windows (Git Bash).";
-        if (claudePath is null) pcNotice.ActionButton = pcInstall;
+        desktop.Children.Add(pcHarness); desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModelField);
         bool UseOpenRouter() => pcProvider.SelectedIndex == 1;
         string PcModelText() => (pcModel.SelectedItem as string ?? pcModel.Text ?? "").Trim();
         void ShowPcModels()
@@ -753,8 +773,20 @@ public sealed partial class MainWindow : Window
             local.Visibility = mode == PrivateMode ? Visibility.Visible : Visibility.Collapsed;
             desktop.Visibility = mode is PcMode or BoxMode ? Visibility.Visible : Visibility.Collapsed;
             desktopNote.Text = mode == BoxMode ? boxNote : pcNote;
-            // Git Bash is only for This PC's shell; a Box agent has no tools on this PC.
-            pcNotice.IsOpen = claudePath is null || (mode == PcMode && !hasGitBash);
+            pcHarness.Visibility = mode == PcMode ? Visibility.Visible : Visibility.Collapsed;
+            var chosenHarness = mode == PcMode ? SelectedPcHarness() : PrivateHarness.ClaudeCode;
+            string? missing = mode == PcMode ? ThisPcRunner.Missing(chosenHarness)
+                : mode == BoxMode && claudePath is null ? "Install Claude Code on this PC." : null;
+            pcNotice.Message = missing ?? "";
+            pcNotice.IsOpen = missing is not null;
+            pcInstall.Content = chosenHarness == PrivateHarness.DeepSeek ? "DeepSeek setup instructions" : $"Install {chosenHarness.DisplayName()}";
+            pcInstall.NavigateUri = chosenHarness switch
+            {
+                PrivateHarness.Codex => ThisPcRunner.CodexSetup,
+                PrivateHarness.DeepSeek => ThisPcRunner.DeepSeekSetup,
+                _ => ThisPcRunner.ClaudeSetup,
+            };
+            pcNotice.ActionButton = missing is null || missing.StartsWith("Install Git", StringComparison.Ordinal) ? null : pcInstall;
             boxPanel.Visibility = mode == BoxMode ? Visibility.Visible : Visibility.Collapsed;
             bool hasBoxKey = Secrets.ReadBox() is not null;
             boxKeyPanel.Visibility = hasBoxKey ? Visibility.Collapsed : Visibility.Visible;
@@ -769,8 +801,7 @@ public sealed partial class MainWindow : Window
                 CloudMode => client is null ? "Connect your Sai account to continue."
                     : loadingCloud ? "Loading your computers…"
                     : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null,
-                PcMode or BoxMode => claudePath is null ? "Install Claude Code on this PC to continue."
-                    : mode == PcMode && !hasGitBash ? "Install Git for Windows to continue."
+                PcMode or BoxMode => missing is not null ? missing
                     : mode == BoxMode && !hasBoxKey ? "Add your Simular Box key to continue."
                     : UseOpenRouter() && !hasOpenRouterKey ? "Add your OpenRouter key to continue."
                     : !UseOpenRouter() && !checkedPc ? "Checking Ollama…"
@@ -957,6 +988,7 @@ public sealed partial class MainWindow : Window
         localModel.SelectionChanged += async (_, _) => { SetMode(); if (localModel.SelectedItem is string chosenModel) await localPanel.Use(chosenModel); };
         localPanel.Changed += () => SetMode();
         name.TextChanged += (_, _) => SetMode();
+        pcHarness.SelectionChanged += (_, _) => SetMode();
         pcProvider.SelectionChanged += async (_, _) =>
         {
             ShowPcModels(); SetMode(); RefreshModelField(pcModelField);
@@ -1027,7 +1059,7 @@ public sealed partial class MainWindow : Window
             if (PcModelText() is not { Length: > 0 } pcChoice) return;
             conversation.Target = Mode() == BoxMode ? ConversationTarget.Box : ConversationTarget.ThisPc;
             if (Mode() == BoxMode && boxName.Text.Trim() is { Length: > 0 } chosenBox) conversation.BoxName = chosenBox;
-            conversation.Harness = PrivateHarness.ClaudeCode;
+            conversation.Harness = Mode() == PcMode ? SelectedPcHarness() : PrivateHarness.ClaudeCode;
             conversation.Provider = UseOpenRouter() ? ModelProvider.OpenRouter : ModelProvider.Ollama;
             conversation.ModelId = pcChoice;
         }
@@ -1339,6 +1371,7 @@ public sealed partial class MainWindow : Window
         bool onBox = owner.Target == ConversationTarget.Box;
         if (!local && !pc && !onBox && (owner.Target != ConversationTarget.Sai || client is null)) { Show("Connect your Sai account in Settings first."); return false; }
         if (!local && !pc && !onBox && computers.All(c => c.Id != owner.ComputerId)) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return false; }
+        if (pc && ThisPcRunner.Missing(owner.ThisPcHarness) is { } missing) { Show(missing); return false; }
         if (local && !PrivateComputer.IsConfigured) { Show("This PC's Private computer isn't set up yet. Choose New agent › Private › Set up this PC."); return false; }
         return true;
     }
@@ -1448,24 +1481,24 @@ public sealed partial class MainWindow : Window
     /// <summary>One Claude Code turn on this PC itself, every action approved by the person, like "This Mac".</summary>
     private async Task RunThisPc(Conversation owner, string message, CancellationToken token)
     {
-        ThisPcRunner.UseApprovals(Decide);
+        var harness = owner.ThisPcHarness;
         pcTurnOwner = owner; approveRestOfTurn = false;
         var model = owner.ModelId ?? "gemma4";
-        Add(owner, new ChatEntry { Role = "Activity", Text = $"Claude Code · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}" });
+        Add(owner, new ChatEntry { Role = "Activity", Text = $"{harness.DisplayName()} · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}" });
         var calls = new Dictionary<string, (ChatEntry Entry, bool Screenshot)>();
-        var resume = owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode);
+        var resume = owner.HarnessSessions.GetValueOrDefault(harness);
         bool started = false, reportedError = false, finished = false;
         var memory = BeginMemory(owner, message, currentUserEntryId);
         try
         {
-            await foreach (var raw in ThisPcRunner.Run(owner, memory.Prompt, resume, model, token))
+            await foreach (var raw in ThisPcRunner.Run(owner, memory.Prompt, resume, model, Decide, token))
             foreach (var item in memory.Consume(raw))
             {
                 if (item is HarnessFinished { IsError: false }) finished = true;
                 switch (item)
                 {
                     case HarnessStarted begun:
-                        started = true; owner.HarnessSessions[PrivateHarness.ClaudeCode] = begun.SessionId; UpdateContext(); break;
+                        started = true; owner.HarnessSessions[harness] = begun.SessionId; UpdateContext(); break;
                     case HarnessText or HarnessTextDelta or HarnessTextSnapshot:
                         RenderText(owner, item); break;
                     case HarnessToolCall call:
@@ -1486,14 +1519,14 @@ public sealed partial class MainWindow : Window
                         usage = used; UpdateContext(); break;
                     case HarnessFinished { IsError: true } end when !reportedError:
                         reportedError = true;
-                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? "Claude Code reported an error." }); break;
+                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? $"{harness.DisplayName()} reported an error." }); break;
                 }
             }
         }
         catch (PrivateComputerException) when (!started && resume is not null)
         {
-            owner.HarnessSessions.Remove(PrivateHarness.ClaudeCode);
-            throw new PrivateComputerException("Claude Code couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+            owner.HarnessSessions.Remove(harness);
+            throw new PrivateComputerException($"{harness.DisplayName()} could not continue its earlier session. Send the message again to start a new one.");
         }
         finally { FinishMemory(owner, memory, finished && !reportedError && !token.IsCancellationRequested); }
     }
@@ -1580,7 +1613,8 @@ public sealed partial class MainWindow : Window
     private Task<bool> Decide(ApprovalRequest request, CancellationToken cancellation)
     {
         var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        cancellation.Register(() => answer.TrySetResult(false));
+        var registration = cancellation.Register(() => answer.TrySetResult(false));
+        _ = answer.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
         if (!DispatcherQueue.TryEnqueue(async () =>
         {
             var owner = pcTurnOwner;
