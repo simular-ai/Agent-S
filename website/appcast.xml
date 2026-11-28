@@ -4,25 +4,24 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>Agent S</title>
         <item>
-            <title>0.3.7</title>
-            <pubDate>Fri, 27 Nov 2026 02:18:44 -0800</pubDate>
-            <sparkle:version>5</sparkle:version>
-            <sparkle:shortVersionString>0.3.7</sparkle:shortVersionString>
+            <title>0.3.8</title>
+            <pubDate>Fri, 27 Nov 2026 20:01:33 -0800</pubDate>
+            <sparkle:version>6</sparkle:version>
+            <sparkle:shortVersionString>0.3.8</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
             <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
             <description sparkle:format="markdown"><![CDATA[## macOS
 
-- Mention another agent to send a task or share a previous reply. Review the exact message inline and choose when a reply should start a new turn.
-- Queued follow-ups reach a live turn when the harness can accept them. Shared sandbox turns wait for confirmed cleanup.
-- The Computer toolbar groups Chrome Password Manager and 1Password in one Passwords menu.
-- The sidebar has a Discord community button, and the production app has a refined indigo icon.
-
-This update also patches bundled runtime dependencies and tightens handoff privacy.
+- When you mention another agent, the sending agent drafts a message from your request and conversation context. Review the exact message before it’s sent.
+- Add images and files to sandbox, This Mac, and Sai chats using the plus button or drag and drop.
+- Send follow-ups from the floating This Mac chat and use **Take over**, **Resume**, or **Stop**. New Mac actions pause while you type.
+- Choose **Ask for approval** or **Auto-approve** for the current or next This Mac task from the chat header.
+- Tool activity now shows a compact list of steps with clearer titles and expandable details. Press **Shift–Return** to add a line break to a draft.
 ]]></description>
-            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.7/Agent-S-macOS-0.3.7-arm64.dmg" length="189587101" type="application/octet-stream" sparkle:edSignature="tmHY0QNpvaLfOwVFVQwn2HB72+BZVOQJokkLwSo1B8r8mP5vuNcwEYbid3G8Yqc6/8j/l8Atx4UxV0zKmJkQAA=="></enclosure>
+            <enclosure url="https://github.com/simular-ai/Agent-S/releases/download/v0.3.8/Agent-S-macOS-0.3.8-arm64.dmg" length="189810009" type="application/octet-stream" sparkle:edSignature="eLcCRhiPPAePzlWF5WmxjC3AgOYCzKh08KpUs2Bsp3/nT91qJAVpILRDTxeHdQav9+IWAiUV+XawupgEBsCnDw=="></enclosure>
         </item>
     </channel>
 </rss><!-- sparkle-signatures:
-edSignature: wDr9+839ZGmgGZcdk2eC5MC2p+b3devH/M6cHRSGuFsulpSTcIfZT2dGKZZvBwDvOpaLD3AjD29TQAbWFI6hCQ==
-length: 1761
+edSignature: x+T2aq2qGdJi5fXuWCwHgbsVUjDBKTCCR3gJX+/7yumUEaBYVLr1iCdrKWZ6Z07CLrwNQpa+oCJuugic/44OCA==
+length: 1875
 -->
