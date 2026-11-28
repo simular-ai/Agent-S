@@ -2,6 +2,24 @@
 
 Agent S for Windows is a native WinUI 3 app for running agents on a private Linux computer. New conversations default to **Private**. Existing Sai conversations keep their cloud target. Select **Cloud · Sai computer** to create another one. Windows CI publishes the development app and runs credential-free startup checks. The Private VM still needs hands-on verification on a Hyper-V-capable Windows computer.
 
+## Installer and updates
+
+The per-user x64 installer adds Agent S to the Start menu. An installed release checks for
+updates at startup and every six hours. **Settings › Check for Updates…** also checks on
+demand. **Restart to update** downloads the full package, verifies the signed catalog, and
+applies the update after the app closes. Finish running and queued turns and clear unsaved
+drafts before restarting.
+
+The portable ZIP remains available. Close the ZIP copy before launching the installer.
+The installer uses the same release profile under `%LOCALAPPDATA%\Simular\Agent S` and the
+same Private computer as the ZIP. Start Agent S from the Start menu after installation.
+
+For the installer pilot, dispatch **Windows release** on `main` for a new release tag with
+`publish_installer` enabled. The protected release job signs and smoke-tests the installer
+before publishing it alongside the ZIP. It publishes the update index after the signed
+package and catalog. Verify a fresh install, a ZIP-to-installer migration, and an in-app
+upgrade between two signed versions before making the installer the website default.
+
 ## Framework choice
 
 Use **WinUI 3 with the Windows App SDK**, Microsoft's recommended native Windows desktop UI framework. The app uses native XAML controls, Credential Locker and Windows URI launching. C# keeps the UI, API calls and lifecycle in one language; there is no Electron/Chromium host or separate Node service. The Mac UI and Apple's Virtualization framework are platform-specific and stay unchanged.

@@ -34,6 +34,19 @@ jobs:
         run: |
           & powershell.exe -NoProfile -STA -File app/windows/scripts/smoke.ps1 -Executable "${{ runner.temp }}/agent-s-windows/AgentS.Windows.exe" -EvidenceDirectory "${{ runner.temp }}/agent-s-evidence"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test per-user installer and in-place upgrade
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool install --global vpk --version 1.2.161
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned Velopack CLI.' }
+          $inputDirectory = Join-Path $env:RUNNER_TEMP 'agent-s-windows'
+          $first = Join-Path $env:RUNNER_TEMP 'installer-first'
+          $second = Join-Path $env:RUNNER_TEMP 'installer-second'
+          ./app/windows/scripts/package-installer.ps1 -PublishDirectory $inputDirectory -OutputDirectory $first -Version 0.0.1 -Development
+          ./app/windows/scripts/package-installer.ps1 -PublishDirectory $inputDirectory -OutputDirectory $second -Version 0.0.2 -Development
+          ./app/windows/scripts/installer-smoke.ps1 -Setup (Join-Path $first 'AgentS-Windows-x64-Setup.exe') -UpgradeSetup (Join-Path $second 'AgentS-Windows-x64-Setup.exe') -EvidenceDirectory (Join-Path $env:RUNNER_TEMP 'agent-s-evidence/installer') -Development
       - name: Upload Windows build
         uses: actions/upload-artifact@v4.6.2
         with:
