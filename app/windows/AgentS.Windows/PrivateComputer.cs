@@ -13,14 +13,36 @@ internal sealed class PrivateComputer : IPrivateDesktop
 {
     private readonly bool wsl;
 
-    private sealed record Configuration(Guid VmId, string Address, string PrivateKeyPath, string KnownHostsPath);
+    /// <param name="MemoryGB">The memory chosen at setup (setup-private-vm.ps1 -MemoryGB); missing from older setups.</param>
+    private sealed record Configuration(Guid VmId, string Address, string PrivateKeyPath, string KnownHostsPath, int? MemoryGB = null);
+
+    /// <summary>The Hyper-V computer's memory choices, as on macOS.</summary>
+    public static readonly int[] MemoryChoices = [2, 4, 6];
+
+    /// <summary>The Hyper-V computer's memory: the Settings choice, else the one made at setup, else 2 GB.</summary>
+    public static int MemoryGB
+    {
+        get
+        {
+            if (AppSettings.Current.ComputerMemoryGB is { } chosen && MemoryChoices.Contains(chosen)) return chosen;
+            try
+            {
+                if (File.Exists(ConfigPath) && new FileInfo(ConfigPath).Length <= 32_768 &&
+                    JsonSerializer.Deserialize<Configuration>(File.ReadAllText(ConfigPath), ConfigJson)?.MemoryGB is { } setup &&
+                    MemoryChoices.Contains(setup))
+                    return setup;
+            }
+            catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException) { }
+            return MemoryChoices[0];
+        }
+    }
 
     private static readonly JsonSerializerOptions ConfigJson = new() { PropertyNameCaseInsensitive = true };
     private static readonly byte[] PngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
     private const string Checkpoint = "Agent S clean";
-    private static string ConfigPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Simular", "Agent S", "private-vm.json");
+    private static string ConfigPath => Path.Combine(AppIdentity.LocalFolder, "private-vm.json");
+    /// <summary>setup-private-vm.ps1 gives the release and Dev computers separate internal networks.</summary>
+    private static IPAddress GuestAddress => IPAddress.Parse(AppIdentity.IsRelease ? "192.168.247.2" : "192.168.248.2");
     private static string System32 => Environment.GetFolderPath(Environment.SpecialFolder.System);
 
     private readonly Configuration configuration = null!;
@@ -40,7 +62,7 @@ internal sealed class PrivateComputer : IPrivateDesktop
                 throw new InvalidDataException();
             var value = JsonSerializer.Deserialize<Configuration>(File.ReadAllText(ConfigPath), ConfigJson);
             if (value is null || value.VmId == Guid.Empty ||
-                !IPAddress.TryParse(value.Address, out var address) || !address.Equals(IPAddress.Parse("192.168.247.2")) ||
+                !IPAddress.TryParse(value.Address, out var address) || !address.Equals(GuestAddress) ||
                 !File.Exists(value.PrivateKeyPath) || !File.Exists(value.KnownHostsPath))
                 throw new InvalidDataException();
             configuration = value;
@@ -55,6 +77,8 @@ internal sealed class PrivateComputer : IPrivateDesktop
     {
         if (wsl)
         {
+            // Before anything starts in the guest, so the desktop and the agent's apps run within it.
+            await WslComputer.ApplyMemoryLimit(cancellation);
             try { _ = await Capture(cancellation); WslComputer.EnsureDock(); return; }
             catch (PrivateComputerException) { }
             WslComputer.LaunchDesktop();
@@ -62,7 +86,11 @@ internal sealed class PrivateComputer : IPrivateDesktop
             WslComputer.EnsureDock();
             return;
         }
-        await HyperV("if ($vm.State -ne 'Running') { Start-VM -VM $vm | Out-Null }", cancellation);
+        // Memory can change only while the VM is off. Apply it at every start: Reset restores the
+        // checkpoint, which brings back the memory it was taken with.
+        var memory = MemoryGB.ToString(CultureInfo.InvariantCulture);
+        await HyperV($"if ($vm.State -eq 'Off') {{ Set-VMMemory -VM $vm -DynamicMemoryEnabled $false -StartupBytes {memory}GB }}; " +
+            "if ($vm.State -ne 'Running') { Start-VM -VM $vm | Out-Null }", cancellation);
         var start = Stopwatch.StartNew();
         while (start.Elapsed < TimeSpan.FromSeconds(75))
         {

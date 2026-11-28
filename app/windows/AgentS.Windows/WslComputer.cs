@@ -13,11 +13,47 @@ namespace AgentS.Windows;
 /// </summary>
 internal static class WslComputer
 {
-    public const string Distro = "AgentS-Private";
+    public static string Distro => AppIdentity.WslDistro;
+
+    // ---- Memory --------------------------------------------------------------------------------
+    // WSL has one memory limit for every distro on the PC (.wslconfig). To give this computer its own
+    // 2/4/6 GB, as on macOS, every guest process starts in a memory cgroup, agent-s-<distro>, whose
+    // memory.max is the chosen size. The kernel discards the cgroup when WSL shuts down, so Start
+    // recreates it every time.
+
+    /// <summary>Runs as root: joins the cgroup when it exists, then becomes `agent` in its home folder.</summary>
+    private const string AgentLauncher = """
+        cg=/sys/fs/cgroup/agent-s-${WSL_DISTRO_NAME:-private}
+        [[ -w $cg/cgroup.procs ]] && echo $$ > "$cg/cgroup.procs"
+        home=$(getent passwd agent | cut -d: -f6)
+        cd "$home" || exit 1
+        export HOME="$home" USER=agent LOGNAME=agent SHELL=/bin/bash
+        exec setpriv --reuid=agent --regid=agent --init-groups -- "$@"
+        """;
+
+    /// <summary>wsl.exe arguments that run <paramref name="command"/> as `agent` inside the computer's memory limit.</summary>
+    public static string[] AsAgent(params string[] command) =>
+        ["-d", Distro, "-u", "root", "--cd", "/", "--exec", "/bin/bash", "-c", AgentLauncher.Replace("\r\n", "\n"), "agent-s-launch", .. command];
+
+    /// <summary>The chosen limit in GB, or null for none (WSL's own limit), which setups from before the choice keep.</summary>
+    public static int? MemoryGB => AppSettings.Current.ComputerMemoryGB is { } gb && PrivateComputer.MemoryChoices.Contains(gb) ? gb : null;
+
+    /// <summary>Creates the computer's memory cgroup if needed and sets its limit. Lowering it reclaims memory right away.</summary>
+    public static async Task ApplyMemoryLimit(CancellationToken cancellation)
+    {
+        var limit = MemoryGB is { } gb ? ((long)gb << 30).ToString(System.Globalization.CultureInfo.InvariantCulture) : "max";
+        var script = $$"""
+            cg=/sys/fs/cgroup/agent-s-${WSL_DISTRO_NAME:-private}
+            grep -qw memory /sys/fs/cgroup/cgroup.subtree_control || echo +memory > /sys/fs/cgroup/cgroup.subtree_control
+            mkdir -p "$cg" && echo {{limit}} > "$cg/memory.max"
+            """;
+        // Without cgroup v2 memory control the computer still runs, within WSL's limit.
+        await Exec(["-d", Distro, "-u", "root", "--cd", "/", "--exec", "/bin/bash", "-s"], TimeSpan.FromSeconds(30), cancellation,
+            input: script.Replace("\r\n", "\n") + "\n");
+    }
     private const string DistributionList = "https://raw.githubusercontent.com/microsoft/WSL/master/distributions/DistributionInfo.json";
 
-    private static string Folder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simular", "Agent S", "wsl");
+    private static string Folder => Path.Combine(AppIdentity.LocalFolder, "wsl");
     private static string ConfigPath => Path.Combine(Folder, "private-wsl.json");
     private static string CleanImage => Path.Combine(Folder, "clean.tar");
     private static string DiskFolder => Path.Combine(Folder, "disk");
@@ -31,8 +67,7 @@ internal static class WslComputer
 
     public static Task<string> Guest(string command, int outputLimit, CancellationToken cancellation) =>
         PrivateComputer.Run(WslExe,
-            ["-d", Distro, "-u", "agent", "--cd", "~", "--exec", "/usr/local/bin/agent-s-guest",
-             .. command.Split(' ', StringSplitOptions.RemoveEmptyEntries)],
+            AsAgent(["/usr/local/bin/agent-s-guest", .. command.Split(' ', StringSplitOptions.RemoveEmptyEntries)]),
             outputLimit, TimeSpan.FromSeconds(20),
             "Could not reach the Private computer in WSL. Try Stop computer, then send again.", cancellation);
 
@@ -45,7 +80,7 @@ internal static class WslComputer
             UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardOutput = true, RedirectStandardError = true, RedirectStandardInput = true,
         };
-        foreach (var argument in new[] { "-d", Distro, "-u", "agent", "--cd", "~", "--exec", "/usr/local/bin/agent-s-desktop" })
+        foreach (var argument in AsAgent("/usr/local/bin/agent-s-desktop"))
             start.ArgumentList.Add(argument);
         // This wsl.exe stays open while the desktop runs; it also keeps the WSL distro alive.
         desktop = Process.Start(start) ?? throw new PrivateComputerException("Could not start WSL.");
@@ -190,7 +225,7 @@ internal static class WslComputer
                     install.Append($"echo '{Asset(asset)}' | base64 -d > /usr/local/bin/{target}.new && chmod 0755 /usr/local/bin/{target}.new && mv /usr/local/bin/{target}.new /usr/local/bin/{target}\n");
                 var (exit, _, _) = await Exec(["-d", Distro, "-u", "root", "--cd", "/", "--exec", "/bin/bash", "-s"], TimeSpan.FromMinutes(5), CancellationToken.None, input: install.ToString());
                 if (exit != 0) { dockChecked = 0; return; }
-                await Exec(["-d", Distro, "-u", "agent", "--cd", "~", "--exec", "/usr/local/bin/agent-s-dock"], TimeSpan.FromSeconds(30), CancellationToken.None);
+                await Exec(AsAgent("/usr/local/bin/agent-s-dock"), TimeSpan.FromSeconds(30), CancellationToken.None);
             }
             catch (Exception) { dockChecked = 0; }
         });

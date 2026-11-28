@@ -21,7 +21,9 @@ Provide a fresh, trusted Debian 13 amd64 generic cloud disk in VHDX format. Veri
 .\app\windows\scripts\setup-private-vm.ps1 -VhdxPath C:\path\to\debian.vhdx
 ```
 
-Setup installs the guest packages over the Hyper-V Default Switch, then removes that temporary adapter. The running guest uses the dedicated internal network `192.168.247.0/30` without a default gateway. Agent S connects to a pinned SSH host key for screenshots and a small set of desktop actions. Host drives and clipboard are outside the guest. The VM starts with 2 GiB of assigned memory and two vCPUs.
+Add `-Dev` to set up the computer for a source build (Agent S Dev) instead; see [Agent S Dev and Agent S](#agent-s-dev-and-agent-s).
+
+Setup installs the guest packages over the Hyper-V Default Switch, then removes that temporary adapter. The running guest uses the dedicated internal network `192.168.247.0/30` without a default gateway. Agent S connects to a pinned SSH host key for screenshots and a small set of desktop actions. Host drives and clipboard are outside the guest. The VM has two vCPUs and 2, 4 or 6 GiB of memory, as on macOS: `-MemoryGB 4` picks it at setup (2 by default), and **Settings › Computer › Memory** changes it later. The app applies the choice each time the VM starts, including after **Reset computer**, so stop the computer to apply a change now.
 
 Create a **Private** agent and enter the installed Ollama model tag. To exercise the local path, disconnect the computer from the internet and send “Open the demo, enter Sample in the name field, and submit.” Agent S boots the guest and shows screenshots as it works. **Stop** stops the turn, **Stop computer** shuts down the guest, and **Reset computer** restores the clean checkpoint while keeping Windows chat history. Use **Stop computer** to release the guest’s memory before closing the app.
 
@@ -32,7 +34,7 @@ Create a **Private** agent and enter the installed Ollama model tag. To exercise
 
 ## Coding-agent harnesses
 
-As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Harness** inside the Private computer, or the app's built-in **Agent S** loop. Choose the harness in **New agent › This PC**, or switch an existing agent from the model menu above the chat. New Private agents default to Claude Code; agents created before harness support keep the built-in loop.
+As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Harness** inside the Private computer, or the app's built-in **Agent S** loop. Choose the harness in **New agent › Private**, or switch an existing agent from the model menu above the chat. New Private agents default to Claude Code; agents created before harness support keep the built-in loop.
 
 - The harnesses use the macOS app's commands: `claude -p --output-format stream-json`, `codex exec --json --oss`, and `dsh --profile headless --json` with the same pinned version and privacy overlay. Their JSON events become chat messages and activity rows, and each harness's session ID is kept per agent so the next message continues the session.
 - They drive the screen with the same `web` (Playwright over Chromium's loopback debugging port) and `ui` (simulang accessibility tree) shell commands as the macOS guest. The screen panel refreshes while a harness works.
@@ -45,25 +47,40 @@ As on macOS, a Private agent can run **Claude Code**, **Codex** or **DeepSeek Ha
 
 ## This PC
 
-Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps, shell and files. Choose **This PC · your apps and files** in **New agent**. These agents use the Claude Code CLI installed on the PC, with Ollama or OpenRouter as the model provider.
+Like **This Mac** on macOS, a **This PC** agent works on the PC itself: its apps, shell and files. Choose **This PC · your apps and files** in **New agent**. Choose **Claude Code**, **Codex**, or **DeepSeek** in the **Harness** field. Existing agents can switch in **Agent Settings**. All three use Ollama or OpenRouter, and keep separate sessions.
 
-- **Requirements:** [Claude Code](https://code.claude.com/docs/en/setup) and Git for Windows, whose Git Bash Claude Code uses for its Bash tool. New agent checks for both. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
-- **Approvals:** every tool use waits for you. Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied.
+- **Requirements:** Git for Windows provides Git Bash for This PC commands. Install the [Claude Code CLI](https://code.claude.com/docs/en/setup) or the [Codex CLI](https://developers.openai.com/codex/cli) to use its harness. DeepSeek setup is below. Agent S runs Claude Code with its own profile (`%LOCALAPPDATA%\Simular\Agent S\claude-this-pc`), so your `~/.claude` settings, hooks and credentials are not used.
+- **Approvals:** Claude Code's `PreToolUse` hook (`approve.ps1`) asks the app over a loopback port with a per-run token. The chat shows the exact command or file change with **Allow**, **Allow for this task** (the rest of the current turn) and **Deny**. Only looking runs without asking: `pc apps`, `pc tree` and `pc screenshot` as plain commands, and reading the screenshot `pc` just saved. Steps still pending when a turn ends or stops are denied. Codex runs without execution environments, and DeepSeek uses the restricted SDK profile. Both request the app's approval through the same Windows command tool.
 - **Using apps:** the agent uses `pc`, a PowerShell tool built on Windows UI Automation and the Windows counterpart of the Mac's `mac` tool. It needs nothing installed. Its commands are `pc apps`, `pc open`, `pc focus`, `pc tree` (the front window with refs), `pc click`, `pc type`, `pc key` and `pc screenshot`. The screen panel shows the agent's latest screenshot.
 - **OpenRouter:** add a key in **Settings** or in New agent. It is stored in Windows Credential Locker. A loopback proxy adds it to requests to `https://openrouter.ai/api/v1` and requires a per-launch token, so the agent never holds the key. Prompts and what the agent reads go to OpenRouter and the model's provider. Pick any model in the model browser or type an id from openrouter.ai/models.
-- **Zero Data Retention:** as on macOS, **Request Zero Data Retention (ZDR)** is on by default and applies to every OpenRouter agent. With it on, the proxy forwards only model requests and adds `"provider": {"zdr": true}` to each, so OpenRouter routes them only to ZDR endpoints. Turn it off in **Settings** or the model browser.
+- **Zero Data Retention:** as on macOS, **Request Zero Data Retention (ZDR)** is on by default and applies to every OpenRouter agent. With it on, the proxy forwards only model requests and adds `"provider": {"zdr": true}` to each, so OpenRouter routes them only to ZDR endpoints. Turn it off in **Settings** or next to the OpenRouter model field.
 - **OpenRouter on the Private computer:** every Private harness can use OpenRouter, the built-in Agent S loop included (OpenAI chat completions through the proxy). The relay forwards a second guest port, `127.0.0.1:11435`, to the same proxy. The guest gets only the proxy's per-launch token, never the key. With OpenRouter, prompts and what the agent reads leave the PC, so only choose it when that's acceptable.
+
+### Set up DeepSeek on This PC
+
+Install Node.js 24 and run this in PowerShell from the directory containing the published `AgentS.Windows.exe`. Set `$channel` to `'Agent S'` for the production build.
+
+```powershell
+$channel = 'Agent S Dev'
+$runtime = Join-Path $env:LOCALAPPDATA "Simular/$channel/DeepSeekRuntime"
+New-Item -ItemType Directory -Force $runtime | Out-Null
+Copy-Item -LiteralPath './DeepSeekRuntime/package.json','./DeepSeekRuntime/package-lock.json' -Destination $runtime
+npm.cmd ci --prefix $runtime --omit=dev --ignore-scripts --no-audit --no-fund
+```
+
+Agent S Dev also accepts `AGENT_S_DSH_RUNTIME` for a development runtime directory with the locked packages and an optional portable Node binary at `bin/node.exe`.
 
 ## Matching the macOS app
 
 - **First launch:** "Set up your first agent" (harness, provider and model; DeepSeek and Nemotron 3 Nano 4B by default), then "Get your agent ready", where the Private computer sets up while the model downloads. Existing installs skip it.
-- **Models:** one browser for every model choice. The Ollama tab lists the whole ollama.com library (each local variant's download size and inputs, installed models, and "May not fit in memory"); the OpenRouter tab lists every model with its context, price and ZDR availability. Each model shows the agents that use it. Before a download, Agent S checks the Ollama version a model needs and offers to update Ollama.
-- **Chat:** tool steps fold into one row per stretch with plain titles ("Open a webpage") and expandable Tool, Input and Output; code blocks have **Copy code**; a ↓ button jumps to the latest message; new Private chats offer sample tasks; Sai approvals add **Approve for this task**.
+- **Models:** one browser for every model choice. The Ollama tab lists the whole ollama.com library (each local variant's download size and inputs, installed models, and "May not fit in memory"); the OpenRouter tab matches macOS's "OpenRouter models" sheet: every model with its input, ID, text token price ("$3.00 in · $15.00 out / 1M tokens"), ZDR availability (with a warning for Safety Retention only and no public ZDR endpoint) and context, a check on the current model, and **Refresh ZDR availability** when it couldn't be checked. Every OpenRouter model field has **Browse OpenRouter models…** above it and shows the chosen model's text token price, input and Zero Data Retention below it. Each model shows the agents that use it. Before a download, Agent S checks the Ollama version a model needs and offers to update Ollama.
+- **Chat:** long prompts can be expanded and copied in full; This PC has a floating transcript with shared approvals and pauses new actions while its composer has focus; tool steps fold into one row per stretch with plain titles ("Open a webpage") and expandable Tool, Input and Output; code blocks have **Copy code**; a ↓ button jumps to the latest message; new Private chats offer sample tasks; Sai approvals add **Approve for this task**.
 - **Composer:** stays usable while a turn runs. Messages become follow-ups (**Stop & send**, **Send next**, ×); each agent keeps its own draft; a bar above it says when the computer is off, needs setup, or is missing a key.
 - **Agents:** right-click for Agent Settings…, Rename…, Color, New conversation, Move up/down and Delete; drag to reorder within a section; a badge shows local, hosted or unconfirmed inference. Empty sections link to creating an agent there.
 - **Computer panel:** **Take over** (WSL Private computer) sends your mouse and keyboard to the guest's display over a WSL channel and streams the screen at about five frames a second; **Maximize** fills the window with the computer; the split is resizable. The Private desktop has a dock (tint2) with a Chromium launcher.
 - **Context:** Action items (approvals to review, Open work to run or delete), Memory (notes agents save and recall for Claude Code, Codex and DeepSeek turns; add, edit, pin, resolve, share or forget them), and Session and instructions. Memory lives beside the conversations, one file per agent.
-- **Settings:** Computer, Accounts (with "Get a key" and key-prefix checks), ZDR, Ollama status, and **Check for Updates…** (opens the newest GitHub release).
+- **Computer memory:** 2, 4 or 6 GB, as on macOS, chosen in "Set up your first agent" and in **Settings › Computer**. WSL has one memory limit for every distro (`.wslconfig`, half the PC's memory by default), which Agent S never edits. So every guest process starts as root in a cgroup v2 group, `agent-s-<distro>`, whose `memory.max` is the chosen size, then drops to `agent`. Each start recreates the group and applies the size, so a change applies to the next task. Setups from before the choice keep WSL's limit. The cap can't exceed WSL's limit, which Settings shows. The Hyper-V computer applies the choice when it next starts.
+- **Settings:** Computer (memory, as above), saved-key OpenRouter spend (daily, weekly, monthly and total), Accounts (with "Get a key" and key-prefix checks), ZDR, Ollama status, and **Check for Updates…** (opens the newest GitHub release).
 - **Look:** black/white accent instead of the system blue, and the macOS chat, composer and button sizes.
 
 `AGENT_S_DATA_DIR` points conversations and settings at another folder (used by the smoke test for a fresh install); the Private computer, CLI profiles and keys are unaffected.
@@ -98,6 +115,10 @@ dotnet build app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64
 
 The PR’s **Windows app** Actions run provides an `agent-s-windows-x64` artifact after the startup smoke test passes. Download and extract the full archive, then run `AgentS.Windows.exe`. This is an unsigned development build, not a release installer.
 
+### Agent S Dev and Agent S
+
+Local and CI builds are **Agent S Dev**: the window, taskbar and exe say "Agent S Dev", the icon is black, and it keeps its own data in `%LOCALAPPDATA%\Simular\Agent S Dev` (conversations, settings, CLI profiles, the WSL computer `AgentS-Dev-Private`) so it never touches an installed Agent S. The release workflow builds **Agent S** with the indigo macOS icon using `-p:AgentSChannel=Release`. API keys in Credential Locker are shared. For a Hyper-V Private computer for Agent S Dev, run `setup-private-vm.ps1 -Dev`; it gets its own VM, switch and network (`192.168.248.0/30`). `scripts/make-release-icon.ps1` regenerates the Windows release icon and logo from the macOS artwork.
+
 When building locally, run the resulting `AgentS.Windows.exe` from its build output directory. Keep its adjacent self-contained runtime files together. The project runs unelevated and unpackaged; signing, installer/update distribution and clean-machine installation are separate release work. ARM64 is declared as a future build target but not yet validated by the x64 CI job.
 
 To use Sai, add a key from [Sai API keys](https://platform.simular.ai/api-keys) in **Settings**, then create an agent with **Cloud · Sai computer** selected. This uses computers in your existing Sai account.
@@ -113,7 +134,7 @@ The dependency-free core contract checks also run on Linux/macOS with .NET 10. T
 | Sai cloud chat, named conversations, approvals | Implemented, pending Windows/live verification | Streaming/recovery and approval UX validation |
 | Computer display and context | Live screen, Take over and Maximize (Private), Action items, Open work, Memory, Session and instructions | Take over on a Box, saved/resumed sandbox state |
 | Composer | Follow-up queue with Stop & send | Live steering of a running DeepSeek turn; several agents working at once |
-| This Mac → This PC | Claude Code with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Codex with a Codex account, Claude Code account sign-in, floating Agent Activity panel |
+| This Mac → This PC | Claude Code, Codex and DeepSeek with Ollama or OpenRouter, per-action approvals, `pc` UI Automation tool | Claude Code and Codex account sign-in |
 | Claude Code / Codex / DeepSeek on the Private computer | Implemented for the WSL computer with local Ollama, using the macOS commands, stream contracts and `web`/`ui` tools | Verify on a clean Windows host; Hyper-V VMs keep the built-in loop |
 | Simular Box | Claude Code with Ollama or OpenRouter, screenshot and live view | Verify a live Box turn, session resume, wake and stop; Codex, DeepSeek and account sign-in remain follow-ups |
 | Private Linux VM + Ollama | Hyper-V prototype with local Ollama, guest screen, stop and reset | Verify offline tasks on a clean Windows host, measure memory and disk, and evaluate Windows Home support |

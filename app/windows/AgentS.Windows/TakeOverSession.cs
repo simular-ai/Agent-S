@@ -37,7 +37,7 @@ internal sealed class TakeOverSession : IDisposable
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.ASCII, StandardInputEncoding = new UTF8Encoding(false),
         };
-        foreach (var argument in new[] { "-d", WslComputer.Distro, "-u", "agent", "--cd", "~", "--exec", "/bin/bash", "-c", script.Replace("\r\n", "\n") })
+        foreach (var argument in WslComputer.AsAgent("/bin/bash", "-c", script.Replace("\r\n", "\n")))
             start.ArgumentList.Add(argument);
         return Process.Start(start) ?? throw new PrivateComputerException("Could not reach the Private computer in WSL.");
     }

@@ -11,8 +11,7 @@ namespace AgentS.Windows;
 /// </summary>
 internal static class BoxRunner
 {
-    private static string ProfileFolder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simular", "Agent S", "claude-box");
+    private static string ProfileFolder => Path.Combine(AppIdentity.LocalFolder, "claude-box");
 
     private static BoxClient? client;
     private static string? clientKey;

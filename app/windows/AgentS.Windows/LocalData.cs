@@ -45,7 +45,7 @@ internal sealed class HistoryStore
 {
     /// <summary>Conversations and settings. AGENT_S_DATA_DIR points them elsewhere (fresh-install previews and smoke tests); the Private computer, CLI profiles and keys are unaffected.</summary>
     public static string DataFolder => Environment.GetEnvironmentVariable("AGENT_S_DATA_DIR") is { Length: > 0 } custom
-        ? custom : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Simular", "Agent S");
+        ? custom : AppIdentity.LocalFolder;
     private readonly string path = Path.Combine(DataFolder, "conversations.json");
     private readonly SemaphoreSlim gate = new(1, 1);
     public async Task<List<Conversation>> Read()

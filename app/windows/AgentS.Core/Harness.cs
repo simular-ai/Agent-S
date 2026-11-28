@@ -12,6 +12,7 @@ public enum PrivateHarness { AgentS, ClaudeCode, Codex, DeepSeek }
 
 public static class Harnesses
 {
+    public static readonly PrivateHarness[] ThisPc = [PrivateHarness.ClaudeCode, PrivateHarness.Codex, PrivateHarness.DeepSeek];
     public static readonly PrivateHarness[] All = [PrivateHarness.ClaudeCode, PrivateHarness.Codex, PrivateHarness.DeepSeek, PrivateHarness.AgentS];
 
     public static string DisplayName(this PrivateHarness harness) => harness switch

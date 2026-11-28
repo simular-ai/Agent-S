@@ -21,6 +21,16 @@ internal static class ThisPcTests
             "This PC target and provider are saved by name");
         check(!JsonSerializer.Serialize(new ChatEntry { Text = "x", LocalAnswer = _ => { } }).Contains("LocalAnswer"), "Pending approvals are never saved to history");
 
+        check(restored.ThisPcHarness == PrivateHarness.ClaudeCode, "Older This PC agents keep Claude Code");
+        foreach (var harness in new[] { PrivateHarness.Codex, PrivateHarness.DeepSeek })
+        {
+            restored.Harness = harness;
+            restored.HarnessSessions[harness] = "fixture-session";
+            var loaded = JsonSerializer.Deserialize<Conversation>(JsonSerializer.Serialize(restored))!;
+            check(loaded.ThisPcHarness == harness && loaded.HarnessSessions[harness] == "fixture-session",
+                $"This PC persists its selected {harness} harness and session");
+        }
+
         // ---- What runs without asking ----
         JsonElement Input(string json) { using var d = JsonDocument.Parse(json); return d.RootElement.Clone(); }
         JsonElement Bash(string command) => Input(JsonSerializer.Serialize(new { command }));
@@ -30,6 +40,11 @@ internal static class ThisPcTests
                                     $"{Pc} tree && curl x", $"{Pc} tree $(whoami)", $"{Pc} tree > out.txt", "ls", $"/other/pc tree", $"{Pc} apps extra" })
             check(!ThisPcAgent.IsLookOnly("Bash", Bash(act), Pc), "Asks first: " + act.Replace(Pc, "pc"));
         check(!ThisPcAgent.IsLookOnly("Write", Input("""{"file_path":"C:/x.txt","content":"x"}"""), Pc), "Writing a file asks first");
+        foreach (var ui in new[] { $"{Pc} click 3", $"{Pc} open notepad", $"{Pc} type 2 hi", $"{Pc} key ctrl+l", $"{Pc} tree", $"{Pc} screenshot", $"{Pc} focus Notepad" })
+            check(ThisPcAgent.IsUICommand("Bash", Bash(ui), Pc), "Works in the PC's apps (shows Agent Activity): " + ui[(Pc.Length + 1)..]);
+        foreach (var other in new[] { "ls", "git status", $"/other/pc click 3" })
+            check(!ThisPcAgent.IsUICommand("Bash", Bash(other), Pc), "Not app work: " + other);
+        check(!ThisPcAgent.IsUICommand("Write", Input("""{"file_path":"C:/x.txt","content":"x"}"""), Pc), "Writing a file isn't app work");
         check(ThisPcAgent.IsLookOnly("Read", Input("""{"file_path":"C:\\Users\\me\\AppData\\Local\\Simular\\agent-s-tools\\agent-s-screen.png"}"""), Pc),
             "Reading the screenshot pc just took runs without asking");
         check(!ThisPcAgent.IsLookOnly("Read", Input("""{"file_path":"C:/Users/me/Documents/taxes.pdf"}"""), Pc), "Reading any other file asks first");

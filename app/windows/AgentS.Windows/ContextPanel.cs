@@ -336,6 +336,7 @@ public sealed partial class MainWindow
         {
             ConversationTarget.Sai => null,
             ConversationTarget.Private => owner.Harness ?? PrivateHarness.AgentS,
+            ConversationTarget.ThisPc => owner.ThisPcHarness,
             _ => PrivateHarness.ClaudeCode,
         };
         Pair("Harness", harness is null ? "Sai" : harness.Value == PrivateHarness.AgentS ? "Agent S (built-in)" : harness.Value.DisplayName());
@@ -375,7 +376,8 @@ public sealed partial class MainWindow
     private static (string Label, string? Text) Instructions(Conversation owner, PrivateHarness? harness) => owner.Target switch
     {
         ConversationTarget.Box => ("Simular Box tools", Box.Instructions(owner.BoxName)),
-        ConversationTarget.ThisPc => ("Agent S tools and approvals", ThisPcAgent.Instructions(ThisPcRunner.PcToolPath)),
+        ConversationTarget.ThisPc => ("Agent S tools and approvals",
+            harness == PrivateHarness.ClaudeCode ? ThisPcAgent.Instructions(ThisPcRunner.PcToolPath) : ThisPcCommand.Instructions),
         ConversationTarget.Private when harness is PrivateHarness.Codex or PrivateHarness.DeepSeek => ("AGENTS.md, written before each turn", AgentInstructions.Text(harness.Value)),
         ConversationTarget.Private when harness is PrivateHarness.ClaudeCode => ("System prompt (replaces Claude Code's default)", AgentInstructions.Text(PrivateHarness.ClaudeCode)),
         _ => ("", (string?)null),

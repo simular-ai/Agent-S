@@ -3,7 +3,12 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
-    [string] $VhdxPath
+    [string] $VhdxPath,
+    # Set up the Private computer for development builds (Agent S Dev) instead of the release app.
+    [switch] $Dev,
+    # The computer's memory, as on macOS. Settings in Agent S can change it later.
+    [ValidateSet(2, 4, 6)]
+    [int] $MemoryGB = 2
 )
 
 Set-StrictMode -Version Latest
@@ -31,16 +36,19 @@ if ($sourceDisk.Attached -or $sourceDisk.VhdType -eq 'Differencing') {
     throw 'Supply a detached, standalone Debian cloud VHDX.'
 }
 
-$appDir = Join-Path $env:LOCALAPPDATA 'Simular\Agent S'
+# Agent S and Agent S Dev each get their own folder, VM, switch and internal network.
+$appName = if ($Dev) { 'Agent S Dev' } else { 'Agent S' }
+$subnet = if ($Dev) { '192.168.248' } else { '192.168.247' }
+$appDir = Join-Path $env:LOCALAPPDATA "Simular\$appName"
 $configPath = Join-Path $appDir 'private-vm.json'
-$vmName = 'Agent S Private Linux'
-$switchName = 'Agent S Internal'
+$vmName = "$appName Private Linux"
+$switchName = "$appName Internal"
 $bootstrapSwitch = 'Default Switch'
 $bootstrapNicName = 'Provisioning'
 $runtimeNicName = 'Private'
-$hostAddress = '192.168.247.1'
-$guestAddress = '192.168.247.2'
-$runtimePrefix = '192.168.247.0/30'
+$hostAddress = "$subnet.1"
+$guestAddress = "$subnet.2"
+$runtimePrefix = "$subnet.0/30"
 
 if ((Test-Path -LiteralPath $configPath) -or (Get-VM -Name $vmName -ErrorAction SilentlyContinue) -or
     (Get-VMSwitch -Name $switchName -ErrorAction SilentlyContinue)) {
@@ -181,7 +189,7 @@ Host agent-s-setup
     if ($null -eq $adapter) { throw 'The Hyper-V internal network adapter did not appear.' }
     New-NetIPAddress -InterfaceIndex $adapter.ifIndex -IPAddress $hostAddress -PrefixLength 30 | Out-Null
 
-    $vm = New-VM -Name $vmName -Generation 2 -MemoryStartupBytes 2GB `
+    $vm = New-VM -Name $vmName -Generation 2 -MemoryStartupBytes ($MemoryGB * 1GB) `
         -Path $workDir -VHDPath $systemDisk -SwitchName $bootstrapSwitch
     Set-VM -VM $vm -ProcessorCount 2 -AutomaticStartAction Nothing -AutomaticStopAction ShutDown `
         -AutomaticCheckpointsEnabled $false -CheckpointType Standard -Notes 'Agent S Private computer'
@@ -321,6 +329,7 @@ ethernets:
         address = $guestAddress
         privateKeyPath = $privateKey
         knownHostsPath = $knownHosts
+        memoryGB = $MemoryGB
     } | ConvertTo-Json
     $stagedConfig = Join-Path $workDir 'private-vm.json'
     [IO.File]::WriteAllText($stagedConfig, $config + "`n", $utf8)

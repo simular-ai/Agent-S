@@ -7,6 +7,13 @@ internal static class ParityTests
 {
     public static void Run(Action<bool, string> check)
     {
+        var spend = JsonSerializer.Deserialize<OpenRouterKeyUsage>(
+            """{"usage_daily":0.00001234,"usage_weekly":0.25,"usage_monthly":1.5,"usage":24.8}""")!;
+        check(spend == new OpenRouterKeyUsage(0.00001234m, 0.25m, 1.5m, 24.8m),
+            "OpenRouter key usage maps all four spend periods");
+        check(OpenRouterKeyUsage.FormatSpend(spend.Daily) == "$0.00001234"
+            && OpenRouterKeyUsage.FormatSpend(spend.Total) == "$24.80", "Small and ordinary spend preserve useful precision");
+
         // ---- OpenRouter request policy (OpenRouterRequestPolicyTests.swift) ----
         JsonElement Body(string payload, string path, string method = "POST", bool zdr = true)
         {
@@ -55,9 +62,13 @@ internal static class ParityTests
         check(models.Select(m => m.Id).SequenceEqual(["a/one", "b/two"]) && models[1].ContextText == "200K context"
               && models[1].Matches("two B/") && !models[1].Matches("one"), "OpenRouter models are listed and searchable");
 
-        var priced = OpenRouterModel.Parse("""{"data":[{"id":"a/paid","name":"Paid","pricing":{"prompt":"0.000003","completion":"0.000015"},"architecture":{"input_modalities":["text","image"]}},{"id":"b/free","pricing":{"prompt":"0","completion":"0"}},{"id":"c/odd","pricing":{"prompt":"x"}}]}""");
-        check(priced[0].PriceText == "$3 / $15 per M tokens" && priced[1].PriceText == "Free" && priced[2].PriceText == "" && priced[0].Input == ModelInput.Multimodal,
-            "OpenRouter models show their price per million tokens and inputs");
+        var priced = OpenRouterModel.Parse("""{"data":[{"id":"a/paid","name":"Paid","pricing":{"prompt":"0.000003","completion":"0.000015"},"architecture":{"input_modalities":["text","image"]}},{"id":"b/free","pricing":{"prompt":"0","completion":"0"}},{"id":"c/odd","pricing":{"prompt":"x"}},{"id":"d/cheap","pricing":{"prompt":"0.000000075","completion":"0.0000003"}},{"id":"e/routed","pricing":{"prompt":"-1","completion":"-1"}}]}""");
+        check(priced[0].PriceText == "$3.00 in · $15.00 out / 1M tokens" && priced[1].PriceText == "Free text tokens" && priced[2].PriceText == "Price unavailable"
+              && priced[3].PriceText == "$0.075 in · $0.30 out / 1M tokens" && priced[4].PriceText == "Varies by routed model"
+              && OpenRouterModel.PriceLabel("openrouter/auto") == "Varies by routed model" && priced[0].Input == ModelInput.Multimodal,
+            "OpenRouter models show macOS's price labels and inputs");
+        check(new OpenRouterModel("x", "x", 131072, []).ContextText == "131K context" && new OpenRouterModel("x", "x", 1048576, []).ContextText == "1M context"
+              && new OpenRouterModel("x", "x", 8192, []).ContextText == "8.2K context", "OpenRouter context sizes are compact");
 
         // ---- Ollama models (Ollama.swift, AppModel.swift) ----
         check(OllamaModels.Default == "nemotron-3-nano:4b" && OllamaModels.Suggested.SequenceEqual(["nemotron-3-nano:4b", "nemotron-3.5-bolt:e4b", "gemma4"]),
@@ -66,8 +77,16 @@ internal static class ParityTests
         check(OllamaModels.MinimumVersionFor(OllamaModels.NemotronBoltE4B) == "0.40.10" && OllamaModels.MinimumVersionFor("gemma4") == "0.14.0", "Minimum Ollama versions");
         check(OllamaModels.IsAtLeast("0.14.0", "0.14.0") && OllamaModels.IsAtLeast("0.40.12-rc1", "0.40.10") && !OllamaModels.IsAtLeast("0.13.9", "0.14.0"), "Ollama version comparison");
         check(OllamaModels.IsCloudReference("gemma4:cloud") && OllamaModels.IsCloudReference("x:31b-cloud") && !OllamaModels.IsCloudReference("gemma4"), "Cloud model references");
-        var tags = OllamaModels.ParseTags("""{"models":[{"name":"gemma4:latest","size":9600000000},{"name":"glm:cloud","remote_host":"https://ollama.com"},{"name":"x","remote_model":""}]}""");
-        check(tags.Length == 3 && !tags[0].Remote && tags[0].Size == 9_600_000_000 && tags[1].Remote && !tags[2].Remote, "Installed models and remote inference");
+        var tags = OllamaModels.ParseTags("""{"models":[{"name":"gemma4:latest","size":9600000000},{"name":"glm:cloud","remote_host":"https://ollama.com"},{"name":"x","remote_model":""},{"name":"agent-s/gemma4-latest:32k","size":9600000000}]}""");
+        check(tags.Length == 3 && !tags[0].Remote && tags[0].Size == 9_600_000_000 && tags[1].Remote && !tags[2].Remote, "Installed models and remote inference, without the app's context variants");
+        const ulong G = 1UL << 30;
+        check(WslConfig.MemoryLimit(null, 32 * G) == (16 * G, false) &&
+              WslConfig.MemoryLimit("[wsl2]\nprocessors=4\n", 32 * G) == (16 * G, false) &&
+              WslConfig.MemoryLimit("[wsl2]\r\nmemory=8GB # cap\r\n", 32 * G) == (8 * G, true) &&
+              WslConfig.MemoryLimit("[wsl2]\nmemory = 6144MB\n", 32 * G) == (6 * G, true) &&
+              WslConfig.MemoryLimit("[experimental]\nmemory=4GB\n", 32 * G) == (16 * G, false) &&
+              WslConfig.MemoryLimit("[wsl2]\nmemory=64GB\n", 32 * G) == (32 * G, true) &&
+              WslConfig.FormatGiB(7 * G + G / 2) == "7.5 GB", "WSL memory limit from .wslconfig");
 
         // ---- Memory estimate (OllamaMemoryEstimateTests.swift) ----
         const ulong GiB = 1UL << 30;

@@ -14,6 +14,8 @@ internal sealed class AppSettings
     public bool FinishedFirstAgentSetup { get; set; }
     /// <summary>The computer panel's width; the split is resizable, as on macOS.</summary>
     public double ComputerPanelWidth { get; set; } = 520;
+    /// <summary>The Hyper-V Private computer's memory (2, 4 or 6 GB), applied when it next starts. Null: the setup choice.</summary>
+    public int? ComputerMemoryGB { get; set; }
 
     private static AppSettings? current;
     public static AppSettings Current => current ??= Load();

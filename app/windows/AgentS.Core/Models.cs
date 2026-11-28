@@ -33,10 +33,12 @@ public sealed class Conversation
     public string ComputerId { get; set; } = "";
     public string? ModelId { get; set; }
     public string? SessionId { get; set; }
-    /// <summary>Private agents only: the program that runs turns. Null (older agents) is the built-in loop.</summary>
+    /// <summary>The program that runs turns. Null defaults to Agent S for Private and Claude Code for This PC.</summary>
     public PrivateHarness? Harness { get; set; }
     /// <summary>The harness's own session to resume, per harness, so switching back continues where it was.</summary>
     public Dictionary<PrivateHarness, string> HarnessSessions { get; set; } = [];
+    [JsonIgnore]
+    public PrivateHarness ThisPcHarness => Harness is PrivateHarness.Codex or PrivateHarness.DeepSeek ? Harness.Value : PrivateHarness.ClaudeCode;
     /// <summary>How the model is reached: Ollama on this PC, or OpenRouter through the app's proxy.</summary>
     public ModelProvider Provider { get; set; } = ModelProvider.Ollama;
     /// <summary>Simular Box agents: the box to work on, by name; null is the account's default box.</summary>
@@ -50,7 +52,8 @@ public sealed class Conversation
     public string Summary() => Target switch
     {
         ConversationTarget.Sai => $"Sai · {(ModelId is null or "auto" ? "auto" : ModelId)}",
-        ConversationTarget.ThisPc or ConversationTarget.Box => $"Claude Code · {ModelId ?? OllamaModels.Default}",
+        ConversationTarget.ThisPc => $"{ThisPcHarness.DisplayName()} · {ModelId ?? OllamaModels.Default}",
+        ConversationTarget.Box => $"Claude Code · {ModelId ?? OllamaModels.Default}",
         _ => $"{(Harness is { } h && h.RunsInComputer() ? h.DisplayName() : "Agent S")} · {ModelId ?? OllamaModels.Default}",
     };
 }

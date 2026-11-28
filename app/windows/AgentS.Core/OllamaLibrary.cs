@@ -80,7 +80,11 @@ public static class OllamaModels
         return true;
     }
 
-    /// <summary>The models in Ollama's /api/tags answer: name, size and whether Ollama runs it remotely.</summary>
+    /// <summary>
+    /// The models in Ollama's /api/tags answer: name, size and whether Ollama runs it remotely.
+    /// Leaves out the app's own larger-context variants (agent-s/…:32k, see HarnessCommand.ContextModel):
+    /// they share an installed model's weights and are never a choice.
+    /// </summary>
     public static InstalledModel[] ParseTags(string json)
     {
         try
@@ -90,7 +94,7 @@ public static class OllamaModels
             return list.EnumerateArray().Select(item =>
             {
                 string? Str(string key) => item.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-                if (Str("name") is not { } name) return null;
+                if (Str("name") is not { } name || name.StartsWith(HarnessCommand.ContextModelPrefix, StringComparison.Ordinal)) return null;
                 long size = item.TryGetProperty("size", out var s) && s.TryGetInt64(out var n) ? n : 0;
                 bool remote = Str("remote_model") is { Length: > 0 } || Str("remote_host") is { Length: > 0 };
                 return new InstalledModel(name, size, remote || IsCloudReference(name));

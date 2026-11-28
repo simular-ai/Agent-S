@@ -15,9 +15,6 @@ public sealed partial class MainWindow : Window
 {
     private readonly ObservableCollection<Conversation> conversations = [];
     private readonly HistoryStore store = new();
-    private readonly Dictionary<string, TextBlock> entryText = [];
-    private readonly Dictionary<string, StackPanel> entryMarkdown = [];
-    private readonly Dictionary<string, StackPanel> approvalControls = [];
     private readonly Dictionary<string, (Uri Uri, DateTime Until)> liveLinks = [];
     private Computer[] computers = [];
     private SaiModel[] models = [];
@@ -51,8 +48,10 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        Title = AppIdentity.Name;
+        AppTitle.Text = AppIdentity.Name;
         conversations.CollectionChanged += (_, _) => RebuildAgents();
-        var logo = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentS.png");
+        var logo = Path.Combine(AppContext.BaseDirectory, "Assets", AppIdentity.LogoFile);
         if (File.Exists(logo)) EmptyChatLogo.Source = new BitmapImage(new Uri(logo));
         var area = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var width = Math.Min(1360, area.Width);
@@ -60,7 +59,7 @@ public sealed partial class MainWindow : Window
         AppWindow.Resize(new global::Windows.Graphics.SizeInt32(width, height));
         AppWindow.Move(new global::Windows.Graphics.PointInt32(area.X + (area.Width - width) / 2,
             area.Y + (area.Height - height) / 2));
-        var icon = Path.Combine(AppContext.BaseDirectory, "Assets", "AgentS.ico");
+        var icon = Path.Combine(AppContext.BaseDirectory, "Assets", AppIdentity.IconFile);
         if (File.Exists(icon)) AppWindow.SetIcon(icon);
         AppWindow.Closing += Closing;
         InitializeComputerView();
@@ -132,6 +131,7 @@ public sealed partial class MainWindow : Window
         bool wasSelected = selected == row.Conversation;
         conversations.Remove(row.Conversation);
         ForgetMemory(row.Conversation);
+        if (activityOwner == row.Conversation) { HideActivity(); activityOwner = null; }
         if (wasSelected) { selected = null; Select(conversations.FirstOrDefault()); }
         await Persist();
     }
@@ -171,14 +171,14 @@ public sealed partial class MainWindow : Window
             {
                 owner.Provider = provider; owner.ModelId = id;
                 Row(owner).Refresh(); UpdateBadges(); Controls(); await Persist();
-            }, () => owner.Provider);
+            }, () => owner.Provider, () => owner.ModelId);
             menu.Items.Insert(0, browse);
             menu.Items.Insert(1, new MenuFlyoutSeparator());
         }
         IEnumerable<(string Id, string Label)> choices;
         if (owner.Target is ConversationTarget.ThisPc or ConversationTarget.Box)
         {
-            // Claude Code on this PC (or driving a Box): a model from Ollama, or from OpenRouter with the saved key.
+            // This PC and Box can use Ollama, or OpenRouter with the saved key.
             string[] installed = [];
             try { using var agent = new LocalAgent(); installed = await agent.Models(); } catch { }
             void AddChoice(ModelProvider provider, string id)
@@ -195,6 +195,23 @@ public sealed partial class MainWindow : Window
             var openRouterChoices = ThisPcAgent.SuggestedOpenRouterModels.ToList();
             if (owner.Provider == ModelProvider.OpenRouter && owner.ModelId is { } current && !openRouterChoices.Contains(current)) openRouterChoices.Insert(0, current);
             if (Secrets.ReadOpenRouter() is not null) foreach (var id in openRouterChoices) AddChoice(ModelProvider.OpenRouter, id);
+            if (owner.Target == ConversationTarget.ThisPc)
+            {
+                var harnessMenu = new MenuFlyoutSubItem { Text = "Harness", IsEnabled = owner != runOwner };
+                foreach (var harness in Harnesses.ThisPc)
+                {
+                    var item = new ToggleMenuFlyoutItem { Text = harness.DisplayName(), IsChecked = owner.ThisPcHarness == harness };
+                    item.Click += async (_, _) =>
+                    {
+                        if (owner == runOwner) return;
+                        owner.Harness = harness;
+                        Row(owner).Refresh(); Controls(); await Persist();
+                    };
+                    harnessMenu.Items.Add(item);
+                }
+                menu.Items.Add(new MenuFlyoutSeparator());
+                menu.Items.Add(harnessMenu);
+            }
             AddBrowse(); menu.ShowAt(ModelPill);
             return;
         }
@@ -268,6 +285,8 @@ public sealed partial class MainWindow : Window
         StopButton.Visibility = showStop ? Visibility.Visible : Visibility.Collapsed;
         ToolTipService.SetToolTip(SendButton, running ? "Queue this follow-up (Enter)" : "Send (Enter)");
         WorkingChip.Visibility = mine ? Visibility.Visible : Visibility.Collapsed;
+        FloatingChatButton.Visibility = IsThisPc ? Visibility.Visible : Visibility.Collapsed;
+        if (activityVisible) RefreshActivity();
         foreach (var conversation in conversations) Row(conversation).Working = running && runOwner == conversation;
 
         // Model pill: "{harness} · {model}" with where it runs, as on macOS. Switch after the answer.
@@ -630,7 +649,7 @@ public sealed partial class MainWindow : Window
             ItemsSource = ThisPcAgent.SuggestedOpenRouterModels, SelectedIndex = 0,
             Description = "Any id from openrouter.ai/models. Prompts go to OpenRouter.",
         };
-        WithBrowser(privateOpenRouterModel, [ModelProvider.OpenRouter]);
+        var privateOpenRouterField = WithBrowser(privateOpenRouterModel, [ModelProvider.OpenRouter]);
         var privateKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = "Paste your key", Description = "Saved in Windows Credential Locker. The Private computer never sees it." };
         var privateSaveKey = new Button { Content = "Save key" };
         var privateKeyPanel = new StackPanel { Spacing = 8, Visibility = Visibility.Collapsed };
@@ -653,7 +672,7 @@ public sealed partial class MainWindow : Window
         localModel.Visibility = Visibility.Visible;
         var local = new StackPanel { Spacing = 12 };
         local.Children.Add(localHarness); local.Children.Add(privateProvider); local.Children.Add(setupCard);
-        local.Children.Add(localModelPart); local.Children.Add(privateOpenRouterModel); local.Children.Add(privateKeyPanel);
+        local.Children.Add(localModelPart); local.Children.Add(privateOpenRouterField); local.Children.Add(privateKeyPanel);
 
         // ---- Cloud ----
         var key = new PasswordBox { Header = "Sai API key", PlaceholderText = "Paste your key", Description = "Saved securely in Windows Credential Locker." };
@@ -676,9 +695,15 @@ public sealed partial class MainWindow : Window
         var cloud = new StackPanel { Spacing = 12 };
         cloud.Children.Add(keyPanel); cloud.Children.Add(loading); cloud.Children.Add(cloudNotice); cloud.Children.Add(choices);
 
-        // ---- This PC: Claude Code on the PC itself, Ollama or OpenRouter ----
+        // ---- This PC harness selection and the model providers shared with Box ----
         var claudePath = ThisPcRunner.FindClaude();
-        bool hasGitBash = ThisPcRunner.FindGitBash() is not null;
+        var pcHarness = new ComboBox
+        {
+            Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch,
+            ItemsSource = Harnesses.ThisPc.Select(h => h.DisplayName()).ToArray(), SelectedIndex = 0,
+        };
+        Id(pcHarness, "PcHarness");
+        PrivateHarness SelectedPcHarness() => Harnesses.ThisPc[Math.Max(0, pcHarness.SelectedIndex)];
         string[] openRouterModels = ThisPcAgent.SuggestedOpenRouterModels;
         var pcNotice = new InfoBar { IsClosable = false, Severity = InfoBarSeverity.Warning };
         var pcInstall = new HyperlinkButton { Content = "How to install Claude Code", NavigateUri = ThisPcRunner.ClaudeSetup };
@@ -691,7 +716,7 @@ public sealed partial class MainWindow : Window
         var pcModel = new ComboBox { Header = "Model", HorizontalAlignment = HorizontalAlignment.Stretch, IsEditable = true };
         Id(pcModel, "PcModel");
         // Either list: choosing an OpenRouter model switches the provider too.
-        WithBrowser(pcModel, [ModelProvider.Ollama, ModelProvider.OpenRouter],
+        var pcModelField = WithBrowser(pcModel, [ModelProvider.Ollama, ModelProvider.OpenRouter],
             provider => pcProvider.SelectedIndex = provider == ModelProvider.OpenRouter ? 1 : 0,
             () => pcProvider.SelectedIndex == 1 ? ModelProvider.OpenRouter : ModelProvider.Ollama);
         var openRouterKey = new PasswordBox { Header = "OpenRouter API key", PlaceholderText = "Paste your key", Description = "Saved in Windows Credential Locker. Agents never see it." };
@@ -706,10 +731,7 @@ public sealed partial class MainWindow : Window
         const string boxNote = "Harness: Claude Code, installed on this PC, with no tools on this PC: it works only through your Box's tools (browser, desktop, shell and files on the Box).";
         var desktopNote = Note(pcNote);
         desktop.Children.Add(desktopNote);
-        desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModel);
-        pcNotice.IsOpen = claudePath is null || !hasGitBash;
-        pcNotice.Message = claudePath is null ? "Claude Code isn't installed on this PC." : "Claude Code on Windows needs Git for Windows (Git Bash).";
-        if (claudePath is null) pcNotice.ActionButton = pcInstall;
+        desktop.Children.Add(pcHarness); desktop.Children.Add(pcNotice); desktop.Children.Add(pcProvider); desktop.Children.Add(openRouterPanel); desktop.Children.Add(pcModelField);
         bool UseOpenRouter() => pcProvider.SelectedIndex == 1;
         string PcModelText() => (pcModel.SelectedItem as string ?? pcModel.Text ?? "").Trim();
         void ShowPcModels()
@@ -751,8 +773,20 @@ public sealed partial class MainWindow : Window
             local.Visibility = mode == PrivateMode ? Visibility.Visible : Visibility.Collapsed;
             desktop.Visibility = mode is PcMode or BoxMode ? Visibility.Visible : Visibility.Collapsed;
             desktopNote.Text = mode == BoxMode ? boxNote : pcNote;
-            // Git Bash is only for This PC's shell; a Box agent has no tools on this PC.
-            pcNotice.IsOpen = claudePath is null || (mode == PcMode && !hasGitBash);
+            pcHarness.Visibility = mode == PcMode ? Visibility.Visible : Visibility.Collapsed;
+            var chosenHarness = mode == PcMode ? SelectedPcHarness() : PrivateHarness.ClaudeCode;
+            string? missing = mode == PcMode ? ThisPcRunner.Missing(chosenHarness)
+                : mode == BoxMode && claudePath is null ? "Install Claude Code on this PC." : null;
+            pcNotice.Message = missing ?? "";
+            pcNotice.IsOpen = missing is not null;
+            pcInstall.Content = chosenHarness == PrivateHarness.DeepSeek ? "DeepSeek setup instructions" : $"Install {chosenHarness.DisplayName()}";
+            pcInstall.NavigateUri = chosenHarness switch
+            {
+                PrivateHarness.Codex => ThisPcRunner.CodexSetup,
+                PrivateHarness.DeepSeek => ThisPcRunner.DeepSeekSetup,
+                _ => ThisPcRunner.ClaudeSetup,
+            };
+            pcNotice.ActionButton = missing is null || missing.StartsWith("Install Git", StringComparison.Ordinal) ? null : pcInstall;
             boxPanel.Visibility = mode == BoxMode ? Visibility.Visible : Visibility.Collapsed;
             bool hasBoxKey = Secrets.ReadBox() is not null;
             boxKeyPanel.Visibility = hasBoxKey ? Visibility.Collapsed : Visibility.Visible;
@@ -767,8 +801,7 @@ public sealed partial class MainWindow : Window
                 CloudMode => client is null ? "Connect your Sai account to continue."
                     : loadingCloud ? "Loading your computers…"
                     : computer.SelectedItem is not Computer ? "Choose a computer to continue." : null,
-                PcMode or BoxMode => claudePath is null ? "Install Claude Code on this PC to continue."
-                    : mode == PcMode && !hasGitBash ? "Install Git for Windows to continue."
+                PcMode or BoxMode => missing is not null ? missing
                     : mode == BoxMode && !hasBoxKey ? "Add your Simular Box key to continue."
                     : UseOpenRouter() && !hasOpenRouterKey ? "Add your OpenRouter key to continue."
                     : !UseOpenRouter() && !checkedPc ? "Checking Ollama…"
@@ -955,9 +988,10 @@ public sealed partial class MainWindow : Window
         localModel.SelectionChanged += async (_, _) => { SetMode(); if (localModel.SelectedItem is string chosenModel) await localPanel.Use(chosenModel); };
         localPanel.Changed += () => SetMode();
         name.TextChanged += (_, _) => SetMode();
+        pcHarness.SelectionChanged += (_, _) => SetMode();
         pcProvider.SelectionChanged += async (_, _) =>
         {
-            ShowPcModels(); SetMode();
+            ShowPcModels(); SetMode(); RefreshModelField(pcModelField);
             // The full list loads in the background; the suggestions show at once.
             if (UseOpenRouter() && openRouterModels == ThisPcAgent.SuggestedOpenRouterModels)
             {
@@ -1014,7 +1048,7 @@ public sealed partial class MainWindow : Window
         async Task CheckThenShowPcModels()
         {
             await CheckPc();
-            ShowPcModels(); SetMode();
+            ShowPcModels(); SetMode(); RefreshModelField(pcModelField);
         }
         if (startCloud && computers.Length == 0) _ = LoadCloud(Refresh);
 
@@ -1025,7 +1059,7 @@ public sealed partial class MainWindow : Window
             if (PcModelText() is not { Length: > 0 } pcChoice) return;
             conversation.Target = Mode() == BoxMode ? ConversationTarget.Box : ConversationTarget.ThisPc;
             if (Mode() == BoxMode && boxName.Text.Trim() is { Length: > 0 } chosenBox) conversation.BoxName = chosenBox;
-            conversation.Harness = PrivateHarness.ClaudeCode;
+            conversation.Harness = Mode() == PcMode ? SelectedPcHarness() : PrivateHarness.ClaudeCode;
             conversation.Provider = UseOpenRouter() ? ModelProvider.OpenRouter : ModelProvider.Ollama;
             conversation.ModelId = pcChoice;
         }
@@ -1088,47 +1122,47 @@ public sealed partial class MainWindow : Window
         return (Microsoft.UI.Xaml.Media.Brush)Application.Current.Resources[key];
     }
 
-    /// <summary>The tool-step group the next step joins, while steps follow each other; any other row ends it.</summary>
-    private ActivityGroup? openGroup;
-    private readonly Dictionary<string, ActivityGroup> stepGroups = [];
-
     /// <summary>A group shows a spinner only for the selected agent's running turn, and only the newest group.</summary>
-    private bool GroupRunning(ActivityGroup group) => running && runOwner == selected && group == openGroup;
+    private bool GroupRunning(ChatSurface surface, ActivityGroup group) => running && runOwner == surface.Owner() && group == surface.OpenGroup;
 
-    private void Draw(ChatEntry entry)
+    private void Draw(ChatEntry entry) => Draw(entry, Chat);
+
+    /// <summary>Draws one row into <paramref name="surface"/>: the main chat, or the floating window (smaller).</summary>
+    private void Draw(ChatEntry entry, ChatSurface surface)
     {
-        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = 16, LineHeight = 24 };
-        entryText[entry.Id] = text;
+        bool compact = surface.Compact;
+        var text = new TextBlock { Text = entry.Text, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, FontSize = compact ? 14 : 16, LineHeight = compact ? 20 : 24 };
+        surface.Text[entry.Id] = text;
         FrameworkElement element;
         StackPanel? panel = null;
         // Tool steps fold into one row per stretch, as on macOS.
         if (entry.Role == "Activity" && entry.Tool is not null)
         {
-            entryText.Remove(entry.Id);
-            var near = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
-            if (openGroup is null)
+            surface.Text.Remove(entry.Id);
+            var near = surface.Following;
+            if (surface.OpenGroup is null)
             {
-                openGroup = new ActivityGroup(Theme, GroupRunning);
-                Messages.Children.Add(openGroup);
+                surface.OpenGroup = new ActivityGroup(Theme, group => GroupRunning(surface, group));
+                surface.Panel.Children.Add(surface.OpenGroup);
             }
-            openGroup.Add(entry);
-            stepGroups[entry.Id] = openGroup;
-            if (near) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
+            surface.OpenGroup.Add(entry);
+            surface.Groups[entry.Id] = surface.OpenGroup;
+            if (near) DispatcherQueue.TryEnqueue(() => surface.Scroll.ChangeView(null, surface.Scroll.ScrollableHeight, null, true));
             return;
         }
-        var ended = openGroup;
-        openGroup = null;
+        var ended = surface.OpenGroup;
+        surface.OpenGroup = null;
         ended?.Refresh();
         switch (entry.Role)
         {
             case "You":
                 // Black bubble on the right, as on macOS.
                 text.Foreground = Theme("BubbleForeground");
-                element = new Border
+                element = PromptRow(text, new Border
                 {
-                    Child = text, Background = Theme("BubbleBackground"), CornerRadius = new CornerRadius(20),
-                    Padding = new Thickness(18, 10, 18, 10), HorizontalAlignment = HorizontalAlignment.Right, MaxWidth = 560,
-                };
+                    Child = text, Background = Theme("BubbleBackground"), CornerRadius = new CornerRadius(compact ? 16 : 20),
+                    Padding = compact ? new Thickness(14, 8, 14, 8) : new Thickness(18, 10, 18, 10), HorizontalAlignment = HorizontalAlignment.Right, MaxWidth = compact ? 300 : 560,
+                });
                 break;
             case "Activity":
             {
@@ -1150,8 +1184,8 @@ public sealed partial class MainWindow : Window
                 panel.Children.Add(head);
                 element = new Border
                 {
-                    Child = panel, BorderBrush = Theme("CardBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(18),
-                    Background = Theme("CardBackground"), Padding = new Thickness(18, 14, 18, 14), HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = 600,
+                    Child = panel, BorderBrush = Theme("CardBorder"), BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(compact ? 14 : 18),
+                    Background = Theme("CardBackground"), Padding = compact ? new Thickness(12, 10, 12, 10) : new Thickness(18, 14, 18, 14), HorizontalAlignment = HorizontalAlignment.Left, MaxWidth = compact ? 360 : 600,
                 };
                 break;
             }
@@ -1159,8 +1193,8 @@ public sealed partial class MainWindow : Window
             {
                 // Agent replies: Markdown, left aligned. Streamed text re-renders as it grows (see Change).
                 var markdown = MarkdownView.Create(MemoryWire.VisibleText(entry.Text), Theme);
-                entryText.Remove(entry.Id);
-                entryMarkdown[entry.Id] = markdown;
+                surface.Text.Remove(entry.Id);
+                surface.Markdown[entry.Id] = markdown;
                 element = markdown;
                 break;
             }
@@ -1169,14 +1203,12 @@ public sealed partial class MainWindow : Window
         {
             // This PC: the exact step is shown above; nothing runs until the person chooses.
             var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            // The same answer as the floating Agent Activity window's buttons; either one updates both.
             void Answer(bool allowed, string note, bool rest = false)
             {
-                if (entry.Answered) return;
-                entry.Answered = true;
-                if (rest) approveRestOfTurn = true;
-                localAnswer(allowed);
+                AnswerLocal(entry, allowed, note, rest);
                 SetButtonsEnabled(buttons, false);
-                text.Text = entry.Text += "\n" + note;
+                text.Text = entry.Text;
             }
             var allow = new Button { Content = "Allow" };
             if (Application.Current.Resources.TryGetValue("AccentButtonStyle", out var accentStyle) && accentStyle is Style style) allow.Style = style;
@@ -1189,7 +1221,7 @@ public sealed partial class MainWindow : Window
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetAutomationId(deny, "DenyStep");
             buttons.Children.Add(allow); buttons.Children.Add(allowRest); buttons.Children.Add(deny);
             panel.Children.Add(buttons);
-            approvalControls[entry.Id] = buttons;
+            surface.Approvals[entry.Id] = buttons;
         }
         else if (panel is not null && entry.ApprovalId is not null && !entry.Answered)
         {
@@ -1231,26 +1263,33 @@ public sealed partial class MainWindow : Window
                 }
             }
             panel.Children.Add(buttons);
-            approvalControls[entry.Id] = buttons;
+            surface.Approvals[entry.Id] = buttons;
         }
-        var following = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
-        Messages.Children.Add(element);
-        if (following) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
+        var following = surface.Following;
+        surface.Panel.Children.Add(element);
+        if (following) DispatcherQueue.TryEnqueue(() => surface.Scroll.ChangeView(null, surface.Scroll.ScrollableHeight, null, true));
     }
     private void Add(Conversation owner, ChatEntry entry)
     {
         owner.Entries.Add(entry);
         Row(owner).Refresh();
         if (selected == owner) { Draw(entry); EmptyChat.Visibility = Visibility.Collapsed; UpdateContext(); }
+        // The floating window shows the same conversation, row for row.
+        if (activityChat is not null && activityOwner == owner) { Draw(entry, activityChat); RefreshActivity(); }
     }
     private void Change(ChatEntry entry)
     {
-        var following = Transcript.ScrollableHeight - Transcript.VerticalOffset < 64;
         if (selected is not null) Row(selected).Refresh();
-        if (stepGroups.TryGetValue(entry.Id, out var group)) group.Refresh();
-        else if (entryText.TryGetValue(entry.Id, out var text)) text.Text = entry.Text;
-        else if (entryMarkdown.TryGetValue(entry.Id, out var markdown)) MarkdownView.Fill(markdown, entry.Text, Theme);
-        if (following) DispatcherQueue.TryEnqueue(() => Transcript.ChangeView(null, Transcript.ScrollableHeight, null, true));
+        foreach (var surface in Surfaces)
+        {
+            var following = surface.Following;
+            if (surface.Groups.TryGetValue(entry.Id, out var group)) group.Refresh();
+            else if (surface.Text.TryGetValue(entry.Id, out var text)) text.Text = entry.Text;
+            else if (surface.Markdown.TryGetValue(entry.Id, out var markdown)) MarkdownView.Fill(markdown, entry.Text, Theme);
+            else continue;
+            if (following) DispatcherQueue.TryEnqueue(() => surface.Scroll.ChangeView(null, surface.Scroll.ScrollableHeight, null, true));
+        }
+        if (activityVisible && activityOwner?.Entries.Contains(entry) == true) RefreshActivity();
     }
     private static string? Str(JsonElement value, string field) => value.ValueKind == JsonValueKind.Object && value.TryGetProperty(field, out var found) && found.ValueKind == JsonValueKind.String ? found.GetString() : null;
 
@@ -1332,6 +1371,7 @@ public sealed partial class MainWindow : Window
         bool onBox = owner.Target == ConversationTarget.Box;
         if (!local && !pc && !onBox && (owner.Target != ConversationTarget.Sai || client is null)) { Show("Connect your Sai account in Settings first."); return false; }
         if (!local && !pc && !onBox && computers.All(c => c.Id != owner.ComputerId)) { Show("The saved computer is not available on this account. Refresh computers or create a new agent."); return false; }
+        if (pc && ThisPcRunner.Missing(owner.ThisPcHarness) is { } missing) { Show(missing); return false; }
         if (local && !PrivateComputer.IsConfigured) { Show("This PC's Private computer isn't set up yet. Choose New agent › Private › Set up this PC."); return false; }
         return true;
     }
@@ -1425,12 +1465,13 @@ public sealed partial class MainWindow : Window
             {
                 entry.Answered = true; entry.Text += "\nTurn ended. Check pending approvals in Sai."; Change(entry);
             }
-            foreach (var controls in approvalControls.Values) SetButtonsEnabled(controls, false);
+            foreach (var controls in Surfaces.SelectMany(s => s.Approvals.Values)) SetButtonsEnabled(controls, false);
             // Steps that never finished stay "unfinished"; the group's spinner stops.
             run = null; running = false; runOwner = null; cancellation.Dispose();
-            foreach (var group in stepGroups.Values.Distinct()) group.Refresh();
+            foreach (var group in Surfaces.SelectMany(s => s.Groups.Values).Distinct()) group.Refresh();
             Row(owner).Working = false;
             Controls();
+            if (pc) ActivityTurnEnded(owner);
             await Persist();
         }
         await ContinueQueue(owner, succeeded);
@@ -1440,24 +1481,24 @@ public sealed partial class MainWindow : Window
     /// <summary>One Claude Code turn on this PC itself, every action approved by the person, like "This Mac".</summary>
     private async Task RunThisPc(Conversation owner, string message, CancellationToken token)
     {
-        ThisPcRunner.UseApprovals(Decide);
+        var harness = owner.ThisPcHarness;
         pcTurnOwner = owner; approveRestOfTurn = false;
         var model = owner.ModelId ?? "gemma4";
-        Add(owner, new ChatEntry { Role = "Activity", Text = $"Claude Code · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}" });
+        Add(owner, new ChatEntry { Role = "Activity", Text = $"{harness.DisplayName()} · {(owner.Provider == ModelProvider.OpenRouter ? "OpenRouter · " : "")}{model}" });
         var calls = new Dictionary<string, (ChatEntry Entry, bool Screenshot)>();
-        var resume = owner.HarnessSessions.GetValueOrDefault(PrivateHarness.ClaudeCode);
+        var resume = owner.HarnessSessions.GetValueOrDefault(harness);
         bool started = false, reportedError = false, finished = false;
         var memory = BeginMemory(owner, message, currentUserEntryId);
         try
         {
-            await foreach (var raw in ThisPcRunner.Run(owner, memory.Prompt, resume, model, token))
+            await foreach (var raw in ThisPcRunner.Run(owner, memory.Prompt, resume, model, Decide, token))
             foreach (var item in memory.Consume(raw))
             {
                 if (item is HarnessFinished { IsError: false }) finished = true;
                 switch (item)
                 {
                     case HarnessStarted begun:
-                        started = true; owner.HarnessSessions[PrivateHarness.ClaudeCode] = begun.SessionId; UpdateContext(); break;
+                        started = true; owner.HarnessSessions[harness] = begun.SessionId; UpdateContext(); break;
                     case HarnessText or HarnessTextDelta or HarnessTextSnapshot:
                         RenderText(owner, item); break;
                     case HarnessToolCall call:
@@ -1478,14 +1519,14 @@ public sealed partial class MainWindow : Window
                         usage = used; UpdateContext(); break;
                     case HarnessFinished { IsError: true } end when !reportedError:
                         reportedError = true;
-                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? "Claude Code reported an error." }); break;
+                        Add(owner, new ChatEntry { Role = "Error", Text = Readable(end.Result) ?? $"{harness.DisplayName()} reported an error." }); break;
                 }
             }
         }
         catch (PrivateComputerException) when (!started && resume is not null)
         {
-            owner.HarnessSessions.Remove(PrivateHarness.ClaudeCode);
-            throw new PrivateComputerException("Claude Code couldn't continue its earlier session, so the next message starts a new one. Send it again.");
+            owner.HarnessSessions.Remove(harness);
+            throw new PrivateComputerException($"{harness.DisplayName()} could not continue its earlier session. Send the message again to start a new one.");
         }
         finally { FinishMemory(owner, memory, finished && !reportedError && !token.IsCancellationRequested); }
     }
@@ -1572,16 +1613,29 @@ public sealed partial class MainWindow : Window
     private Task<bool> Decide(ApprovalRequest request, CancellationToken cancellation)
     {
         var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        cancellation.Register(() => answer.TrySetResult(false));
-        if (!DispatcherQueue.TryEnqueue(() =>
+        var registration = cancellation.Register(() => answer.TrySetResult(false));
+        _ = answer.Task.ContinueWith(_ => registration.Dispose(), TaskScheduler.Default);
+        if (!DispatcherQueue.TryEnqueue(async () =>
         {
             var owner = pcTurnOwner;
             if (owner is null || owner.Id != request.Agent || !running) { answer.TrySetResult(false); return; }
+            // Wait before approving the next action while the person takes over or edits in the floating chat.
+            await WaitWhilePaused(cancellation);
+            if (pcTurnOwner != owner || !running || stopRequested || cancellation.IsCancellationRequested) { answer.TrySetResult(false); return; }
+            bool uiWork = ThisPcAgent.IsUICommand(request.Tool, request.Input, ThisPcRunner.PcToolPath);
             // Looking runs without asking; so does the rest of a turn the person approved as a whole.
-            if (ThisPcAgent.IsLookOnly(request.Tool, request.Input, ThisPcRunner.PcToolPath) || approveRestOfTurn) { answer.TrySetResult(true); return; }
+            if (ThisPcAgent.IsLookOnly(request.Tool, request.Input, ThisPcRunner.PcToolPath) || approveRestOfTurn)
+            {
+                // Working in the PC's apps keeps the Agent Activity window on top, as on macOS.
+                if (uiWork) ShowActivity(owner, manual: false);
+                answer.TrySetResult(true);
+                return;
+            }
             var entry = new ChatEntry { Role = "Needs you", Text = ShortPc(ThisPcAgent.Describe(request.Tool, request.Input)) };
             entry.LocalAnswer = allowed => answer.TrySetResult(allowed);
             Add(owner, entry);
+            // An approval for app work opens the window too, so the person can answer next to the app.
+            if (uiWork) ShowActivity(owner, manual: false);
         })) answer.TrySetResult(false);
         return answer.Task;
     }
@@ -1712,6 +1766,8 @@ public sealed partial class MainWindow : Window
     {
         if (!running || runOwner is not { } owner) return;
         stopRequested = true; Controls();
+        // A paused This PC turn stops too; its waiting step is denied.
+        SetPcPaused(false);
         if (owner.Target == ConversationTarget.Sai && currentSession is null) Show("Waiting for the session ID before sending the stop request…", false);
         else await Stop(owner);
     }

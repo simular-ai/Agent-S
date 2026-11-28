@@ -68,6 +68,7 @@ public sealed partial class MainWindow
             Messages.Children.Clear(); entryText.Clear(); entryMarkdown.Clear(); approvalControls.Clear(); stepGroups.Clear(); openGroup = null;
             usage = null;
         }
+        if (activityOwner == agent && activityChat is not null) { activityChat.Clear(); RefreshActivity(); }
         Controls();
         await Persist();
     }
@@ -205,7 +206,12 @@ public sealed partial class MainWindow
         }
         else
         {
-            var harnesses = agent.Target == ConversationTarget.Private ? Harnesses.All : [PrivateHarness.ClaudeCode];
+            var harnesses = agent.Target switch
+            {
+                ConversationTarget.Private => Harnesses.All,
+                ConversationTarget.ThisPc => Harnesses.ThisPc,
+                _ => [PrivateHarness.ClaudeCode],
+            };
             harness = new ComboBox { Header = "Harness", HorizontalAlignment = HorizontalAlignment.Stretch, ItemsSource = harnesses.Select(h => h.DisplayName()).ToArray(),
                 SelectedIndex = Math.Max(0, Array.IndexOf(harnesses, agent.Harness ?? (agent.Target == ConversationTarget.Private ? PrivateHarness.AgentS : PrivateHarness.ClaudeCode))),
                 IsEnabled = harnesses.Length > 1 };
@@ -225,10 +231,10 @@ public sealed partial class MainWindow
             });
             var ollamaPart = new StackPanel { Spacing = 8 };
             ollamaPart.Children.Add(ollamaModel); ollamaPart.Children.Add(browse); ollamaPart.Children.Add(panel);
-            openRouterModel = OpenRouterModelBox(agent.Provider == ModelProvider.OpenRouter ? agent.ModelId ?? ThisPcAgent.SuggestedOpenRouterModels[0] : ThisPcAgent.SuggestedOpenRouterModels[0]);
+            openRouterModel = OpenRouterModelBox(agent.Provider == ModelProvider.OpenRouter ? agent.ModelId ?? ThisPcAgent.SuggestedOpenRouterModels[0] : ThisPcAgent.SuggestedOpenRouterModels[0], out var openRouterField);
             var zdrNote = Muted(AppSettings.Current.OpenRouterRequiresZdr ? "Zero Data Retention: requested (Settings)." : "Zero Data Retention: off (Settings).");
             var openRouterPart = new StackPanel { Spacing = 8 };
-            openRouterPart.Children.Add(openRouterModel); openRouterPart.Children.Add(zdrNote);
+            openRouterPart.Children.Add(openRouterField); openRouterPart.Children.Add(zdrNote);
             if (Secrets.ReadOpenRouter() is null) openRouterPart.Children.Add(Muted("Add your OpenRouter key in Settings."));
             void ShowProvider()
             {
@@ -258,9 +264,14 @@ public sealed partial class MainWindow
         if (saiModel?.SelectedItem is SaiModel model) agent.ModelId = model.Id;
         if (harness is not null && provider is not null && !isRunning)
         {
-            var harnesses = agent.Target == ConversationTarget.Private ? Harnesses.All : [PrivateHarness.ClaudeCode];
+            var harnesses = agent.Target switch
+            {
+                ConversationTarget.Private => Harnesses.All,
+                ConversationTarget.ThisPc => Harnesses.ThisPc,
+                _ => [PrivateHarness.ClaudeCode],
+            };
             agent.Harness = harnesses[Math.Max(0, harness.SelectedIndex)];
-            if (provider.SelectedIndex == 1 && (openRouterModel?.Text ?? "").Trim() is { Length: > 0 } hostedModel)
+            if (provider.SelectedIndex == 1 && (openRouterModel is null ? "" : ModelText(openRouterModel)) is { Length: > 0 } hostedModel)
             { agent.Provider = ModelProvider.OpenRouter; agent.ModelId = hostedModel; }
             else if (provider.SelectedIndex == 0 && ollamaModel?.SelectedItem is string localModel)
             { agent.Provider = ModelProvider.Ollama; agent.ModelId = localModel; }

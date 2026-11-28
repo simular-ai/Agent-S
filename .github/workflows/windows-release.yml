@@ -106,7 +106,8 @@ jobs:
         run: |
           # The csproj hardcodes a version that goes stale; stamp the release
           # tag's version so the installed app reports the build it came from.
-          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -p:Version=$env:BUILD_VERSION -o "$env:OUT_DIR"
+          # AgentSChannel=Release builds "Agent S"; without it the app is "Agent S Dev".
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -p:Version=$env:BUILD_VERSION -p:AgentSChannel=Release -o "$env:OUT_DIR"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (-not (Test-Path "$env:OUT_DIR/resources.pri")) {
             throw "Published XAML resource index is missing."

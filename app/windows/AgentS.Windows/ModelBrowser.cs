@@ -34,41 +34,52 @@ internal static class ModelBrowser
         return names.Length == 0 ? "" : "Used by " + string.Join(", ", names);
     }
 
+    /// <summary>The OpenRouter list and ZDR catalog, shared with the model fields' details (cached 10 minutes).</summary>
+    public static Task<(OpenRouterModel[] Models, OpenRouterZdrCatalog? Zdr)> LoadOpenRouter(bool force = false) => OpenRouter.Load(force: force);
+
     /// <summary>A button that opens the browser; <paramref name="chosen"/> gets the provider and model id.</summary>
-    public static Button Button(string label, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null)
+    public static Button Button(string label, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null, Func<string?>? current = null)
     {
         var button = new Button { Content = label };
-        Attach(button, providers, chosen, startOn);
+        Attach(button, providers, chosen, startOn, current);
         return button;
     }
 
     /// <summary>Opens the browser at <paramref name="anchor"/> (for the model menu above the chat).</summary>
-    public static void ShowAt(FrameworkElement anchor, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null) =>
-        Build(providers, chosen, startOn).ShowAt(anchor);
+    public static void ShowAt(FrameworkElement anchor, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null, Func<string?>? current = null) =>
+        Build(providers, chosen, startOn, current).ShowAt(anchor);
 
-    public static void Attach(Button button, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null) =>
-        button.Flyout = Build(providers, chosen, startOn);
+    public static void Attach(Button button, IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn = null, Func<string?>? current = null) =>
+        button.Flyout = Build(providers, chosen, startOn, current);
 
-    private static Flyout Build(IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn)
+    private static Flyout Build(IReadOnlyList<ModelProvider> providers, Action<ModelProvider, string> chosen, Func<ModelProvider>? startOn, Func<string?>? current)
     {
+        var title = new TextBlock { FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold };
         var tabs = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        var search = new TextBox { PlaceholderText = "Search by name, provider, or model ID" };
+        var search = new TextBox { PlaceholderText = "Name, provider, or model ID" };
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(search, "Search models");
         var options = new StackPanel { Spacing = 6 };
         var status = Muted("");
         var list = new ListView { SelectionMode = ListViewSelectionMode.None, IsItemClickEnabled = true, Height = 420 };
+        // As macOS's sheet: a progress or "Refresh ZDR availability" on the left, Done on the right.
+        var footerLeft = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, VerticalAlignment = VerticalAlignment.Center };
+        var done = new Button { Content = "Done", HorizontalAlignment = HorizontalAlignment.Right };
+        var footer = new Grid();
+        footer.Children.Add(footerLeft); footer.Children.Add(done);
         var panel = new StackPanel { Spacing = 8, Width = 560 };
-        panel.Children.Add(tabs); panel.Children.Add(search); panel.Children.Add(options); panel.Children.Add(status); panel.Children.Add(list);
+        panel.Children.Add(title); panel.Children.Add(tabs); panel.Children.Add(search); panel.Children.Add(options); panel.Children.Add(status); panel.Children.Add(list); panel.Children.Add(footer);
         // Flyouts are capped near 456px wide by default; the lists need the room.
         var presenter = new Style(typeof(FlyoutPresenter));
         presenter.Setters.Add(new Setter(FrameworkElement.MaxWidthProperty, 620.0));
         presenter.Setters.Add(new Setter(FrameworkElement.MaxHeightProperty, 760.0));
         presenter.Setters.Add(new Setter(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled));
         var flyout = new Flyout { Content = panel, Placement = FlyoutPlacementMode.Bottom, FlyoutPresenterStyle = presenter };
+        done.Click += (_, _) => flyout.Hide();
         var tab = providers[0];
         InstalledModel[] installed = [];
         OpenRouterModel[] hosted = [];
         OpenRouterZdrCatalog? zdr = null;
-        bool zdrOnly = AppSettings.Current.OpenRouterRequiresZdr;
+        bool openRouterLoading = false;
 
         FrameworkElement Row(string title, IEnumerable<(string Text, Brush? Color)> facts, object tag)
         {
@@ -136,45 +147,86 @@ internal static class ModelBrowser
                 + "Sizes are downloads; Ollama needs about that much free memory to run one.";
         }
 
+        // macOS's catalog row: name and input, the id, the price on the left; ZDR and context on the right; a check on the current model.
+        FrameworkElement OpenRouterRow(OpenRouterModel m, bool selected)
+        {
+            var availability = zdr?.Availability(m.Id, isPublicModel: true) ?? OpenRouterZdrAvailability.Unknown;
+            var row = new Grid { ColumnSpacing = 12, Padding = new Thickness(0, 6, 0, 6), Tag = "openrouter:" + m.Id };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(16) });
+            var left = new StackPanel { Spacing = 2 };
+            var nameLine = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis };
+            nameLine.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = m.Name });
+            nameLine.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = "  " + (m.Input is null ? "Input unknown" : OllamaModels.InputLabel(m.Input)), FontSize = 12, Foreground = Gray });
+            left.Children.Add(nameLine);
+            if (m.Name != m.Id) left.Children.Add(new TextBlock { Text = m.Id, FontSize = 12, Foreground = Gray, TextTrimming = TextTrimming.CharacterEllipsis });
+            left.Children.Add(new TextBlock { Text = m.PriceText, FontSize = 12, Foreground = Gray });
+            if (UsedBy(ModelProvider.OpenRouter, m.Id) is { Length: > 0 } used) left.Children.Add(new TextBlock { Text = used, FontSize = 12, Foreground = Accent });
+            var right = new StackPanel { Spacing = 2, HorizontalAlignment = HorizontalAlignment.Right };
+            right.Children.Add(ZdrIndicator(availability, 12));
+            if (m.ContextText.Length > 0) right.Children.Add(new TextBlock { Text = m.ContextText, FontSize = 12, Foreground = Gray, HorizontalAlignment = HorizontalAlignment.Right });
+            Grid.SetColumn(right, 1);
+            row.Children.Add(left); row.Children.Add(right);
+            if (selected)
+            {
+                var check = new FontIcon { Glyph = "", FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(check, 2); row.Children.Add(check);
+            }
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(row, $"{m.Name}, {m.PriceText}, {OpenRouterZdrCatalog.Label(availability)}");
+            return row;
+        }
+
         void RenderOpenRouter()
         {
             list.Items.Clear();
+            footerLeft.Children.Clear();
+            if (hosted.Length == 0)
+            {
+                if (openRouterLoading) { list.Items.Add(Loading("Loading models…")); status.Text = ""; return; }
+                list.Items.Add(Muted("Couldn't load OpenRouter models.", 14));
+                var retry = new Button { Content = "Try again" };
+                retry.Click += async (_, _) => await LoadHosted(force: true);
+                list.Items.Add(retry);
+                status.Text = "";
+                return;
+            }
             var query = search.Text.Trim();
-            int shown = 0, matching = 0;
+            var selectedId = current?.Invoke()?.Trim();
+            int matching = 0;
             foreach (var m in hosted)
             {
                 if (!m.Matches(query)) continue;
-                var availability = zdr?.Availability(m.Id, isPublicModel: true) ?? OpenRouterZdrAvailability.Unknown;
-                if (zdrOnly && availability != OpenRouterZdrAvailability.Available) continue;
                 matching++;
-                if (shown >= MaxRows) continue;
-                var label = OpenRouterZdrCatalog.Label(availability);
-                Brush color = availability == OpenRouterZdrAvailability.Available ? Green : AppSettings.Current.OpenRouterRequiresZdr ? Orange : Gray;
-                list.Items.Add(Row($"{m.Name}  ({m.Id})",
-                [
-                    (OllamaModels.InputLabel(m.Input), null), (m.ContextText, null), (m.PriceText, null), (label, color),
-                    (UsedBy(ModelProvider.OpenRouter, m.Id), Accent),
-                ], "openrouter:" + m.Id));
-                shown++;
+                list.Items.Add(OpenRouterRow(m, m.Id == selectedId));
             }
-            status.Text = hosted.Length == 0 ? "Loading OpenRouter models…"
-                : (matching > shown ? $"Showing {shown} of {matching} models; search to narrow." : $"{matching} models.")
-                  + (zdr is null ? " ZDR availability couldn't be checked." : "");
+            if (matching == 0) list.Items.Add(Muted("No matching models", 14));
+            status.Text = "";
+            if (openRouterLoading) footerLeft.Children.Add(Loading("Checking ZDR availability…"));
+            else if (zdr is null)
+            {
+                var refresh = new Button { Content = "Refresh ZDR availability" };
+                refresh.Click += async (_, _) => await LoadHosted(force: true);
+                footerLeft.Children.Add(refresh);
+            }
+        }
+
+        async Task LoadHosted(bool force)
+        {
+            openRouterLoading = true; if (tab == ModelProvider.OpenRouter) RenderOpenRouter();
+            (hosted, zdr) = await OpenRouter.Load(force: force);
+            openRouterLoading = false; if (tab == ModelProvider.OpenRouter) RenderOpenRouter();
         }
 
         void Render()
         {
             options.Children.Clear();
+            footerLeft.Children.Clear();
+            title.Text = providers.Count == 1 && providers[0] == ModelProvider.OpenRouter ? "OpenRouter models" : "Models";
             if (tab == ModelProvider.OpenRouter)
             {
-                // ZDR is requested for every OpenRouter agent (the proxy adds it to each request), as on macOS.
-                var request = new ToggleSwitch { Header = "Request Zero Data Retention (ZDR)", IsOn = AppSettings.Current.OpenRouterRequiresZdr, OnContent = "On · applies to all OpenRouter agents", OffContent = "Off" };
-                request.Toggled += (_, _) => { AppSettings.Current.OpenRouterRequiresZdr = request.IsOn; AppSettings.Current.Save(); zdrOnly = request.IsOn; Render(); };
-                var only = new CheckBox { Content = "Only models with a ZDR endpoint", IsChecked = zdrOnly };
-                only.Checked += (_, _) => { zdrOnly = true; RenderOpenRouter(); };
-                only.Unchecked += (_, _) => { zdrOnly = false; RenderOpenRouter(); };
-                options.Children.Add(request); options.Children.Add(only);
-                if (AppSettings.Current.OpenRouterRequiresZdr) options.Children.Add(Muted("With ZDR requested, OpenRouter may reject models without a ZDR endpoint."));
+                // As macOS: the ZDR setting lives with the model field and in Settings; the browser explains the labels.
+                options.Children.Add(Muted($"For strict ZDR, choose a model marked {OpenRouterZdrCatalog.Label(OpenRouterZdrAvailability.Available)}. With ZDR requested, allow Safety Retention in OpenRouter to use a Safety Retention-only model."));
                 RenderOpenRouter();
             }
             else RenderOllama();
@@ -195,14 +247,16 @@ internal static class ModelBrowser
         flyout.Opening += async (_, _) =>
         {
             tab = startOn?.Invoke() is { } start && providers.Contains(start) ? start : providers[0];
-            zdrOnly = AppSettings.Current.OpenRouterRequiresZdr;
+            search.Text = "";
+            if (providers.Contains(ModelProvider.OpenRouter) && hosted.Length == 0) openRouterLoading = true;
             Tabs(); Render();
+            var openRouterLoad = providers.Contains(ModelProvider.OpenRouter) ? LoadHosted(force: false) : Task.CompletedTask;
             if (providers.Contains(ModelProvider.Ollama))
             {
                 installed = await OllamaSetup.Installed(TimeSpan.FromSeconds(3)) ?? [];
                 StartLibrary(() => flyout.DispatcherQueue.TryEnqueue(() => { if (flyout.IsOpen && tab == ModelProvider.Ollama) RenderOllama(); }));
             }
-            if (providers.Contains(ModelProvider.OpenRouter)) (hosted, zdr) = await OpenRouter.Load();
+            await openRouterLoad;
             Render();
         };
         search.TextChanged += (_, _) => Render();
@@ -238,6 +292,24 @@ internal static class ModelBrowser
             catch (Exception error) when (error is LocalAgentException or HttpRequestException or TaskCanceledException) { }
             changed();
         });
+    }
+
+    private static FrameworkElement Loading(string text)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        row.Children.Add(new ProgressRing { IsActive = true, Width = 16, Height = 16 });
+        row.Children.Add(new TextBlock { Text = text, FontSize = 12, VerticalAlignment = VerticalAlignment.Center });
+        return row;
+    }
+
+    /// <summary>macOS's ZDR indicator: the label, with an orange warning for Safety Retention only and no public ZDR endpoint.</summary>
+    public static FrameworkElement ZdrIndicator(OpenRouterZdrAvailability availability, double size = 14)
+    {
+        var line = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, HorizontalAlignment = HorizontalAlignment.Right };
+        if (availability is OpenRouterZdrAvailability.SafetyRetentionOnly or OpenRouterZdrAvailability.Unavailable)
+            line.Children.Add(new FontIcon { Glyph = "", FontSize = size, Foreground = Orange, VerticalAlignment = VerticalAlignment.Center });
+        line.Children.Add(new TextBlock { Text = OpenRouterZdrCatalog.Label(availability), FontSize = size, FontWeight = Microsoft.UI.Text.FontWeights.Medium, Foreground = Gray, VerticalAlignment = VerticalAlignment.Center });
+        return line;
     }
 
     private static Brush Gray => new SolidColorBrush(global::Windows.UI.Color.FromArgb(255, 128, 128, 128));

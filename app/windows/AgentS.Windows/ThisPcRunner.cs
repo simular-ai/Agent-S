@@ -12,17 +12,18 @@ namespace AgentS.Windows;
 internal static class ThisPcRunner
 {
     public static readonly Uri ClaudeSetup = new("https://code.claude.com/docs/en/setup");
+    public static readonly Uri CodexSetup = new("https://developers.openai.com/codex/cli");
+    public static readonly Uri DeepSeekSetup = new("https://github.com/simular-ai/Agent-S/tree/main/app/windows#this-pc");
     public static readonly Uri OpenRouterKeys = new("https://openrouter.ai/settings/keys");
 
     private static string LocalAppData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
     /// <summary>No spaces in this path (usually), so the agent can type the tool's path plainly.</summary>
     private static string ToolsFolder => Path.Combine(LocalAppData, "Simular", "agent-s-tools");
-    private static string ProfileFolder => Path.Combine(LocalAppData, "Simular", "Agent S", "claude-this-pc");
+    private static string ProfileFolder => Path.Combine(AppIdentity.LocalFolder, "claude-this-pc");
     /// <summary>The `pc` tool as Claude Code's Bash (Git Bash) runs it.</summary>
     public static string PcToolPath => Path.Combine(ToolsFolder, "pc").Replace('\\', '/');
     public static string ScreenshotPath => Path.Combine(ToolsFolder, ThisPcAgent.ScreenshotName);
 
-    private static ApprovalServer? approvals;
     private static OpenRouterProxy? openRouter;
 
     /// <summary>The app's OpenRouter proxy (started once), shared by This PC turns and the Private computer's relay.</summary>
@@ -34,19 +35,31 @@ internal static class ThisPcRunner
     }
 
     /// <summary>Claude Code installed on this PC (npm, winget or the native installer), or null.</summary>
-    public static string? FindClaude()
+    public static string? FindClaude() => FindExecutable("claude.exe") ?? FindExecutable("claude.cmd");
+
+    private static string? FindCodex() => FindExecutable("codex.exe", Path.Combine(LocalAppData, "Programs", "OpenAI", "Codex", "bin"));
+
+    public static string? Missing(PrivateHarness harness) => harness switch
     {
-        var names = new[] { "claude.exe", "claude.cmd" };
+        PrivateHarness.Codex when FindCodex() is null => "Install the Codex CLI on this PC.",
+        PrivateHarness.DeepSeek when ThisPcDeepSeek.Find() is null => "Install Node.js and the pinned DeepSeek runtime on this PC.",
+        PrivateHarness.ClaudeCode when FindClaude() is null => "Install Claude Code on this PC.",
+        _ when FindGitBash() is null => "Install Git for Windows to use This PC tools.",
+        _ => null,
+    };
+
+    public static string? FindExecutable(string name, params string[] extraFolders)
+    {
         var folders = (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
             .Append(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".local", "bin"))
             .Append(Path.Combine(LocalAppData, "Microsoft", "WinGet", "Links"))
-            .Append(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"));
+            .Append(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"))
+            .Concat(extraFolders);
         foreach (var folder in folders)
-            foreach (var name in names)
-            {
-                try { var path = Path.Combine(folder.Trim('"'), name); if (File.Exists(path)) return path; }
-                catch (ArgumentException) { }
-            }
+        {
+            try { var path = Path.Combine(folder.Trim('"'), name); if (File.Exists(path)) return path; }
+            catch (ArgumentException) { }
+        }
         return null;
     }
 
@@ -62,21 +75,12 @@ internal static class ThisPcRunner
         return null;
     }
 
-    /// <summary>Starts the approval listener once; <paramref name="decide"/> shows each request to the person.</summary>
-    public static void UseApprovals(Func<ApprovalRequest, CancellationToken, Task<bool>> decide)
-    {
-        if (approvals is not null) return;
-        approvals = new ApprovalServer(decide);
-        approvals.Start();
-    }
-
-    /// <summary>Runs one turn and yields Claude Code's events. Cancelling ends the CLI and everything it started.</summary>
+    /// <summary>Runs one turn using the selected host harness and the app's approval gate.</summary>
     public static async IAsyncEnumerable<HarnessEvent> Run(Conversation owner, string prompt, string? resume, string model,
-        [EnumeratorCancellation] CancellationToken cancellation)
+        Func<ApprovalRequest, CancellationToken, Task<bool>> decide, [EnumeratorCancellation] CancellationToken cancellation)
     {
-        var claude = FindClaude() ?? throw new PrivateComputerException("Install Claude Code on this PC first, then send again.");
-        var bash = FindGitBash() ?? throw new PrivateComputerException("Claude Code on Windows needs Git for Windows (Git Bash). Install it, then send again.");
-        if (approvals is null) throw new PrivateComputerException("Approvals aren't ready. Restart Agent S and try again.");
+        var harness = owner.ThisPcHarness;
+        if (Missing(harness) is { } missing) throw new PrivateComputerException(missing);
         var tools = InstallTools();
 
         string baseUrl, apiKey;
@@ -92,6 +96,21 @@ internal static class ThisPcRunner
             model = await HarnessRunner.ContextModel(model, cancellation);
         }
 
+        if (harness != PrivateHarness.ClaudeCode)
+        {
+            var command = new ThisPcCommand(owner.Id, decide);
+            var events = harness == PrivateHarness.Codex
+                ? ThisPcCodex.Run(FindCodex() ?? throw new PrivateComputerException("Install the Codex CLI."),
+                    owner, prompt, resume, model, baseUrl, apiKey, command, cancellation)
+                : ThisPcDeepSeek.Run(ThisPcDeepSeek.Find() ?? throw new PrivateComputerException("Install the pinned DeepSeek runtime."),
+                    owner, prompt, resume, model, baseUrl, apiKey, command, cancellation);
+            await foreach (var item in events) yield return item;
+            yield break;
+        }
+        var claude = FindClaude() ?? throw new PrivateComputerException("Install Claude Code on this PC.");
+        var bash = FindGitBash() ?? throw new PrivateComputerException("Install Git for Windows.");
+        using var approvals = new ApprovalServer(decide);
+        approvals.Start();
         Directory.CreateDirectory(ProfileFolder);
         var settings = Path.Combine(ProfileFolder, "agent-s-settings.json");
         await File.WriteAllTextAsync(settings, ThisPcAgent.Settings(

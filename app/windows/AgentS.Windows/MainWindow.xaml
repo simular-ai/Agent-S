@@ -14,7 +14,7 @@
     <Grid x:Name="SidebarPane" Background="{ThemeResource SidebarBackground}" BorderBrush="{ThemeResource DividerBrush}" BorderThickness="0,0,1,0">
       <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
       <Grid Padding="16,12,12,4">
-        <TextBlock Text="Agent S" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="15" />
+        <TextBlock x:Name="AppTitle" Text="Agent S" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="15" />
         <Button x:Name="NewAgentButton" AutomationProperties.AutomationId="NewAgentButton" AutomationProperties.Name="New agent"
                 ToolTipService.ToolTip="New agent" Style="{StaticResource CircleButton}" HorizontalAlignment="Right" Click="NewAgent">
           <FontIcon Glyph="&#xE710;" FontSize="14" />
@@ -141,10 +141,17 @@
             <FontIcon Glyph="&#xE70D;" FontSize="11" />
           </StackPanel>
         </Button>
-        <Button x:Name="PanelToggle" HorizontalAlignment="Right" Style="{StaticResource CircleButton}" Click="TogglePanel"
-                ToolTipService.ToolTip="Show or hide the computer" AutomationProperties.Name="Show or hide the computer">
-          <FontIcon Glyph="&#xE8A0;" FontSize="14" />
-        </Button>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6">
+          <!-- This PC agents: the floating Agent Activity window, as macOS's "Show floating chat". -->
+          <Button x:Name="FloatingChatButton" Style="{StaticResource CircleButton}" Click="ShowFloatingChat" Visibility="Collapsed"
+                  ToolTipService.ToolTip="Show floating chat" AutomationProperties.Name="Show floating chat" AutomationProperties.AutomationId="FloatingChatButton">
+            <FontIcon Glyph="&#xEE49;" FontSize="14" />
+          </Button>
+          <Button x:Name="PanelToggle" Style="{StaticResource CircleButton}" Click="TogglePanel"
+                  ToolTipService.ToolTip="Show or hide the computer" AutomationProperties.Name="Show or hide the computer">
+            <FontIcon Glyph="&#xE8A0;" FontSize="14" />
+          </Button>
+        </StackPanel>
       </Grid>
       <InfoBar x:Name="Notice" Grid.Row="1" IsOpen="False" IsClosable="True" MaxWidth="760" />
       <ScrollViewer x:Name="Transcript" Grid.Row="2" HorizontalScrollBarVisibility="Disabled">

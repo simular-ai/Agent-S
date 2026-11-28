@@ -96,7 +96,7 @@ internal static class HarnessRunner
             UseShellExecute = false, CreateNoWindow = true,
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
         };
-        foreach (var argument in new[] { "-d", WslComputer.Distro, "-u", "agent", "--exec", "/usr/local/bin/agent-s-ollama-relay" })
+        foreach (var argument in WslComputer.AsAgent("/usr/local/bin/agent-s-ollama-relay"))
             start.ArgumentList.Add(argument);
         var process = Process.Start(start) ?? throw new PrivateComputerException("Could not start the model relay in WSL.");
         relayProcess = process;
@@ -154,7 +154,7 @@ internal static class HarnessRunner
             RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8, StandardErrorEncoding = Encoding.UTF8, StandardInputEncoding = new UTF8Encoding(false),
         };
-        foreach (var argument in new[] { "-d", WslComputer.Distro, "-u", "agent", "--cd", "~", "--exec", "setsid", "--wait", "/bin/bash", "-s" })
+        foreach (var argument in WslComputer.AsAgent("setsid", "--wait", "/bin/bash", "-s"))
             start.ArgumentList.Add(argument);
         using var process = Process.Start(start) ?? throw new PrivateComputerException("Could not start WSL.");
         var errors = new Queue<string>();

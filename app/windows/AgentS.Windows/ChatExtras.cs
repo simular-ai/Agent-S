@@ -82,6 +82,8 @@ public sealed partial class MainWindow
                 else if (agent.Provider == ModelProvider.OpenRouter && Secrets.ReadOpenRouter() is null) banner = ("Add your OpenRouter key to chat.", "Settings");
                 else if (!privateScreenShown) banner = ("The computer is off. It starts with your next message.", "Turn on");
             }
+            else if (agent.Target == ConversationTarget.ThisPc && ThisPcRunner.Missing(agent.ThisPcHarness) is { } missing)
+                banner = (missing, null);
             else if (agent.Target == ConversationTarget.Box && Secrets.ReadBox() is null) banner = ("Add your Simular Box key to chat.", "Settings");
             else if (agent.Target == ConversationTarget.Sai && client is null) banner = ("Connect your Sai account to chat.", "Settings");
             else if (agent.Target is ConversationTarget.ThisPc or ConversationTarget.Box && agent.Provider == ModelProvider.OpenRouter && Secrets.ReadOpenRouter() is null)
