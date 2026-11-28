@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import AgentSCore
 
 /// The conversation: messages, replies, and expandable runs of tool steps.
@@ -10,6 +11,10 @@ struct ChatView: View {
     @Binding var showComputer: Bool
     @State private var drafts: [UUID: String] = [:]
     @State private var draftMentions: [UUID: DraftMention] = [:]
+    @State private var attachmentDrafts: [UUID: AttachmentDraft] = [:]
+    @State private var attachmentPickerConversation: UUID?
+    @State private var showsAttachmentPicker = false
+    @State private var isFileDropTargeted = false
     @State private var highlightedMentionID: UUID?
     @State private var dismissesMentionSuggestions = false
     @FocusState private var composerFocused: Bool
@@ -34,12 +39,22 @@ struct ChatView: View {
     private struct DraftMention {
         let recipientID: UUID
         let token: String
-        var includeLastReply = false
 
         func isPresent(in text: String) -> Bool {
             let escaped = NSRegularExpression.escapedPattern(for: token)
             return text.range(of: #"(?<![\p{L}\p{N}\p{M}_@])"# + escaped + #"(?![\p{L}\p{N}\p{M}_-])"#,
                               options: .regularExpression) != nil
+        }
+    }
+
+    private struct AttachmentDraft {
+        var files: [ComposerFile] = []
+        var pendingDrops = 0
+        var error: String?
+
+        mutating func append(_ file: ComposerFile) {
+            guard !files.contains(where: { $0.url.standardizedFileURL == file.url.standardizedFileURL }) else { return }
+            files.append(file)
         }
     }
 
@@ -86,12 +101,14 @@ struct ChatView: View {
                 }
                 .frame(width: 520, height: 420)
             }
+            .fileImporter(isPresented: $showsAttachmentPicker, allowedContentTypes: [.data],
+                          allowsMultipleSelection: true, onCompletion: attachPickedFiles)
             .onChange(of: agent.id) {
                 highlightedMentionID = nil
                 dismissesMentionSuggestions = false
             }
-            .onChange(of: agent.latestReplyForHandoff != nil) {
-                if agent.latestReplyForHandoff == nil { draftMentions[agent.id]?.includeLastReply = false }
+            .onChange(of: model.agents.map(\.handoffConversationID)) { _, conversations in
+                attachmentDrafts = attachmentDrafts.filter { conversations.contains($0.key) }
             }
     }
 
@@ -135,14 +152,12 @@ struct ChatView: View {
             VStack(spacing: 4) {
                 if !agent.queuedFollowUps.isEmpty { queuedFollowUps }
                 if !suggestions.isEmpty { mentionPicker(suggestions) }
-                if let mention = draftMentions[agent.id], agent.latestReplyForHandoff != nil {
-                    includeReplyOption(for: mention)
-                }
                 composer(suggestions: suggestions)
             }
             .frame(maxWidth: 820)
             .padding(.horizontal, 24).padding(.bottom, 16).padding(.top, 8)
         }
+        .onDrop(of: [.fileURL, .image], isTargeted: $isFileDropTargeted, perform: acceptFileDrop)
     }
 
     private var transcript: some View {
@@ -154,7 +169,8 @@ struct ChatView: View {
         } else {
             activityAtEnd = false
         }
-        let showsWorkingRow = agent.isRunning && !activityAtEnd
+        let showsWorking = agent.isRunning && agent.pendingActionItems.isEmpty
+        let showsWorkingRow = showsWorking && !activityAtEnd
         let target: TranscriptAnchor? = showsWorkingRow ? .working : rows.last.map { .row($0.id) }
         let revision = TranscriptRevision(agentID: agent.id, lastItem: transcript.lastItem, target: target)
         return ScrollViewReader { proxy in
@@ -164,7 +180,7 @@ struct ChatView: View {
                         if rows.isEmpty { emptyState }
                         ForEach(rows) { row in
                             ChatTranscriptRow(row: row, isRunning: agent.isRunning,
-                                              showsWorking: agent.isRunning && activityAtEnd && row.id == rows.last?.id,
+                                              showsWorking: showsWorking && activityAtEnd && row.id == rows.last?.id,
                                               onHandoffDecision: agent.decideHandoff)
                                 .id(TranscriptAnchor.row(row.id))
                         }
@@ -173,8 +189,7 @@ struct ChatView: View {
                                 ProgressView().controlSize(.small)
                                 Text("Working…").foregroundStyle(.secondary)
                             }
-                            .padding(.horizontal, 16).padding(.vertical, 10)
-                            .background(Capsule().fill(Theme.bubble))
+                            .padding(.horizontal, 4).padding(.vertical, 6)
                             .id(TranscriptAnchor.working)
                         }
                     }
@@ -249,11 +264,18 @@ struct ChatView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             // Centred while there is room; slides left rather than under the Computer button.
             WindowHeaderSpace(minWidth: 16)
-            modelPill
-            WindowHeaderSpace(minWidth: 12)
+            ViewThatFits(in: .horizontal) {
+                headerMenus(modelName: "\(model.harness.displayName) · \(headerModelName)")
+                    .fixedSize(horizontal: true, vertical: false)
+                headerMenus(modelName: headerModelName)
+                    .fixedSize(horizontal: true, vertical: false)
+                headerMenus(modelName: headerModelName, compact: true)
+            }
+            .layoutPriority(1)
+            WindowHeaderSpace(minWidth: 8)
             HStack {
                 if model.privacy == .thisMac {
                     CircleButton(systemImage: "pip", help: "Show floating chat") {
@@ -263,13 +285,77 @@ struct ChatView: View {
                 // While the panel is open, the button lives at the top of the panel instead.
                 if !showComputer { ComputerToggle(showComputer: $showComputer) }
             }
+            .fixedSize()
             .padding(.trailing, 16)
         }
         .frame(height: Theme.titleBarHeight)
     }
 
+    private var headerModelName: String {
+        let identifier = model.activeModel
+        if model.harness == .sai, let name = model.saiModels.first(where: { $0.id == identifier })?.name {
+            return name
+        }
+        if model.provider == .openRouter, let name = model.openRouterModels.first(where: { $0.id == identifier })?.name,
+           name != identifier {
+            return name.split(separator: ":", maxSplits: 1).last?.trimmingCharacters(in: .whitespaces) ?? name
+        }
+        return identifier.split(separator: "/").last.map(String.init) ?? identifier
+    }
+
+    private func headerMenus(modelName: String, compact: Bool = false) -> some View {
+        HStack(spacing: 8) {
+            modelPill(title: modelName, compact: compact).layoutPriority(1)
+            if model.privacy == .thisMac { macApprovalMenu(compact: compact).fixedSize() }
+        }
+    }
+
+    private func macApprovalMenu(compact: Bool) -> some View {
+        let route = model.memoryRoute(for: agent)
+        let enabled = agent.macAutoApprovalEnabled(for: route)
+        let autoTitle = agent.isRunning ? "Auto-approve this task" : "Auto-approve next task"
+        return Menu {
+            Picker("This Mac approvals", selection: Binding(
+                get: { agent.macAutoApprovalEnabled(for: route) },
+                set: { agent.setMacAutoApproval($0, for: route) }
+            )) {
+                Text("Ask for approval").tag(false)
+                Text(autoTitle).tag(true)
+            }
+            .pickerStyle(.inline)
+        } label: {
+            headerMenuLabel(compact ? nil : (enabled ? "Auto-approve" : "Ask first"),
+                            icon: enabled ? "checkmark.shield" : "shield", active: enabled, compact: compact)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .modifier(ChatButtonHover())
+        .disabled(agent.isStopping)
+        .accessibilityLabel("Computer approvals")
+        .accessibilityValue(enabled ? autoTitle : "Ask for approval")
+        .help(enabled ? "\(autoTitle) on this Mac" : "Ask for approval on this Mac")
+    }
+
+    private func headerMenuLabel(_ title: String?, icon: String, active: Bool = false, compact: Bool) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.caption.weight(.semibold))
+            if let title {
+                Text(title).font(.callout.weight(.medium)).lineLimit(1).truncationMode(.tail)
+            }
+            Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+        }
+        .foregroundStyle(Color.primary)
+        .frame(height: 16)
+        .padding(.horizontal, compact ? 8 : 12)
+        .padding(.vertical, 8)
+        .background(active ? Theme.bubble : Theme.card, in: Capsule())
+        .overlay { Capsule().strokeBorder(Theme.hairline).allowsHitTesting(false) }
+        .contentShape(Capsule())
+    }
+
     /// Picks the harness, provider and model for the next message.
-    private var modelPill: some View {
+    private func modelPill(title: String, compact: Bool) -> some View {
         Menu {
             Section("Harness") {
                 ForEach(Harness.allowed(in: model.privacy, computer: model.computer)) { choice in
@@ -337,22 +423,16 @@ struct ChatView: View {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: model.privacy.location.symbol).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text("\(model.harness.displayName) · \(model.activeModel)").foregroundStyle(.secondary)
-                Image(systemName: "chevron.down").font(.caption2.weight(.semibold)).foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16).padding(.vertical, 9)
-            .background(Capsule().fill(Theme.card).shadow(color: .black.opacity(0.08), radius: 6, y: 2))
-            .overlay(Capsule().stroke(Theme.hairline))
-            .contentShape(Capsule())
+            headerMenuLabel(title, icon: model.privacy.location.symbol, compact: compact)
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .fixedSize()
+        .modifier(ChatButtonHover())
         .disabled(agent.isRunning)
-        .help(agent.isRunning ? "Switch after this answer" : "Switch the harness or the model")
+        .accessibilityLabel("Model")
+        .accessibilityValue("\(model.harness.displayName) · \(model.activeModel)")
+        .help("\(model.harness.displayName) · \(model.activeModel)\(agent.isRunning ? "\nSwitch after this answer" : "")")
     }
 
     /// The suggested OpenRouter models, plus the current one if it was picked in Settings.
@@ -449,9 +529,75 @@ struct ChatView: View {
         !draft.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var attachmentDraft: AttachmentDraft { attachmentDrafts[agent.handoffConversationID] ?? AttachmentDraft() }
+
+    private var supportsAttachments: Bool { model.canAttachFiles(to: agent) }
+
     private var canSend: Bool {
-        !agent.isStopping && hasDraft &&
+        guard !agent.isStopping, attachmentDraft.pendingDrops == 0 else { return false }
+        if !attachmentDraft.files.isEmpty {
+            return supportsAttachments && !agent.isRunning && !agent.isSendingSteering && model.canChat
+                && draftMentions[agent.id] == nil
+        }
+        return hasDraft &&
             (draftMentions[agent.id] != nil || agent.isRunning || (model.canChat && !agent.isSendingSteering))
+    }
+
+    private func attachPickedFiles(_ result: Result<[URL], Error>) {
+        guard let conversation = attachmentPickerConversation else { return }
+        attachmentPickerConversation = nil
+        guard model.agents.contains(where: { $0.handoffConversationID == conversation }) else { return }
+        var draft = attachmentDrafts[conversation] ?? AttachmentDraft()
+        switch result {
+        case .success(let urls):
+            draft.error = nil
+            for url in urls where url.isFileURL { draft.append(ComposerFile(url: url)) }
+        case .failure(let error):
+            draft.error = "Couldn’t attach files. \(error.localizedDescription)"
+        }
+        attachmentDrafts[conversation] = draft
+        if model.agent.handoffConversationID == conversation { composerFocused = true }
+    }
+
+    private func acceptFileDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard supportsAttachments, attachmentDraft.pendingDrops == 0 else { return false }
+        let files = providers.filter(ComposerFile.accepts)
+        guard !files.isEmpty else { return false }
+        let conversation = agent.handoffConversationID
+        attachmentDrafts[conversation, default: AttachmentDraft()].pendingDrops = files.count
+        attachmentDrafts[conversation]?.error = nil
+        for item in files {
+            ComposerFile.load(from: item) { file in
+                Task { @MainActor in finishFileDrop(file, in: conversation) }
+            }
+        }
+        return true
+    }
+
+    private func finishFileDrop(_ file: ComposerFile?, in conversation: UUID) {
+        guard var draft = attachmentDrafts[conversation], draft.pendingDrops > 0,
+              model.agents.contains(where: { $0.handoffConversationID == conversation }) else { return }
+        if let file { draft.append(file) }
+        else { draft.error = "Couldn’t attach one or more dropped files." }
+        draft.pendingDrops -= 1
+        attachmentDrafts[conversation] = draft
+        if draft.pendingDrops == 0, model.agent.handoffConversationID == conversation { composerFocused = true }
+    }
+
+    private func removeAttachment(_ file: ComposerFile) {
+        let conversation = agent.handoffConversationID
+        attachmentDrafts[conversation]?.files.removeAll { $0.id == file.id }
+        attachmentDrafts[conversation]?.error = nil
+        composerFocused = true
+    }
+
+    private var attachmentFeedback: String? {
+        if !attachmentDraft.files.isEmpty {
+            if draftMentions[agent.id] != nil { return "Remove the attachments or the agent mention to continue." }
+            if agent.isRunning { return "Send attachments when the current task finishes." }
+            if !supportsAttachments { return "This agent can’t receive file attachments." }
+        }
+        return attachmentDraft.error
     }
 
     private func mentionRange(in text: String) -> Range<String.Index>? {
@@ -520,23 +666,6 @@ struct ChatView: View {
         draft.wrappedValue = text
         draftMentions[agent.id] = mention
         composerFocused = true
-    }
-
-    private func includeReplyOption(for mention: DraftMention) -> some View {
-        let id = agent.id
-        return Toggle("Include last reply", isOn: Binding(
-            get: { draftMentions[id]?.includeLastReply ?? false },
-            set: { includeReply in
-                if draftMentions[id]?.recipientID == mention.recipientID {
-                    draftMentions[id]?.includeLastReply = includeReply
-                }
-            }
-        ))
-        .toggleStyle(.checkbox)
-        .font(.caption)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 18)
-        .help("Review the last reply before sharing it with the mentioned agent")
     }
 
     private func moveMention(by offset: Int, in suggestions: [AgentSession]) -> KeyPress.Result {
@@ -613,43 +742,111 @@ struct ChatView: View {
     }
 
     private func composer(suggestions: [AgentSession]) -> some View {
-        let stopsTurn = agent.isRunning && !hasDraft
+        let hasAttachments = !attachmentDraft.files.isEmpty
+        let isImporting = attachmentDraft.pendingDrops > 0
+        let isDropTarget = isFileDropTargeted && supportsAttachments && !isImporting
+        let stopsTurn = agent.isRunning && (!hasDraft || ((hasAttachments || isImporting) && suggestions.isEmpty))
         let submissionLabel = if !suggestions.isEmpty { "Select agent mention" }
-            else if draftMentions[agent.id] != nil { "Send agent handoff" }
+            else if draftMentions[agent.id] != nil { "Draft agent handoff" }
             else if !agent.isRunning { "Send" }
             else if agent.supportsSteering { "Steer the current turn" }
             else { "Queue follow-up" }
         let stopLabel = agent.forcedFollowUpID == nil ? "Stop" : "Cancel follow-up after stopping"
         let actionSymbol = stopsTurn ? "stop.fill" : "arrow.up"
-        let actionEnabled = canSend || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
-        return HStack(alignment: .bottom, spacing: 10) {
-            TextField(placeholder, text: draft, axis: .vertical)
-                .textFieldStyle(.plain)
-                .font(.body)
-                .lineLimit(1...6)
-                .focused($composerFocused)
-                .onSubmit { submit(suggestions: suggestions) }
-                .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
-                .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
-                .onKeyPress(.escape) {
-                    guard !suggestions.isEmpty else { return .ignored }
-                    dismissesMentionSuggestions = true
-                    highlightedMentionID = nil
-                    return .handled
+        let choosingMention = hasAttachments && !suggestions.isEmpty && !agent.isStopping
+        let actionEnabled = canSend || choosingMention || (stopsTurn && (!agent.isStopping || agent.forcedFollowUpID != nil))
+        return VStack(alignment: .leading, spacing: 4) {
+            attachmentDraftDetails
+            HStack(alignment: .top, spacing: 10) {
+                if supportsAttachments { attachmentButton.disabled(isImporting) }
+                HStack(alignment: .bottom, spacing: 10) {
+                    TextField(placeholder, text: draft, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .font(.body)
+                        .lineLimit(1...6)
+                        .focused($composerFocused)
+                        .onSubmit { submit(suggestions: suggestions) }
+                        .onKeyPress(.return, phases: [.down, .repeat]) { press in
+                            let modifiers = press.modifiers.intersection([.shift, .command, .control, .option])
+                            let window = NSApp.currentEvent?.window ?? NSApp.keyWindow
+                            guard modifiers == .shift, let editor = window?.firstResponder as? NSTextView,
+                                  !editor.hasMarkedText() else { return .ignored }
+                            editor.insertNewlineIgnoringFieldEditor(nil)
+                            return .handled
+                        }
+                        .onKeyPress(.upArrow) { moveMention(by: -1, in: suggestions) }
+                        .onKeyPress(.downArrow) { moveMention(by: 1, in: suggestions) }
+                        .onKeyPress(.escape) {
+                            guard !suggestions.isEmpty else { return .ignored }
+                            dismissesMentionSuggestions = true
+                            highlightedMentionID = nil
+                            return .handled
+                        }
+                        .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
+                        .padding(.vertical, 9)
+                    roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
+                        if stopsTurn { agent.stop() }
+                        else { submit(suggestions: suggestions) }
+                    }
+                    .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
+                    .disabled(!actionEnabled)
+                    .opacity(actionEnabled ? 1 : 0.4)
                 }
-                .disabled(!model.canChat && !agent.isRunning && !agent.config.usesLocalComputer)
-                .padding(.vertical, 9)
-            roundButton(actionSymbol, help: stopsTurn ? stopLabel : submissionLabel) {
-                if stopsTurn { agent.stop() }
-                else { submit(suggestions: suggestions) }
             }
-            .keyboardShortcut(stopsTurn ? nil : KeyboardShortcut(.return, modifiers: .command))
-            .disabled(!actionEnabled)
-            .opacity(actionEnabled ? 1 : 0.4)
+            .padding(.leading, supportsAttachments ? 8 : 18)
+            .padding(.trailing, 6)
         }
-        .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
+        .padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 24).fill(Theme.card))
-        .overlay(RoundedRectangle(cornerRadius: 24).stroke(Theme.hairline))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(isDropTarget ? Theme.accent : Theme.hairline, lineWidth: isDropTarget ? 2 : 1)
+                .allowsHitTesting(false)
+        }
+    }
+
+    @ViewBuilder private var attachmentDraftDetails: some View {
+        if !attachmentDraft.files.isEmpty {
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(attachmentDraft.files) { file in
+                        ChatAttachmentChip(name: file.url.lastPathComponent) { removeAttachment(file) }
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+            .scrollIndicators(.hidden)
+            .padding(.top, 4)
+        }
+        if attachmentDraft.pendingDrops > 0 {
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.mini).accessibilityHidden(true)
+                Text("Attaching files…").font(.caption).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 14)
+        } else if let attachmentFeedback {
+            Text(attachmentFeedback)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+        }
+    }
+
+    private var attachmentButton: some View {
+        Button {
+            attachmentPickerConversation = agent.handoffConversationID
+            showsAttachmentPicker = true
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 34)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .modifier(ChatButtonHover())
+        .accessibilityLabel("Attach files")
+        .help("Attach files")
     }
 
     private func roundButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
@@ -661,6 +858,7 @@ struct ChatView: View {
                 .background(Circle().fill(Theme.accent))
         }
         .buttonStyle(.plain)
+        .modifier(ChatButtonHover(tint: Theme.onAccent.opacity(0.16)))
         .accessibilityLabel(help)
         .help(help)
     }
@@ -778,18 +976,156 @@ struct ChatView: View {
         let text = original.trimmingCharacters(in: .whitespacesAndNewlines)
         if let mention = draftMentions[session.id] {
             followsLatest = true
-            if model.startHandoff(text, from: session, to: mention.recipientID,
-                                  includeLastReply: mention.includeLastReply), field.wrappedValue == original {
+            if model.startHandoff(text, from: session, to: mention.recipientID), field.wrappedValue == original {
                 field.wrappedValue = ""
             }
             return
         }
         let wasRunning = session.isRunning
-        let accepted = wasRunning ? model.queueFollowUp(text, for: session) : model.send(text, to: session)
+        let conversation = session.handoffConversationID
+        let selectedURLs = attachmentDraft.files.map(\.url)
+        let accepted = wasRunning ? model.queueFollowUp(text, for: session)
+            : model.send(text, to: session, attachmentURLs: selectedURLs, isDirectChat: true)
         if accepted {
             if field.wrappedValue == original { field.wrappedValue = "" }
+            attachmentDrafts[conversation] = nil
             if !wasRunning || session.supportsSteering { followsLatest = true }
         }
+    }
+}
+
+private struct ChatButtonHover: ViewModifier {
+    var tint = Color.primary.opacity(0.09)
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isHovered = false
+
+    func body(content: Content) -> some View {
+        let highlighted = isHovered && isEnabled
+        content
+            .overlay { Capsule().fill(tint).opacity(highlighted ? 1 : 0).allowsHitTesting(false) }
+            .onHover { isHovered = $0 }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: highlighted)
+    }
+}
+
+private struct ComposerFile: Identifiable, Sendable {
+    let id = UUID()
+    let url: URL
+    var temporaryImage: DroppedComposerImage? = nil
+
+    private static let standardImages: [UTType] = [.png, .jpeg, .gif, .tiff, .heic, .heif, .bmp, .ico, .svg, .webP, .image]
+
+    static func accepts(_ item: NSItemProvider) -> Bool {
+        item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) || imageType(for: item) != nil
+    }
+
+    private static func imageType(for item: NSItemProvider) -> UTType? {
+        item.registeredTypeIdentifiers.lazy.compactMap { identifier -> UTType? in
+            if let type = standardImages.first(where: { $0.identifier == identifier }) { return type }
+            guard let type = UTType(identifier), type.conforms(to: .image) else { return nil }
+            return type
+        }.first
+    }
+
+    static func load(from item: NSItemProvider, completion: @escaping @Sendable (ComposerFile?) -> Void) {
+        if item.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            item.loadObject(ofClass: NSURL.self) { value, _ in
+                guard let url = value as? URL, url.isFileURL else {
+                    completion(nil)
+                    return
+                }
+                completion(ComposerFile(url: url))
+            }
+            return
+        }
+        guard let type = imageType(for: item) else {
+            completion(nil)
+            return
+        }
+        item.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, _ in
+            if let url {
+                let image = try? DroppedComposerImage(copying: url, type: type)
+                completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
+                return
+            }
+            item.loadDataRepresentation(forTypeIdentifier: type.identifier) { data, _ in
+                let image = data.flatMap { try? DroppedComposerImage(data: $0, type: type) }
+                completion(image.map { ComposerFile(url: $0.url, temporaryImage: $0) })
+            }
+        }
+    }
+}
+
+/// A provider's image URL lasts for its completion handler. Keep a private copy for the draft.
+private final class DroppedComposerImage: Sendable {
+    let url: URL
+    private let directory: URL
+
+    convenience init(copying source: URL, type: UTType) throws {
+        let metadata = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard metadata.isRegularFile == true, let bytes = metadata.fileSize, bytes <= ChatAttachments.maximumFileBytes else {
+            throw CocoaError(.fileReadTooLarge)
+        }
+        try self.init(suffix: type.preferredFilenameExtension ?? source.pathExtension) { target in
+            try FileManager.default.copyItem(at: source, to: target)
+        }
+    }
+
+    convenience init(data: Data, type: UTType) throws {
+        guard data.count <= ChatAttachments.maximumFileBytes else { throw CocoaError(.fileReadTooLarge) }
+        try self.init(suffix: type.preferredFilenameExtension ?? "") { target in
+            try data.write(to: target, options: .withoutOverwriting)
+        }
+    }
+
+    private init(suffix: String, write: (URL) throws -> Void) throws {
+        let files = FileManager.default
+        directory = files.temporaryDirectory.appendingPathComponent("agent-s-draft-\(UUID().uuidString)", isDirectory: true)
+        url = directory.appendingPathComponent(suffix.isEmpty ? "Image" : "Image.\(suffix)")
+        try files.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        do {
+            try write(url)
+        } catch {
+            try? files.removeItem(at: directory)
+            throw error
+        }
+    }
+
+    deinit { try? FileManager.default.removeItem(at: directory) }
+}
+
+private struct ChatAttachmentChip: View {
+    let name: String
+    var remove: (() -> Void)? = nil
+
+    var body: some View {
+        let type = UTType(filenameExtension: (name as NSString).pathExtension)
+        HStack(spacing: 6) {
+            Image(systemName: type?.conforms(to: .image) == true ? "photo" : "doc")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Text(verbatim: name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            if let remove {
+                Button(action: remove) {
+                    Image(systemName: "xmark").font(.caption2.weight(.semibold))
+                        .frame(width: 16, height: 16)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Remove \(name)")
+                .help("Remove attachment")
+            }
+        }
+        .font(.caption)
+        .frame(maxWidth: 220)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 8))
+        .help(name)
     }
 }
 
@@ -821,9 +1157,8 @@ private struct TranscriptScrollObserver: NSViewRepresentable {
 
 struct ChatRow: View {
     let item: ChatItem
-    var isToolActive = true
     var onHandoffDecision: ((UUID, Bool) -> Void)?
-    @State private var open = false
+    var neutralUserMessages = false
 
     var body: some View {
         switch item.kind {
@@ -838,7 +1173,13 @@ struct ChatRow: View {
                             Text("Steering").font(.caption).foregroundStyle(.secondary)
                         }
                         handoffAttribution
-                        UserPromptBubble(prompt: item.text)
+                        let attachments = item.attachmentNames ?? []
+                        if !item.text.isEmpty || attachments.isEmpty {
+                            UserPromptBubble(prompt: item.text, neutral: neutralUserMessages)
+                        }
+                        ForEach(Array(attachments.enumerated()), id: \.offset) { _, name in
+                            ChatAttachmentChip(name: name).fixedSize(horizontal: true, vertical: false)
+                        }
                     }
                 }
             }
@@ -850,8 +1191,8 @@ struct ChatRow: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
             }
-        case let .step(name, done, failed, output):
-            toolStep(name: name, done: done, failed: failed, output: output)
+        case .step:
+            ChatActivityBar(steps: ArraySlice([item]), isCurrentTurnRunning: false, showsWorking: false)
         case let .approval(id, linkOnly, url, answer):
             ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer)
         case let .notice(isError):
@@ -882,56 +1223,6 @@ struct ChatRow: View {
             Text(verbatim: label).font(.caption).foregroundStyle(.secondary)
         }
     }
-
-    private func toolStep(name: String, done: Bool, failed: Bool, output: String) -> some View {
-        let title = ToolActivity.title(tool: name, summary: item.text, detail: item.toolInput)
-        let status = failed ? "Failed" : done ? "Completed" : isToolActive ? "Running" : "Unfinished"
-        let symbol = failed ? "exclamationmark.circle" : done ? "checkmark.circle" : isToolActive ? "circle.dotted" : "clock"
-        let input = item.toolInput ?? (item.text == name || item.text == title ? "" : item.text)
-
-        return VStack(alignment: .leading, spacing: 6) {
-            Button { open.toggle() } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: symbol)
-                        .foregroundStyle(failed ? Color.red : done ? Color.green : Color.secondary)
-                    Text(title).font(.callout).lineLimit(1)
-                    Image(systemName: open ? "chevron.down" : "chevron.right").font(.caption2).foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 14).stroke(Theme.hairline))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(title)
-            .accessibilityValue(status)
-            .accessibilityHint(open ? "Hide step details" : "Show step details")
-
-            if open {
-                let details = VStack(alignment: .leading, spacing: 8) {
-                    stepDetail("Tool", name)
-                    stepDetail("Input", input)
-                    stepDetail("Output", output)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                ViewThatFits(in: .vertical) {
-                    details
-                    ScrollView { details }
-                }
-                .frame(maxHeight: 180)
-                .padding(10)
-                .background(RoundedRectangle(cornerRadius: 10).fill(Theme.bubble))
-            }
-        }
-    }
-
-    @ViewBuilder private func stepDetail(_ label: String, _ value: String) -> some View {
-        if !value.isEmpty {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text(verbatim: value).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
-            }
-        }
-    }
 }
 
 private struct HandoffShareCard: View {
@@ -952,6 +1243,14 @@ private struct HandoffShareCard: View {
                     Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 .fixedSize(horizontal: false, vertical: true)
+                if share.state == .drafting {
+                    Spacer(minLength: 0)
+                    ProgressView().controlSize(.small).accessibilityHidden(true)
+                    if let onDecision {
+                        Button("Cancel", role: .cancel) { onDecision(share.id, false) }
+                            .buttonStyle(.bordered).controlSize(.small)
+                    }
+                }
             }
             if isAwaiting {
                 messagePreview
@@ -965,7 +1264,7 @@ private struct HandoffShareCard: View {
                     }
                     .controlSize(.small)
                 }
-            } else {
+            } else if share.state != .drafting && !text.isEmpty {
                 DisclosureGroup(isReply ? "View reply" : "View message") {
                     messagePreview.padding(.top, 4)
                 }
@@ -987,6 +1286,7 @@ private struct HandoffShareCard: View {
         }
         let name = share.destination.name
         switch share.state {
+        case .drafting: return "Preparing message for \(name)…"
         case .awaitingApproval: return "Share with \(name)?"
         case .queued: return "Queued to share with \(name)"
         case .sending: return "Sending to \(name)"
@@ -1000,9 +1300,9 @@ private struct HandoffShareCard: View {
     private var subtitle: String {
         guard isReply else { return share.route }
         switch share.state {
+        case .drafting, .sending: return share.route
         case .awaitingApproval: return "Continue using \(share.route)"
         case .queued: return "Continuation queued"
-        case .sending: return share.route
         case .shared: return "Continued with reply"
         case .canceled: return "Dismissed"
         case .failed: return "Couldn’t continue"
