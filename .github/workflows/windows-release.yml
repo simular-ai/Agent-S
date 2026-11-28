@@ -1,0 +1,394 @@
+name: Windows release
+
+# Manual only: the `release` environment requires a human to approve each run,
+# and signing keys should never be spent on an unattended push.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to create or update (e.g. v0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write   # create/update the GitHub release
+  id-token: write   # OIDC -> Entra federated credential
+
+jobs:
+  release:
+    runs-on: windows-latest
+    # The signing identity can only be reached from this environment, and the
+    # environment only admits the protected `main` branch - not tags, which are
+    # unprotected here and could point anywhere. Two federated credentials are
+    # allowlisted so login works whichever subject form GitHub emits:
+    #   repo:simular-ai/Agent-S:environment:release
+    #   repo:simular-ai@99358647/Agent-S@870189331:environment:release
+    environment: release
+    timeout-minutes: 40
+    # Two runs for the same tag would race: both could see the tag as missing,
+    # and the loser could publish over the winner. Serialise per tag.
+    concurrency:
+      group: windows-release-${{ inputs.tag }}
+      cancel-in-progress: false
+
+    env:
+      ZIP_NAME: AgentS-Windows-x64
+
+    steps:
+      - uses: actions/checkout@v4.4.0
+
+      - name: Derive the build version from the tag
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Validate before TAG is used in any API path below: only the
+          # refs/tags/ prefix is URL-encoded, so a tag containing a slash or a
+          # space would otherwise build a malformed request.
+          # Require the same v-prefixed form as the existing v0.3.x releases; a
+          # bare 0.4.0 would create an inconsistent tag series.
+          if ($env:TAG -notmatch '^v\d+\.\d+\.\d+$') {
+            throw "Tag $env:TAG must look like vMAJOR.MINOR.PATCH (for example v0.4.0). The numeric version is stamped into Settings > Check for Updates..., so it has to be a plain v-prefixed release version."
+          }
+          $version = $env:TAG.Substring(1)
+          "BUILD_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          # A job-level env cannot use the runner context, which made this whole
+          # file invalid to GitHub, so publish the output directory from here.
+          "OUT_DIR=$env:RUNNER_TEMP/agent-s-windows" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Building version $version from tag $env:TAG."
+
+      # Publishing must never sign binaries from one commit and attach them to a
+      # tag pointing at another. Checkout builds the dispatch ref, so compare the
+      # tag's commit against the commit actually built before anything is signed.
+      - name: Verify the tag matches the built commit
+        shell: pwsh
+        env:
+          TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $errFile = Join-Path $env:RUNNER_TEMP 'guard-error.txt'
+          # Resolve via the API rather than `git ls-remote`: an annotated tag's
+          # ref points at a tag object, not a commit, so the raw SHA would never
+          # match. `commits/<ref>` peels the tag to its commit for us.
+          # stderr goes to a file: merging it into stdout would corrupt the JSON.
+          $out = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" 2>$errFile
+          if ($LASTEXITCODE -ne 0) {
+            $err = if (Test-Path $errFile) { (Get-Content $errFile -Raw).Trim() } else { '' }
+            # Only this specific message means "tag not created yet" (GitHub
+            # answers 422 "No commit found for SHA: <tag>"). Everything else -
+            # auth, rate limit, wrong repo returning 404, server error - must
+            # stop the run rather than be read as a missing tag and waved
+            # through. Failing closed costs a human a re-run; failing open
+            # ships unsigned or mis-tagged binaries.
+            if ($err -match 'No commit found for SHA') {
+              Write-Host "Tag $env:TAG does not exist yet; the release step will create it at $env:GITHUB_SHA."
+              exit 0
+            }
+            throw "Could not resolve tag ${env:TAG}: $err"
+          }
+          $tagSha = ($out | ConvertFrom-Json).sha
+          if ($tagSha -ne $env:GITHUB_SHA) {
+            throw "Tag $env:TAG points at $tagSha, but this run built $env:GITHUB_SHA."
+          }
+          Write-Host "Tag $env:TAG resolves to the built commit."
+
+      - uses: actions/setup-dotnet@v4.3.1
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: API and stream contract tests (no credentials)
+        run: dotnet run --project app/windows/AgentS.Core.Tests -c Release
+
+      - name: Publish native WinUI app
+        shell: pwsh
+        run: |
+          # The csproj hardcodes a version that goes stale; stamp the release
+          # tag's version so the installed app reports the build it came from.
+          dotnet publish app/windows/AgentS.Windows -c Release -p:Platform=x64 -r win-x64 -p:Version=$env:BUILD_VERSION -o "$env:OUT_DIR"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (-not (Test-Path "$env:OUT_DIR/resources.pri")) {
+            throw "Published XAML resource index is missing."
+          }
+
+      - name: Verify the binary reports the release version
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = Join-Path $env:OUT_DIR "AgentS.Windows.exe"
+          if (-not (Test-Path $exe)) { throw "Published executable not found at $exe." }
+          $reported = (Get-Item $exe).VersionInfo.FileVersion
+          if (-not $reported) { throw "Could not read a file version from $exe." }
+          if (-not $reported.StartsWith($env:BUILD_VERSION)) {
+            throw "Binary reports $reported but the release tag says $env:BUILD_VERSION."
+          }
+          Write-Host "Binary reports $reported, matching tag version $env:BUILD_VERSION."
+
+      - name: Native startup smoke test (no credentials)
+        shell: powershell
+        timeout-minutes: 3
+        run: |
+          & powershell.exe -NoProfile -STA -File app/windows/scripts/smoke.ps1 `
+            -Executable "${{ runner.temp }}/agent-s-windows/AgentS.Windows.exe" `
+            -EvidenceDirectory "${{ runner.temp }}/agent-s-evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # --- Signing -------------------------------------------------------
+      # Requires: certificate profile exists, and this app has the
+      # "Artifact Signing Certificate Profile Signer" role on it.
+      - name: Azure login (OIDC, no stored secret)
+        uses: azure/login@v2.3.1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign exe and native DLLs
+        uses: Azure/artifact-signing-action@v0.5.11
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ runner.temp }}/agent-s-windows
+          files-folder-filter: exe,dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify signatures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The signer covers every exe and dll in the publish folder (non
+          # recursive, matching its files-folder setting), so verify that same
+          # set: checking only the main exe would let a failed signature on a
+          # native DLL ship inside a release that looks signed.
+          $targets = @(Get-ChildItem -Path $env:OUT_DIR -File |
+            Where-Object { $_.Extension -in @('.exe', '.dll') })
+          if ($targets.Count -eq 0) { throw "No exe or dll files found in $env:OUT_DIR." }
+          $bad = @()
+          foreach ($file in $targets) {
+            $sig = Get-AuthenticodeSignature $file.FullName
+            if ($sig.Status -ne 'Valid') {
+              $bad += "$($file.Name): $($sig.Status)"
+              continue
+            }
+            # A valid signature alone is not enough: it must be our certificate,
+            # and timestamped so it outlives the certificate's own expiry.
+            if ($sig.SignerCertificate.Subject -notlike '*O="Simular, Inc."*') {
+              $bad += "$($file.Name): unexpected signer $($sig.SignerCertificate.Subject)"
+            }
+            if (-not $sig.TimeStamperCertificate) {
+              $bad += "$($file.Name): signature is not timestamped"
+            }
+          }
+          if ($bad.Count -gt 0) {
+            throw ("Signature verification failed for {0} of {1} files:`n{2}" -f $bad.Count, $targets.Count, ($bad -join "`n"))
+          }
+          Write-Host "Verified $($targets.Count) files as validly signed and timestamped."
+          Write-Host "Signer: $((Get-AuthenticodeSignature $targets[0].FullName).SignerCertificate.Subject)"
+
+      - name: Zip and checksum
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP "$env:ZIP_NAME.zip"
+          Compress-Archive -Path "$env:OUT_DIR/*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:ZIP_NAME.zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii -NoNewline
+          Write-Host "SHA256: $hash"
+
+      - name: Upload release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zipName = "$env:ZIP_NAME.zip"
+          $shaName = "$zipName.sha256"
+          $zip = Join-Path $env:RUNNER_TEMP $zipName
+          $checksum = "$zip.sha256"
+          $errFile = Join-Path $env:RUNNER_TEMP 'gh-error.txt'
+
+          function Get-GhError {
+            if (Test-Path $errFile) {
+              $text = (Get-Content $errFile -Raw).Trim()
+              Remove-Item $errFile -ErrorAction SilentlyContinue
+              return $text
+            }
+            return ''
+          }
+
+          function Get-ReleaseForTag {
+            # The release-by-tag REST endpoint only returns published releases.
+            # An authenticated listing includes drafts, so use that to find a
+            # draft left behind by an interrupted run.
+            Remove-Item $errFile -ErrorAction SilentlyContinue
+            $filter = '.[] | select(.tag_name == "{0}")' -f $env:TAG
+            $releases = @(gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" --jq $filter 2>$errFile)
+            if ($LASTEXITCODE -ne 0) { throw "Could not list releases for $env:TAG: $(Get-GhError)" }
+            if ($releases.Count -gt 1) { throw "Multiple releases match $env:TAG." }
+            if ($releases.Count -eq 1) { return ($releases[0] | ConvertFrom-Json) }
+          }
+
+          function Assert-DraftTarget($release) {
+            # A draft must name the exact commit its assets were built from. A
+            # branch target identifies nothing stable: once main moves, a draft
+            # holding a ZIP from an older commit still matches, and that stale
+            # ZIP would be published under a tag on the newer commit. The
+            # checksum only ties the ZIP to the checksum file and the tag check
+            # only ties the tag to the commit, so neither would catch it.
+            if (-not $release -or -not $release.draft) { return $release }
+            $target = "$($release.target_commitish)"
+            if ($target -match '^[0-9a-fA-F]{40}$') {
+              if ($target.ToLowerInvariant() -ne $env:GITHUB_SHA) {
+                throw "Draft $env:TAG targets commit $target; expected $env:GITHUB_SHA."
+              }
+              return $release
+            }
+            if (@($release.assets).Count -gt 0) {
+              throw "Draft $env:TAG targets the branch '$target' but already holds assets, so they cannot be tied to $env:GITHUB_SHA. Delete the draft or pin it to a commit before rerunning."
+            }
+            # An empty draft is safe to pin: nothing has been uploaded yet.
+            gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" -F target_commitish=$env:GITHUB_SHA --silent
+            if ($LASTEXITCODE -ne 0) { throw "Failed to pin draft $env:TAG to $env:GITHUB_SHA." }
+            $pinned = Get-ReleaseForTag
+            if (-not $pinned -or "$($pinned.target_commitish)" -ne $env:GITHUB_SHA) {
+              throw "Draft $env:TAG did not accept pinned commit $env:GITHUB_SHA."
+            }
+            Write-Host "Pinned draft $env:TAG to $env:GITHUB_SHA."
+            return $pinned
+          }
+
+          function Assert-ReleaseTag($release) {
+            Remove-Item $errFile -ErrorAction SilentlyContinue
+            $tag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>$errFile
+            if ($LASTEXITCODE -eq 0) {
+              $tagSha = "$tag".Trim()
+              if ($tagSha -ne $env:GITHUB_SHA) {
+                throw "Tag $env:TAG points at $tagSha; expected $env:GITHUB_SHA."
+              }
+            } else {
+              $msg = Get-GhError
+              if (($release -and -not $release.draft) -or $msg -notmatch 'No commit found for SHA') {
+                throw "Could not resolve tag ${env:TAG}: $msg"
+              }
+            }
+          }
+
+          function Save-Asset($release, $name, $destination) {
+            $asset = $release.assets | Where-Object { $_.name -eq $name } | Select-Object -First 1
+            if (-not $asset) { throw "Asset $name is not on release $env:TAG." }
+            # Fetch through the asset API, not the release-by-tag endpoint: the
+            # latter hides drafts, which is exactly the case being recovered.
+            # curl, not a PowerShell redirect, so the ZIP stays binary-clean.
+            curl.exe -sSL --fail -H "Authorization: Bearer $env:GH_TOKEN" -H "Accept: application/octet-stream" "https://api.github.com/repos/$env:GITHUB_REPOSITORY/releases/assets/$($asset.id)" -o $destination
+            if ($LASTEXITCODE -ne 0) { throw "Failed to download asset $name from $env:TAG." }
+          }
+
+          $release = Get-ReleaseForTag
+          Assert-ReleaseTag $release
+          $release = Assert-DraftTarget $release
+          if (-not $release) {
+            gh release create $env:TAG --draft --title $env:TAG --generate-notes --target $env:GITHUB_SHA
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create draft for $env:TAG." }
+            $release = Get-ReleaseForTag
+            if (-not $release -or -not $release.draft) { throw "Expected a draft for $env:TAG after creation." }
+            Assert-ReleaseTag $release
+            $release = Assert-DraftTarget $release
+          }
+
+          $incomplete = @($release.assets | Where-Object {
+            $_.name -in @($zipName, $shaName) -and ($_.state -ne 'uploaded' -or $_.size -le 0)
+          })
+          if ($incomplete.Count -gt 0) {
+            throw "Release $env:TAG contains an incomplete Windows upload. Remove the incomplete asset before rerunning."
+          }
+          $hasZip = $release.assets.name -contains $zipName
+          $hasChecksum = $release.assets.name -contains $shaName
+
+          if (-not $release.draft) {
+            if ($hasZip -and $hasChecksum) {
+              Write-Host "Release $env:TAG already has both Windows assets; nothing to publish."
+              exit 0
+            }
+            if ($hasZip -or $hasChecksum) {
+              throw "Published release $env:TAG has only one Windows asset; resolve the partial pair by hand."
+            }
+            gh release upload $env:TAG $zip $checksum
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload Windows assets to $env:TAG." }
+            exit 0
+          }
+
+          # Build the checksum from the ZIP that will actually be published. A
+          # rebuilt and signed ZIP differs from one an earlier run uploaded.
+          if ($hasZip) {
+            # Safe to reuse only because Assert-DraftTarget pinned this draft to
+            # $env:GITHUB_SHA: the ZIP on it was built from that same commit.
+            Write-Host "Draft $env:TAG already holds $zipName built from $env:GITHUB_SHA; reusing it and discarding this run's rebuilt ZIP."
+            $zip = Join-Path $env:RUNNER_TEMP "draft-$zipName"
+            Save-Asset $release $zipName $zip
+          }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumLine = "$hash  $zipName"
+          if ($hasChecksum) {
+            $draftChecksum = Join-Path $env:RUNNER_TEMP "draft-$shaName"
+            Save-Asset $release $shaName $draftChecksum
+            if ((Get-Content $draftChecksum -Raw).Trim() -ne $checksumLine) {
+              throw "Draft $env:TAG has a checksum that does not match the ZIP. Resolve the mismatch before rerunning."
+            }
+          }
+          if (-not $hasZip) {
+            gh release upload $env:TAG $zip
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the ZIP to draft $env:TAG." }
+          }
+          if (-not $hasChecksum) {
+            $checksumLine | Out-File -FilePath $checksum -Encoding ascii -NoNewline
+            gh release upload $env:TAG $checksum
+            if ($LASTEXITCODE -ne 0) { throw "Failed to upload the checksum to draft $env:TAG." }
+          }
+
+          $ready = Get-ReleaseForTag
+          if (-not $ready -or $ready.id -ne $release.id -or -not $ready.draft) {
+            throw "Draft $env:TAG changed while assets were being uploaded; refusing to publish."
+          }
+          # Last chance to catch a retarget before the release is public: if the
+          # draft now names another commit, publishing would create the tag there
+          # while the assets came from ours. The post-publish check would only
+          # notice after the release was already visible.
+          if ("$($ready.target_commitish)" -ne $env:GITHUB_SHA) {
+            throw "Draft $env:TAG now targets $($ready.target_commitish); expected $env:GITHUB_SHA. Refusing to publish."
+          }
+          $uploaded = @($ready.assets | Where-Object { $_.state -eq 'uploaded' -and $_.size -gt 0 })
+          if ($uploaded.name -notcontains $zipName -or $uploaded.name -notcontains $shaName) {
+            throw "Draft $env:TAG is missing a completed Windows asset; refusing to publish."
+          }
+          Assert-ReleaseTag $ready
+          gh api --method PATCH "repos/$env:GITHUB_REPOSITORY/releases/$($ready.id)" -F draft=false --silent
+          if ($LASTEXITCODE -ne 0) { throw "Failed to publish draft $env:TAG." }
+
+          # Publishing is the step that must be confirmed rather than assumed:
+          # check the release is live and its tag points at what we built.
+          $published = Get-ReleaseForTag
+          if (-not $published -or $published.draft) {
+            throw "Release $env:TAG is still a draft after publishing."
+          }
+          Remove-Item $errFile -ErrorAction SilentlyContinue
+          $finalTag = gh api "repos/$env:GITHUB_REPOSITORY/commits/refs%2Ftags%2F$env:TAG" --jq .sha 2>$errFile
+          if ($LASTEXITCODE -ne 0) { throw "Published $env:TAG but cannot resolve its tag: $(Get-GhError)" }
+          if ("$finalTag".Trim() -ne $env:GITHUB_SHA) {
+            throw "Published $env:TAG but its tag points at $("$finalTag".Trim()), not $env:GITHUB_SHA."
+          }
+          Write-Host "Published $env:TAG with both Windows assets."
+
+      - name: Upload smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: windows-release-smoke-evidence
+          path: ${{ runner.temp }}/agent-s-evidence/
+          retention-days: 7
+          if-no-files-found: warn
