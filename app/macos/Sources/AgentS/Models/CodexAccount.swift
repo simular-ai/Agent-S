@@ -483,8 +483,10 @@ final class CodexAccountTurn {
                     onEvent(.textDelta(id: id, text: delta))
                 }
             case "item/completed" where params["turnId"] as? String == turnID:
-                if let item = params["item"] as? [String: Any], item["type"] as? String == "agentMessage",
-                   let text = item["text"] as? String {
+                guard let item = params["item"] as? [String: Any] else { continue }
+                if item["type"] as? String == "userMessage" {
+                    onEvent(.userInputReceived)
+                } else if item["type"] as? String == "agentMessage", let text = item["text"] as? String {
                     onEvent((item["id"] as? String).map { .textSnapshot(id: $0, text: text) } ?? .text(text))
                 }
             case "thread/tokenUsage/updated" where params["turnId"] as? String == turnID:

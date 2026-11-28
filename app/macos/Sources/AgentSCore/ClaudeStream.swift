@@ -6,6 +6,8 @@ public enum ClaudeEvent: Equatable, Sendable {
     case started(sessionId: String, model: String?)
     case steeringReady
     case steeringResult(id: String, accepted: Bool)
+    /// The harness consumed user input within the turn.
+    case userInputReceived
     /// Words for the user.
     case text(String)
     case textDelta(id: String, text: String)

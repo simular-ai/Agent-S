@@ -1689,6 +1689,8 @@ final class AgentSession: ObservableObject, Identifiable {
             setSteeringReady(true)
         case let .steeringResult(id, accepted):
             deepSeekSteering?.acknowledge(id: id, accepted: accepted)
+        case .userInputReceived:
+            break
         case let .started(id, _):
             guard !recordRouteSession(id) else { return }
             if let sandboxSessionKey { sandboxSessions[sandboxSessionKey] = id }

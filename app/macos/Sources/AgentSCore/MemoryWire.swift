@@ -72,6 +72,8 @@ public struct MemoryWire: Sendable {
         case let .finished(result, isError, costUSD):
             let visible = result.map(Self.visibleText)
             return [.finished(result: visible, isError: isError, costUSD: costUSD)]
+        case .userInputReceived:
+            return endTextSegment()
         case .toolCall, .toolResult:
             return endTextSegment() + [event]
         default:
@@ -112,7 +114,7 @@ public struct MemoryWire: Sendable {
         return reconcile(segment: segment, text: rawText(in: segment), final: segment < segments.count - 1)
     }
 
-    /// A trailer that precedes more tool work is hidden and cannot update memory.
+    /// An earlier segment's trailer stays hidden and cannot update memory.
     private mutating func endTextSegment() -> [ClaudeEvent] {
         let last = segments.count - 1
         guard !segments[last].isEmpty else { return [] }
