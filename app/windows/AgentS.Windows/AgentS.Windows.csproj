@@ -15,7 +15,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Generated from app/Resources/Icon/AppIcon.png (the macOS icon), cropped to the tile. -->
+    <!-- Indigo release artwork generated from app/macos/Resources/Icon/AppIcon.png. -->
     <ApplicationIcon>Assets\AgentS.ico</ApplicationIcon>
     <!-- The Agent S release this build belongs to; Settings › Check for Updates… compares against it. -->
     <Version>0.3.3</Version>
@@ -24,7 +24,7 @@
     <AgentSChannel Condition="'$(AgentSChannel)' == ''">Dev</AgentSChannel>
   </PropertyGroup>
   <PropertyGroup Condition="'$(AgentSChannel)' != 'Release'">
-    <!-- The macOS icon with a DEV badge, made by scripts/make-dev-icon.ps1. -->
+    <!-- Black development artwork. -->
     <ApplicationIcon>Assets\AgentS-Dev.ico</ApplicationIcon>
     <Product>Agent S Dev</Product>
     <AssemblyTitle>Agent S Dev</AssemblyTitle>

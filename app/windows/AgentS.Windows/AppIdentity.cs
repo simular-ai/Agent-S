@@ -25,7 +25,7 @@ internal static class AppIdentity
     /// <summary>The WSL distro that is this build's Private computer.</summary>
     public static string WslDistro => IsRelease ? "AgentS-Private" : "AgentS-Dev-Private";
 
-    /// <summary>Window icon and sidebar logo; development builds carry a DEV badge.</summary>
+    /// <summary>Window icon and sidebar logo; production uses indigo and development uses black.</summary>
     public static string IconFile => IsRelease ? "AgentS.ico" : "AgentS-Dev.ico";
     public static string LogoFile => IsRelease ? "AgentS.png" : "AgentS-Dev.png";
 }
