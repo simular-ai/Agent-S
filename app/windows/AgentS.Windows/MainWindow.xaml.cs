@@ -1158,11 +1158,11 @@ public sealed partial class MainWindow : Window
             case "You":
                 // Black bubble on the right, as on macOS.
                 text.Foreground = Theme("BubbleForeground");
-                element = new Border
+                element = PromptRow(text, new Border
                 {
-                    Child = PromptContent(text), Background = Theme("BubbleBackground"), CornerRadius = new CornerRadius(compact ? 16 : 20),
+                    Child = text, Background = Theme("BubbleBackground"), CornerRadius = new CornerRadius(compact ? 16 : 20),
                     Padding = compact ? new Thickness(14, 8, 14, 8) : new Thickness(18, 10, 18, 10), HorizontalAlignment = HorizontalAlignment.Right, MaxWidth = compact ? 300 : 560,
-                };
+                });
                 break;
             case "Activity":
             {
