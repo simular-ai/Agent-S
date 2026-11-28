@@ -306,13 +306,15 @@ struct ChatView: View {
     private func headerMenus(modelName: String, compact: Bool = false) -> some View {
         HStack(spacing: 8) {
             modelPill(title: modelName, compact: compact).layoutPriority(1)
-            approvalMenu(compact: compact).fixedSize()
+            if !model.privacy.usesLocalComputer {
+                approvalMenu(compact: compact).fixedSize()
+            }
         }
     }
 
     private func approvalMenu(compact: Bool) -> some View {
         let enabled = agent.autoApproveActions
-        let asksBeforeTasks = model.privacy.usesLocalComputer || model.computer == .box
+        let asksBeforeTasks = model.computer == .box
         let askTitle = asksBeforeTasks ? "Ask before each task" : "Ask for approval"
         let mode = enabled ? "Auto-approve" : askTitle
         let scope = if model.harness == .sai {
