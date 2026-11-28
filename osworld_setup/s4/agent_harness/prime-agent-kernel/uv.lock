@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.11.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -502,7 +502,7 @@ wheels = [
 
 [[package]]
 name = "mcp"
-version = "2.1.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -520,22 +520,22 @@ dependencies = [
     { name = "typing-inspection" },
     { name = "uvicorn", marker = "sys_platform != 'emscripten'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/3b/3acf4897b934ceeb8d22df7309a435a76c34f94be936b36eee8bb57b29a3/mcp-2.1.0.tar.gz", hash = "sha256:b4407b2890238248795d03e8c17d02d311c600ca9272d023ab12dbfa6ad21c70", size = 3983282, upload-time = "2026-08-24T19:04:32.671Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/31/ac54fb0fdd5b37de704486e288bba4fbbb463f24cfcfedbede407b854513/mcp-2.2.0.tar.gz", hash = "sha256:2dc37ecb1974becdcebdbf7561e7c15a07dbbf20ba21ba16c3593b3038b3afbd", size = 4084129, upload-time = "2026-09-07T16:06:23.439Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/88/67/b2160b6cf138872860d2552cca2894dbe4d29da7f1c6fae0c21d22782838/mcp-2.1.0-py3-none-any.whl", hash = "sha256:b8acaed6ca4b9376801377463e44246395749363b1c34467ec6243a50be5ed28", size = 357320, upload-time = "2026-08-24T19:04:29.909Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/ff/8e7eade68b8a28f7da0ed1085544341b51f9c935dbf6b95c76b7edfea6a0/mcp-2.2.0-py3-none-any.whl", hash = "sha256:bde982589473a060ae145e3406e9a5333fe538c97229ba841f5a7f92be004f81", size = 365656, upload-time = "2026-09-07T16:06:19.711Z" },
 ]
 
 [[package]]
 name = "mcp-types"
-version = "2.1.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/97/5b1c2e40d6121172c97638a0f1d6240526f5aeebdc9ebea11ddcf2139249/mcp_types-2.1.0.tar.gz", hash = "sha256:16f91064ce33d7ee7a75a7e198a437172215180c16d4bbcfa0e61488ede92c54", size = 66679, upload-time = "2026-08-24T19:04:34.13Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ae/91/762d7755d971aff8a28d75f7961656148edf27875c8026e6385aaab08ae7/mcp_types-2.2.0.tar.gz", hash = "sha256:d3ed53703ddd10d9c6399f29d322bb66f3f67ab41348ac8556ba23e07fedefad", size = 65892, upload-time = "2026-09-07T16:06:25.187Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/99/f9041368b5af773de32af6192ff0627a71368c240123e57262439ae5b594/mcp_types-2.1.0-py3-none-any.whl", hash = "sha256:6a65bfb7d057ceaf2418781ee61b3041e1f4b5418199297f8939a4b4ed334c3a", size = 69654, upload-time = "2026-08-24T19:04:31.327Z" },
+    { url = "https://files.pythonhosted.org/packages/8f/d7/6ffba5d8cd5dd9b8a19478875c50e04945314ba5074e84d749283f27f62d/mcp_types-2.2.0-py3-none-any.whl", hash = "sha256:ea476b73ee86709ab5abc9452385ed36cc05907e582355622e294595c9a04f13", size = 69106, upload-time = "2026-09-07T16:06:21.461Z" },
 ]
 
 [[package]]
@@ -1018,7 +1018,7 @@ requires-dist = [
     { name = "httpx" },
     { name = "ipykernel" },
     { name = "lxml" },
-    { name = "mcp", specifier = ">=2,<3" },
+    { name = "mcp", specifier = ">=2.2.0,<3" },
     { name = "nest-asyncio" },
     { name = "numpy" },
     { name = "pandas" },
