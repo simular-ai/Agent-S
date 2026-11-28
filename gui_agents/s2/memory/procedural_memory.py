@@ -111,7 +111,7 @@ class PROCEDURAL_MEMORY:
     
     To be successful, you must follow the rules below:
     - DO NOT suggest any specific future plans or actions. Your only goal is to provide a reflection, not an actual plan or action.
-    - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially lookout for cycles of actions that are continually repeated with no progress.
+    - Any response that falls under Case 1 should explain why the trajectory is not going according to plan. You should especially look out for cycles of actions that are continually repeated with no progress.
     - Any response that falls under Case 2 should be concise, since you just need to affirm the agent to continue with the current trajectory.
     """)
 
