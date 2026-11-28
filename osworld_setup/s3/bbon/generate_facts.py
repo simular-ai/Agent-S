@@ -221,7 +221,7 @@ if __name__ == "__main__":
         help="List of results directories to analyze for task classification",
     )
     parser.add_argument(
-        "--model", default="gpt-5-2025-08-07", help="Model to use for generation"
+        "--model", default="gpt-6.1-sol", help="Model to use for generation"
     )
     parser.add_argument("--engine-type", default="openai", help="Engine type")
     parser.add_argument(

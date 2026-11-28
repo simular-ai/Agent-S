@@ -242,7 +242,7 @@ if __name__ == "__main__":
         help="Maximum number of rounds to run (default: len(results_dirs))",
     )
     parser.add_argument(
-        "--model", default="gpt-5-2025-08-07", help="Model to use for judging"
+        "--model", default="gpt-6.1-sol", help="Model to use for judging"
     )
     parser.add_argument("--engine-type", default="openai", help="Engine type")
     parser.add_argument(

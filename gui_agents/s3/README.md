@@ -69,7 +69,7 @@ For optimal performance, we recommend [UI-TARS-1.5-7B](https://huggingface.co/By
 
 
 > ⚡️ **Recommended Setup:**  
-> For the best configuration, we recommend using **OpenAI gpt-5-2025-08-07** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
+> For the best configuration, we recommend using **OpenAI gpt-6.1-sol** as the main model, paired with **UI-TARS-1.5-7B** for grounding.  
 
 
 ### CLI
@@ -81,7 +81,7 @@ Run Agent S3 with the required parameters:
 ```bash
 agent_s \
     --provider openai \
-    --model gpt-5-2025-08-07 \
+    --model gpt-6.1-sol \
     --ground_provider huggingface \
     --ground_url http://localhost:8080 \
     --ground_model ui-tars-1.5-7b \
@@ -95,7 +95,7 @@ For tasks that require code execution (e.g., data processing, file manipulation,
 ```bash
 agent_s \
     --provider openai \
-    --model gpt-5-2025-08-07 \
+    --model gpt-6.1-sol \
     --ground_provider huggingface \
     --ground_url http://localhost:8080 \
     --ground_model ui-tars-1.5-7b \
@@ -108,7 +108,7 @@ agent_s \
 
 #### Required Parameters
 - **`--provider`**: Main generation model provider (e.g., openai, anthropic, etc.) - Default: "openai"
-- **`--model`**: Main generation model name (e.g., gpt-5-2025-08-07) - Default: "gpt-5-2025-08-07"
+- **`--model`**: Main generation model name (e.g., gpt-6.1-sol) - Default: "gpt-6.1-sol"
 - **`--ground_provider`**: The provider for the grounding model - **Required**
 - **`--ground_url`**: The URL of the grounding model - **Required**
 - **`--ground_model`**: The model name for the grounding model - **Required**
@@ -116,7 +116,7 @@ agent_s \
 - **`--grounding_height`**: Height of the output coordinate resolution from the grounding model - **Required**
 
 #### Optional Parameters
-- **`--model_temperature`**: The temperature to fix all model calls to (necessary to set to 1.0 for models like o3 but can be left blank for other models)
+- **`--model_temperature`**: The temperature to fix all model calls to (leave it blank for OpenAI reasoning models such as gpt-6.1-sol and o3: Agent-S doesn't send `temperature` to them)
 
 #### Grounding Model Dimensions
 The grounding width and height should match the output coordinate resolution of your grounding model:

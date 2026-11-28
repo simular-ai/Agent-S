@@ -235,8 +235,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gpt-5-2025-08-07",
-        help="Specify the model to use (e.g., gpt-5-2025-08-07)",
+        default="gpt-6.1-sol",
+        help="Specify the model to use (e.g., gpt-6.1-sol)",
     )
     parser.add_argument(
         "--model_url",
