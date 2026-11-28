@@ -75,6 +75,9 @@ def call_llm_safe(agent) -> Union[str, Dag]:
 
 def calculate_tokens(messages, num_image_token=NUM_IMAGE_TOKEN) -> Tuple[int, int]:
 
+    if not messages:
+        return 0, 0
+
     num_input_images = 0
     output_message = messages[-1]
 
