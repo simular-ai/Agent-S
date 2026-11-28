@@ -185,8 +185,9 @@ the same version.
 - **Sandbox on This Mac** agents share the guest, browser, and files. The guest can reach the internet,
   shares the clipboard, and can read and write the app's shared folder at
   `~/Library/Application Support/Agent S/share` (`/mnt/sai` in the VM).
-  Harness commands run in the VM with per-tool approval disabled. Sandbox CLI sign-ins
-  live in the guest and are accessible to other agents using that sandbox.
+  Sending a message starts the task in the VM. Harness commands run there without
+  per-tool approval. Sandbox CLI sign-ins live in the guest and are accessible to
+  other agents using that sandbox.
 - **This Mac** uses the Mac's apps, Terminal, and files with approvals for actions.
 - Hosted providers receive prompts and tool results sent to the model, which can include
   web pages, file contents, and screenshots. Agent S stores the OpenRouter key in the
@@ -208,6 +209,19 @@ the same version.
 - [Tests/AgentSCoreTests](Tests/AgentSCoreTests) contains the Swift tests.
 - [DeepSeekRuntime](DeepSeekRuntime) pins the bundled DeepSeek Harness packages and holds the
   tools that select and prune them.
+
+### Regression check for approvals
+
+Commit `357d798` added a task-start prompt to the shared local VM send path.
+A direct **Send** in **Sandbox on This Mac** authorizes that turn for every harness.
+Keep confirmation for Simular Box task starts and approval for This Mac actions
+in their respective paths.
+
+When changing approvals, send a message to a sandbox agent using Codex, DeepSeek,
+and Claude Code. Each should start without an approval card, including agents with
+a saved **Ask first** preference. Check that **Ask first** on Simular Box still asks
+before starting a task and **Ask for approval** on This Mac still asks before an
+action such as opening an app.
 
 ## Publishing
 

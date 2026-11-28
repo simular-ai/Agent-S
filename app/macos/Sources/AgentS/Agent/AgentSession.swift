@@ -788,17 +788,17 @@ final class AgentSession: ObservableObject, Identifiable {
         return BoxApprovalTarget(name: config.boxName, key: BoxAccount.key())
     }
 
-    /// These computers run their harness inside a separate boundary, so Ask confirms the task before launch.
-    private func approveTaskStart(turn expectedTurn: String, box: BoxApprovalTarget? = nil) async -> Bool {
+    /// Ask confirms a Simular Box task before launch.
+    private func approveBoxTaskStart(turn expectedTurn: String, box: BoxApprovalTarget?) async -> Bool {
         guard turn == expectedTurn, isRunning, !isStopping, !Task.isCancelled else { return false }
-        guard box != nil || config.usesLocalComputer else { return true }
+        guard let box else { return true }
         // Handoff review already authorizes the exact request for the selected destination.
         if activeHandoffTurn == nil, !autoApproveActions {
-            let text = box == nil ? "Start this task in the sandbox?" : "Start this task on \(box?.name ?? "Simular Box")?"
+            let text = "Start this task on \(box.name ?? "Simular Box")?"
             guard await requestLocalApproval(turn: expectedTurn, title: "Start task",
                                              text: text, isTaskApproval: true) else { return false }
         }
-        if let box, box.key == nil || boxApprovalTarget != box {
+        if box.key == nil || boxApprovalTarget != box {
             notice("The Simular Box connection changed. Send the task again to use the current connection.", isError: true)
             return false
         }
@@ -825,10 +825,8 @@ final class AgentSession: ObservableObject, Identifiable {
         let turnID = turn
         turnPreparation = Task { @MainActor in
             defer { if turn == turnID { turnPreparation = nil } }
-            guard await approveTaskStart(turn: turnID) else {
-                if turn == turnID, !isStopping { completeTurn(success: false, stoppedSafely: true) }
-                return
-            }
+            // Sending a message authorizes launch inside the local VM.
+            guard turn == turnID, isRunning, !isStopping, !Task.isCancelled else { return }
             async let now = readScreen ? screen() : nil
             let verified: AgentMemoryRoute? = if let memoryRoute, let verifyRoute { await verifyRoute(memoryRoute) } else { memoryRoute }
             let screen = await now
@@ -1249,7 +1247,7 @@ final class AgentSession: ObservableObject, Identifiable {
                         return
                     }
                 }
-                guard await approveTaskStart(turn: turnID, box: box) else {
+                guard await approveBoxTaskStart(turn: turnID, box: box) else {
                     if turn == turnID, !isStopping { completeTurn(success: false, stoppedSafely: true) }
                     return
                 }
@@ -1464,7 +1462,7 @@ final class AgentSession: ObservableObject, Identifiable {
                     guard self.turn == turnID else { return }
                     guard self.setVerifiedRoute(verified, expected: memoryRoute) else { return }
                 }
-                guard await self.approveTaskStart(turn: turnID, box: box) else { return }
+                guard await self.approveBoxTaskStart(turn: turnID, box: box) else { return }
                 guard self.handoffMayLaunch() else { return }
                 let resume = self.resumeOnRoute(self.activeMemoryRoute, legacy: legacyResume)
                 try await run(self.modelPrompt(for: item), resume, { event in
