@@ -632,10 +632,27 @@ def log_dispatch_start(conn, step, op_kind, timestamp):
 
 
 def log_dispatch_complete(conn, dispatch_id, timestamp):
-    conn.execute(
-        "UPDATE dispatch_log SET completed_at = ?, status = 'complete' WHERE id = ?",
-        (timestamp, dispatch_id),
-    )
+    """Checkpoint completion and the step cursor together to prevent replay.
+
+    Connections use autocommit, so separate writes can leave a completed
+    dispatch behind a stale cursor after interruption. Recovery only looks
+    for pending dispatches and would otherwise repeat the completed operator.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        row = conn.execute(
+            "SELECT step FROM dispatch_log WHERE id = ?", (dispatch_id,)
+        ).fetchone()
+        if row is not None:
+            conn.execute(
+                "UPDATE dispatch_log SET completed_at = ?, status = 'complete' WHERE id = ?",
+                (timestamp, dispatch_id),
+            )
+            set_current_step(conn, row["step"])
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 def find_pending_dispatch(conn):

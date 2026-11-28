@@ -32,7 +32,6 @@ from agent_s4.db import (
     init_schema,
     log_dispatch_complete,
     log_dispatch_start,
-    set_current_step,
 )
 from agent_s4.operators.crossover import Crossover
 from agent_s4.operators.elimination import Elimination
@@ -296,7 +295,6 @@ class Driver:
                 dispatch_id = log_dispatch_start(self.conn, step, op, _now())
                 self.run_op_on_all_islands(op, step)
                 log_dispatch_complete(self.conn, dispatch_id, _now())
-                set_current_step(self.conn, step)
                 self._reevaluate_if_due(step)
                 step += 1
         finally:
