@@ -27,7 +27,7 @@ struct AgentSettings: View {
                         .onSubmit(saveName)
                     LabeledContent("Works on", value: model.agent.config.usesLocalComputer
                                    ? "A Linux VM on this Mac"
-                                   : model.privacy == .thisMac ? "This Mac itself (asks before each step)"
+                                   : model.privacy == .thisMac ? "This Mac itself"
                                    : "The cloud: \(model.computer?.displayName ?? "a cloud computer")")
                 }
 

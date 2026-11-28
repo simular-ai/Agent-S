@@ -40,6 +40,7 @@ struct AgentConfig: Codable, Identifiable, Equatable {
     /// Cloud agents: a Sai computer or box, and which box (empty: the default one).
     var cloudComputer: CloudComputer?
     var boxName: String?
+    var autoApproveActions: Bool? = nil
 }
 
 /// An agent as saved on disk: its definition, its chat, and its harness sessions (so it resumes
@@ -106,6 +107,7 @@ struct ChatItem: Identifiable, Equatable, Codable {
     var toolInput: String? = nil
     var isSteering: Bool? = nil
     var approvalTitle: String? = nil
+    var isTaskApproval: Bool? = nil
     var handoffLabel: String? = nil
     var handoffSender: HandoffSender? = nil
     var handoffShare: HandoffShare? = nil
@@ -299,7 +301,7 @@ final class AgentSession: ObservableObject, Identifiable {
     private var activeHandoffTurn: HandoffTurn?
     private var pendingChatAttachments: ChatAttachments?
     private var turnAttachments: ChatAttachments?
-    private var sandboxPreparation: Task<Void, Never>?
+    private var turnPreparation: Task<Void, Never>?
 
     struct QueuedFollowUp: Identifiable {
         let id = UUID()
@@ -539,7 +541,6 @@ final class AgentSession: ObservableObject, Identifiable {
         }
         if activeMemoryRoute != route {
             allowRestOfTurn = false
-            invalidateArmedMacAutoApproval(for: route)
         }
         activeMemoryRoute = route
         return true
@@ -777,6 +778,33 @@ final class AgentSession: ObservableObject, Identifiable {
         deepSeekSteering = nil
     }
 
+    private struct BoxApprovalTarget: Equatable {
+        let name: String?
+        let key: String?
+    }
+
+    private var boxApprovalTarget: BoxApprovalTarget? {
+        guard config.computer == .box else { return nil }
+        return BoxApprovalTarget(name: config.boxName, key: BoxAccount.key())
+    }
+
+    /// These computers run their harness inside a separate boundary, so Ask confirms the task before launch.
+    private func approveTaskStart(turn expectedTurn: String, box: BoxApprovalTarget? = nil) async -> Bool {
+        guard turn == expectedTurn, isRunning, !isStopping, !Task.isCancelled else { return false }
+        guard box != nil || config.usesLocalComputer else { return true }
+        // Handoff review already authorizes the exact request for the selected destination.
+        if activeHandoffTurn == nil, !autoApproveActions {
+            let text = box == nil ? "Start this task in the sandbox?" : "Start this task on \(box?.name ?? "Simular Box")?"
+            guard await requestLocalApproval(turn: expectedTurn, title: "Start task",
+                                             text: text, isTaskApproval: true) else { return false }
+        }
+        if let box, box.key == nil || boxApprovalTarget != box {
+            notice("The Simular Box connection changed. Send the task again to use the current connection.", isError: true)
+            return false
+        }
+        return true
+    }
+
     /// `screen` describes what is on the computer's screen right now; it is put in front of the
     /// message (not shown in the chat) so the agent never answers from an out-of-date picture.
     func send(_ prompt: String, harness: Harness, shell: GuestShell, ip: String, model: String, ollamaURL: String,
@@ -795,8 +823,12 @@ final class AgentSession: ObservableObject, Identifiable {
         activeAccountProvider = nil
         turn = UUID().uuidString
         let turnID = turn
-        sandboxPreparation = Task { @MainActor in
-            defer { if turn == turnID { sandboxPreparation = nil } }
+        turnPreparation = Task { @MainActor in
+            defer { if turn == turnID { turnPreparation = nil } }
+            guard await approveTaskStart(turn: turnID) else {
+                if turn == turnID, !isStopping { completeTurn(success: false, stoppedSafely: true) }
+                return
+            }
             async let now = readScreen ? screen() : nil
             let verified: AgentMemoryRoute? = if let memoryRoute, let verifyRoute { await verifyRoute(memoryRoute) } else { memoryRoute }
             let screen = await now
@@ -870,10 +902,11 @@ final class AgentSession: ObservableObject, Identifiable {
         pauseQueuedFollowUps()
         memoryTurn?.canCommit = false
         endSteering()
-        // The guest turn may still be reading the screen before it launches SSH.
+        denyPendingApprovals()
+        // A turn may still be awaiting approval or preparing to launch its process.
         if isRunning, process == nil, appProcess == nil, hostedTask == nil, saiTask == nil {
-            sandboxPreparation?.cancel()
-            sandboxPreparation = nil
+            turnPreparation?.cancel()
+            turnPreparation = nil
             turn = UUID().uuidString
             finish(status: 15, stderr: "", stoppedSafely: true)
             return
@@ -883,7 +916,6 @@ final class AgentSession: ObservableObject, Identifiable {
         closeClaudeMacTool()
         hostedTask?.cancel()
         stopHostedTurn?()
-        denyPendingApprovals()
         if let saiTask {
             if forcedFollowUpID != nil {
                 let confirmation = Task { @MainActor [weak self] in
@@ -1036,7 +1068,6 @@ final class AgentSession: ObservableObject, Identifiable {
 
     /// "Allow for this task": the rest of this turn runs without asking.
     @Published private(set) var allowRestOfTurn = false
-    @Published private var armedMacAutoApprovalRoute: AgentMemoryRoute?
 
     @Published private(set) var macControlPaused = false
     private var macTakeover = false
@@ -1071,7 +1102,11 @@ final class AgentSession: ObservableObject, Identifiable {
     }
 
     private func isLiveMacTurn(_ expectedTurn: String) -> Bool {
-        config.privacy == .thisMac && turn == expectedTurn && isRunning && !isStopping && !Task.isCancelled
+        config.privacy == .thisMac && isLiveTurn(expectedTurn)
+    }
+
+    private func isLiveTurn(_ expectedTurn: String) -> Bool {
+        turn == expectedTurn && isRunning && !isStopping && !Task.isCancelled
     }
 
     private func waitForMacControl(turn expectedTurn: String) async -> Bool {
@@ -1091,38 +1126,16 @@ final class AgentSession: ObservableObject, Identifiable {
         return isLiveMacTurn(expectedTurn)
     }
 
-    func macAutoApprovalEnabled(for route: AgentMemoryRoute) -> Bool {
-        isRunning ? allowRestOfTurn : armedMacAutoApprovalRoute == route
-    }
+    var autoApproveActions: Bool { config.autoApproveActions == true }
 
-    func setMacAutoApproval(_ enabled: Bool, for route: AgentMemoryRoute) {
-        guard config.privacy == .thisMac, route.privacy == .thisMac, !isStopping else { return }
-        guard isRunning else {
-            armedMacAutoApprovalRoute = enabled ? route : nil
-            return
-        }
-        guard !enabled || activeMemoryRoute == route else { return }
-        allowRestOfTurn = enabled
-        if enabled {
-            for item in pendingMacApprovals {
-                if case let .approval(id, false, _, nil) = item.kind {
-                    answer(approval: id, with: "approve_for_task")
-                }
+    func setAutoApproveActions(_ enabled: Bool) {
+        if !enabled { allowRestOfTurn = false }
+        if autoApproveActions != enabled { config.autoApproveActions = enabled }
+        guard enabled, isRunning, !isStopping else { return }
+        for item in pendingMacApprovals {
+            if case let .approval(id, false, _, nil) = item.kind {
+                answer(approval: id, with: "approve")
             }
-        }
-    }
-
-    /// Consumes the setting only after the composer starts a direct This Mac task.
-    func applyArmedMacAutoApproval(to route: AgentMemoryRoute) {
-        guard let armedRoute = armedMacAutoApprovalRoute else { return }
-        armedMacAutoApprovalRoute = nil
-        guard armedRoute == route, isRunning, activeHandoffTurn == nil else { return }
-        setMacAutoApproval(true, for: route)
-    }
-
-    func invalidateArmedMacAutoApproval(for route: AgentMemoryRoute?) {
-        if let armedRoute = armedMacAutoApprovalRoute, armedRoute != route {
-            armedMacAutoApprovalRoute = nil
         }
     }
 
@@ -1131,23 +1144,34 @@ final class AgentSession: ObservableObject, Identifiable {
     func requestApproval(tool: String, input: [String: Any], macToolPath: String) async -> Bool {
         let approvalTurn = turn
         guard await waitForMacControl(turn: approvalTurn) else { return false }
-        let needsApproval = !allowRestOfTurn && !MacAgent.isLookOnly(tool: tool, input: input, macToolPath: macToolPath)
+        let isViewing = MacAgent.isLookOnly(tool: tool, input: input, macToolPath: macToolPath)
+        let needsApproval = !autoApproveActions && !allowRestOfTurn && !isViewing
         if MacAgent.isUICommand(tool: tool, input: input, macToolPath: macToolPath) {
             onMacUIActivity?(self, needsApproval)
         }
-        guard needsApproval else { return await waitForMacControl(turn: approvalTurn) }
-        let id = UUID().uuidString
+        if !needsApproval {
+            guard await waitForMacControl(turn: approvalTurn) else { return false }
+            if autoApproveActions || allowRestOfTurn || isViewing { return true }
+        }
         let title: String? = if tool == "Bash", let command = input["command"] as? String {
             ToolActivity.title(tool: "mac", summary: command)
         } else {
             nil
         }
+        let text = Self.describe(tool: tool, input: input, macToolPath: macToolPath)
+        guard await requestLocalApproval(turn: approvalTurn, title: title, text: text) else { return false }
+        return await waitForMacControl(turn: approvalTurn)
+    }
+
+    private func requestLocalApproval(turn expectedTurn: String, title: String?, text: String,
+                                      isTaskApproval: Bool = false) async -> Bool {
+        let id = UUID().uuidString
         let approved = await withTaskCancellationHandler {
             await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
-                guard isLiveMacTurn(approvalTurn) else { continuation.resume(returning: false); return }
+                guard isLiveTurn(expectedTurn) else { continuation.resume(returning: false); return }
                 pendingApprovals[id] = continuation
                 items.append(ChatItem(id: "approval/\(id)", kind: .approval(id: id, linkOnly: false, url: nil, answer: nil),
-                                      text: Self.describe(tool: tool, input: input, macToolPath: macToolPath), approvalTitle: title))
+                                      text: text, approvalTitle: title, isTaskApproval: isTaskApproval ? true : nil))
             }
         } onCancel: {
             Task { @MainActor [weak self] in
@@ -1155,8 +1179,7 @@ final class AgentSession: ObservableObject, Identifiable {
                 self.answer(approval: id, with: "deny")
             }
         }
-        guard approved else { return false }
-        return await waitForMacControl(turn: approvalTurn)
+        return approved && isLiveTurn(expectedTurn)
     }
 
     /// What a step will do, for the approval card: the exact command or file.
@@ -1203,6 +1226,7 @@ final class AgentSession: ObservableObject, Identifiable {
         activeAccountProvider = provider.usesAccount ? provider : nil
         turn = UUID().uuidString
         let turnID = turn
+        let box = boxApprovalTarget
         let launch = { [self] in
             guard turn == turnID, isRunning else { return }
             guard handoffMayLaunch() else {
@@ -1214,12 +1238,19 @@ final class AgentSession: ObservableObject, Identifiable {
                              accountProfile: accountProfile, workingDirectory: workingDirectory, prepare: prepare,
                              toolsAllowed: toolsAllowed, toolsRule: toolsRule, turnID: turnID)
         }
-        if let verifyRoute, let memoryRoute {
-            Task { @MainActor in
-                let verified = await verifyRoute(memoryRoute)
-                guard turn == turnID, isRunning else { return }
-                guard setVerifiedRoute(verified, expected: memoryRoute) else {
-                    completeTurn(success: false, stoppedSafely: true)
+        if box != nil || (verifyRoute != nil && memoryRoute != nil) {
+            turnPreparation = Task { @MainActor in
+                defer { if turn == turnID { turnPreparation = nil } }
+                if let verifyRoute, let memoryRoute {
+                    let verified = await verifyRoute(memoryRoute)
+                    guard turn == turnID, isRunning, !isStopping else { return }
+                    guard setVerifiedRoute(verified, expected: memoryRoute) else {
+                        completeTurn(success: false, stoppedSafely: true)
+                        return
+                    }
+                }
+                guard await approveTaskStart(turn: turnID, box: box) else {
+                    if turn == turnID, !isStopping { completeTurn(success: false, stoppedSafely: true) }
                     return
                 }
                 launch()
@@ -1414,6 +1445,7 @@ final class AgentSession: ObservableObject, Identifiable {
         allowRestOfTurn = false
         turn = UUID().uuidString
         let turnID = turn
+        let box = boxApprovalTarget
         hostedTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var completed = false
@@ -1432,6 +1464,7 @@ final class AgentSession: ObservableObject, Identifiable {
                     guard self.turn == turnID else { return }
                     guard self.setVerifiedRoute(verified, expected: memoryRoute) else { return }
                 }
+                guard await self.approveTaskStart(turn: turnID, box: box) else { return }
                 guard self.handoffMayLaunch() else { return }
                 let resume = self.resumeOnRoute(self.activeMemoryRoute, legacy: legacyResume)
                 try await run(self.modelPrompt(for: item), resume, { event in
@@ -1458,8 +1491,10 @@ final class AgentSession: ObservableObject, Identifiable {
     /// Sends one message to Sai on `machine`. Follow-ups continue the same Sai session while the
     /// machine stays the same.
     func sendToSai(_ prompt: String, machine: String, model: String?, memoryRoute: AgentMemoryRoute? = nil,
-                   canSendAttachments: (() -> Bool)? = nil) {
+                   canSendOnCurrentSaiConnection: (() -> Bool)? = nil) {
         guard !isRunning else { return }
+        let autonomous = autoApproveActions
+        let approvalKey = autonomous ? SaiAPI.key() : nil
         let item = beginTurnMessage(prompt, memoryRoute: memoryRoute)
         isRunning = true
         harness = .sai
@@ -1481,17 +1516,21 @@ final class AgentSession: ObservableObject, Identifiable {
                 self.activeSaiSessionID = session
                 let attached: SaiAPI.ChatUpload?
                 if let files = self.turnAttachments?.files {
-                    guard canSendAttachments?() == true else {
+                    guard canSendOnCurrentSaiConnection?() == true else {
                         throw SaiAPI.Failure(message: "The Sai connection changed. Attach the files again to use the new connection.")
                     }
                     attached = try await SaiAPI.uploadChatAttachments(files)
                 } else { attached = nil }
                 try Task.checkCancellation()
-                guard attached == nil || canSendAttachments?() == true else {
-                    throw SaiAPI.Failure(message: "The Sai connection changed. Attach the files again to use the new connection.")
+                let useAutoApproval = autonomous && self.autoApproveActions
+                guard (attached == nil && !useAutoApproval) || canSendOnCurrentSaiConnection?() == true else {
+                    let message = attached == nil
+                        ? "The Sai connection changed. Send the message again to use the new connection."
+                        : "The Sai connection changed. Attach the files again to use the new connection."
+                    throw SaiAPI.Failure(message: message)
                 }
                 try await SaiAPI.run(message: self.modelPrompt(for: item), machine: machine, session: session, model: model,
-                                     attachments: attached) { event in
+                                     autonomous: useAutoApproval, approvalKey: approvalKey, attachments: attached) { event in
                     if self.turn == turnID { self.applySai(event) }
                 }
                 completed = self.turn == turnID && !Task.isCancelled && self.turnResult == true
@@ -1521,7 +1560,9 @@ final class AgentSession: ObservableObject, Identifiable {
         // A step on this Mac, waiting in the hook.
         if let continuation = pendingApprovals.removeValue(forKey: id) {
             items[index].kind = .approval(id: id, linkOnly: linkOnly, url: url, answer: response)
-            if response == "approve_for_task" { allowRestOfTurn = true }
+            if response == "approve_for_task", config.privacy == .thisMac, items[index].isTaskApproval != true {
+                allowRestOfTurn = true
+            }
             continuation.resume(returning: response != "deny")
             return
         }
@@ -1615,7 +1656,6 @@ final class AgentSession: ObservableObject, Identifiable {
         }
         handoffConversationID = UUID()
         memorySessions = [:]
-        armedMacAutoApprovalRoute = nil
         activeTurnItemID = nil
         stop()
         clearMacControl()
