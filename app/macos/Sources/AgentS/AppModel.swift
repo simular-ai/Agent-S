@@ -172,8 +172,14 @@ final class AppModel: ObservableObject {
     // The selected agent's settings, so views keep binding to `model.harness` and friends.
     private func update(_ change: (inout AgentConfig) -> Void) {
         objectWillChange.send()
-        change(&agent.config)
-        agent.invalidateArmedMacAutoApproval(for: memoryRoute(for: agent))
+        let previous = agent.config
+        var updated = previous
+        change(&updated)
+        if previous.privacy.location != updated.privacy.location || previous.computer != updated.computer
+            || previous.saiMachine != updated.saiMachine || previous.boxName != updated.boxName {
+            updated.autoApproveActions = nil
+        }
+        agent.config = updated
     }
     var privacy: PrivacyMode { agent.config.privacy }
     var harness: Harness {
@@ -203,12 +209,14 @@ final class AppModel: ObservableObject {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, BoxAccount.save(key: trimmed) else { return false }
         hasBoxKey = true
+        for session in agents where session.config.computer == .box { session.setAutoApproveActions(false) }
         return true
     }
 
     func removeBoxKey() {
         BoxAccount.delete()
         hasBoxKey = false
+        for session in agents where session.config.computer == .box { session.setAutoApproveActions(false) }
     }
     var provider: ModelProvider {
         get { agent.config.provider }
@@ -888,9 +896,6 @@ final class AppModel: ObservableObject {
             ollamaVersion = checkedVersion
             if ollamaModels != checkedModels {
                 ollamaModels = checkedModels
-                for session in agents where session.config.provider == .ollama {
-                    session.invalidateArmedMacAutoApproval(for: memoryRoute(for: session))
-                }
                 refreshInstalledOllamaInputs()
             }
             ollamaChecked = true
@@ -1094,6 +1099,7 @@ final class AppModel: ObservableObject {
     private func resetSaiKeyState(hasKey: Bool) {
         hasSaiKey = hasKey
         saiKeyRevision += 1
+        for session in agents where session.config.computer == .sai { session.setAutoApproveActions(false) }
         saiMachines = []
         saiModels = []
         saiStatus = nil
@@ -1882,7 +1888,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func send(_ prompt: String, to session: AgentSession, verifiedRoute: AgentMemoryRoute? = nil,
-              isHandoff: Bool = false, attachmentURLs: [URL] = [], isDirectChat: Bool = false) -> Bool {
+              isHandoff: Bool = false, attachmentURLs: [URL] = []) -> Bool {
         guard agents.contains(where: { $0 === session }), !session.isRunning, !session.isSendingSteering else { return false }
         // The private/cloud boundary is enforced here too, not only by what the settings offer.
         let config = session.config.enforcingPrivacy
@@ -1892,8 +1898,7 @@ final class AppModel: ObservableObject {
         guard verifiedRoute == nil || verifiedRoute == route else { return false }
         let verifyRoute = verifiedRoute == nil || isHandoff ? memoryRouteVerifier(for: config.provider) : nil
         let dispatch = {
-            self.dispatchChatTurn(prompt, to: session, route: route, verifyRoute: verifyRoute,
-                                  isHandoff: isHandoff, isDirectChat: isDirectChat)
+            self.dispatchChatTurn(prompt, to: session, route: route, verifyRoute: verifyRoute, isHandoff: isHandoff)
         }
         guard !attachmentURLs.isEmpty else { return dispatch() }
         guard !isHandoff, canAttachFiles(to: session) else {
@@ -1913,7 +1918,7 @@ final class AppModel: ObservableObject {
 
     private func dispatchChatTurn(_ prompt: String, to session: AgentSession, route: AgentMemoryRoute,
                                   verifyRoute: ((AgentMemoryRoute) async -> AgentMemoryRoute)?,
-                                  isHandoff: Bool, isDirectChat: Bool) -> Bool {
+                                  isHandoff: Bool) -> Bool {
         let config = session.config
         let harness = config.harness
         if harness == .sai {
@@ -1928,9 +1933,7 @@ final class AppModel: ObservableObject {
             return sendToBox(prompt, to: session, memoryRoute: route, verifyRoute: isHandoff ? verifyRoute : nil)
         }
         if config.privacy == .thisMac {
-            let sent = sendToMac(prompt, to: session, memoryRoute: route, verifyRoute: verifyRoute)
-            if sent, isDirectChat { session.applyArmedMacAutoApproval(to: route) }
-            return sent
+            return sendToMac(prompt, to: session, memoryRoute: route, verifyRoute: verifyRoute)
         }
         guard config.usesLocalComputer, sandboxTurnLease == nil,
               let ip = guestIP, let endpoint = localModelEndpoint(for: session) else { return false }
@@ -2006,7 +2009,7 @@ final class AppModel: ObservableObject {
     private lazy var macTurnPanel = MacTurnPanelController { [weak self] session, text in
         let prompt = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let self, session.config.privacy == .thisMac, !prompt.isEmpty else { return false }
-        return session.isRunning ? self.queueFollowUp(prompt, for: session) : self.send(prompt, to: session, isDirectChat: true)
+        return session.isRunning ? self.queueFollowUp(prompt, for: session) : self.send(prompt, to: session)
     }
     var openMainWindow: (() -> Void)?
 

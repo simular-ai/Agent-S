@@ -306,21 +306,29 @@ struct ChatView: View {
     private func headerMenus(modelName: String, compact: Bool = false) -> some View {
         HStack(spacing: 8) {
             modelPill(title: modelName, compact: compact).layoutPriority(1)
-            if model.privacy == .thisMac { macApprovalMenu(compact: compact).fixedSize() }
+            approvalMenu(compact: compact).fixedSize()
         }
     }
 
-    private func macApprovalMenu(compact: Bool) -> some View {
-        let route = model.memoryRoute(for: agent)
-        let enabled = agent.macAutoApprovalEnabled(for: route)
-        let autoTitle = agent.isRunning ? "Auto-approve this task" : "Auto-approve next task"
+    private func approvalMenu(compact: Bool) -> some View {
+        let enabled = agent.autoApproveActions
+        let asksBeforeTasks = model.privacy.usesLocalComputer || model.computer == .box
+        let askTitle = asksBeforeTasks ? "Ask before each task" : "Ask for approval"
+        let mode = enabled ? "Auto-approve" : askTitle
+        let scope = if model.harness == .sai {
+            "Applies when a new Sai task starts."
+        } else if asksBeforeTasks {
+            "Controls whether to confirm before starting a task."
+        } else {
+            "Controls whether to ask before Mac actions."
+        }
         return Menu {
-            Picker("This Mac approvals", selection: Binding(
-                get: { agent.macAutoApprovalEnabled(for: route) },
-                set: { agent.setMacAutoApproval($0, for: route) }
+            Picker("Approvals", selection: Binding(
+                get: { agent.autoApproveActions },
+                set: { agent.setAutoApproveActions($0) }
             )) {
-                Text("Ask for approval").tag(false)
-                Text(autoTitle).tag(true)
+                Text(askTitle).tag(false)
+                Text("Auto-approve").tag(true)
             }
             .pickerStyle(.inline)
         } label: {
@@ -332,9 +340,9 @@ struct ChatView: View {
         .menuIndicator(.hidden)
         .modifier(ChatButtonHover())
         .disabled(agent.isStopping)
-        .accessibilityLabel("Computer approvals")
-        .accessibilityValue(enabled ? autoTitle : "Ask for approval")
-        .help(enabled ? "\(autoTitle) on this Mac" : "Ask for approval on this Mac")
+        .accessibilityLabel("Approvals")
+        .accessibilityValue(mode)
+        .help("\(mode)\n\(scope)")
     }
 
     private func headerMenuLabel(_ title: String?, icon: String, active: Bool = false, compact: Bool) -> some View {
@@ -898,7 +906,7 @@ struct ChatView: View {
                 }
             } else if model.privacy == .thisMac {
                 Text("Works on this Mac").font(.title3.weight(.medium))
-                Text("It uses your Mac's apps, Terminal and files. Before each step it shows you exactly what it will do, and runs it only when you allow it.")
+                Text("It uses your Mac’s apps, Terminal and files. Set its approval mode in the chat header.")
                     .foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 440)
                 MacAccessList().frame(maxWidth: 480)
                 if model.provider == .openRouter, !model.hasOpenRouterKey {
@@ -985,7 +993,7 @@ struct ChatView: View {
         let conversation = session.handoffConversationID
         let selectedURLs = attachmentDraft.files.map(\.url)
         let accepted = wasRunning ? model.queueFollowUp(text, for: session)
-            : model.send(text, to: session, attachmentURLs: selectedURLs, isDirectChat: true)
+            : model.send(text, to: session, attachmentURLs: selectedURLs)
         if accepted {
             if field.wrappedValue == original { field.wrappedValue = "" }
             attachmentDrafts[conversation] = nil
@@ -1194,7 +1202,8 @@ struct ChatRow: View {
         case .step:
             ChatActivityBar(steps: ArraySlice([item]), isCurrentTurnRunning: false, showsWorking: false)
         case let .approval(id, linkOnly, url, answer):
-            ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer)
+            ApprovalCard(id: id, text: item.text, linkOnly: linkOnly, url: url, answer: answer,
+                         isTaskApproval: item.isTaskApproval == true)
         case let .notice(isError):
             if let share = item.handoffShare {
                 HandoffShareCard(share: share, text: item.text, onDecision: onHandoffDecision)
@@ -1328,7 +1337,7 @@ private struct HandoffShareCard: View {
     }
 }
 
-/// Sai paused for the user: approve or deny, or open the link it needs a person for.
+/// A pending action or task start, or a link that needs the user’s attention.
 struct ApprovalCard: View {
     @EnvironmentObject private var agent: AgentSession
     let id: String
@@ -1336,21 +1345,25 @@ struct ApprovalCard: View {
     let linkOnly: Bool
     let url: URL?
     let answer: String?
+    var isTaskApproval = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(text, systemImage: "hand.raised").font(.callout)
             if let answer {
-                Text(answer == "deny" ? "Denied" : "Approved").font(.caption).foregroundStyle(.secondary)
+                let status = answer == "deny" ? (isTaskApproval ? "Canceled" : "Denied") : "Approved"
+                Text(status).font(.caption).foregroundStyle(.secondary)
             } else if linkOnly {
                 if let url { Link("Open to continue", destination: url) }
                 Text("Sai continues once it's done.").font(.caption).foregroundStyle(.secondary)
             } else {
                 HStack {
-                    Button("Approve") { agent.answer(approval: id, with: "approve") }
+                    Button(isTaskApproval ? "Start task" : "Approve") { agent.answer(approval: id, with: "approve") }
                         .buttonStyle(.borderedProminent).tint(Theme.accent)
-                    Button("Approve for this task") { agent.answer(approval: id, with: "approve_for_task") }
-                    Button("Deny") { agent.answer(approval: id, with: "deny") }
+                    if !isTaskApproval {
+                        Button("Approve for this task") { agent.answer(approval: id, with: "approve_for_task") }
+                    }
+                    Button(isTaskApproval ? "Cancel" : "Deny") { agent.answer(approval: id, with: "deny") }
                 }
             }
         }

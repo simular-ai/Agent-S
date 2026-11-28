@@ -167,7 +167,19 @@ enum SaiAPI {
     }
 
     static func approve(_ approvalId: String, response: String) async throws {
-        _ = try await json("/v1/agents/approve", method: "POST", body: ["approvalId": approvalId, "response": response])
+        guard let wireResponse = approvalWireResponse(response) else {
+            throw Failure(message: "Sai couldn’t use that approval answer.")
+        }
+        _ = try await json("/v1/agents/approve", method: "POST", body: ["approvalId": approvalId, "response": wireResponse])
+    }
+
+    static func approvalWireResponse(_ response: String) -> String? {
+        switch response {
+        case "approve", "yes": "yes"
+        case "deny", "no": "no"
+        case "approve_for_task", "task": "task"
+        default: nil
+        }
     }
 
     static func abort(session: String) async {
@@ -236,7 +248,7 @@ enum SaiAPI {
             let data: Data
             let response: URLResponse
             do {
-                (data, response) = try await attachmentSession.upload(for: upload, fromFile: file)
+                (data, response) = try await directSession.upload(for: upload, fromFile: file)
             } catch {
                 try Task.checkCancellation()
                 throw Failure(message: "Couldn’t upload an attachment to Sai.")
@@ -293,7 +305,7 @@ enum SaiAPI {
         }
     }
 
-    private static let attachmentSession = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
+    private static let directSession = URLSession(configuration: .ephemeral, delegate: NoRedirects(), delegateQueue: nil)
 
     private final class NoRedirects: NSObject, URLSessionTaskDelegate {
         func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
@@ -302,21 +314,35 @@ enum SaiAPI {
         }
     }
 
-    /// Runs one message as a task and hands each stream event (a JSON object) to `event`.
-    static func run(message: String, machine: String, session: String?, model: String?,
-                    attachments: ChatUpload? = nil,
-                    event: @escaping @MainActor ([String: Any]) -> Void) async throws {
+    static func messageBody(message: String, machine: String, session: String?, model: String?,
+                            autonomous: Bool, attachments: [[String: Any]]) -> [String: Any] {
         var body: [String: Any] = ["message": message, "machineId": machine]
         if let session { body["sessionId"] = session }
         // Sai retains the previous session model unless we send the new choice, including "auto".
         if let model { body["model"] = model }
-        if let attachments { body["attachments"] = attachments.files }
+        if autonomous { body["autonomous"] = true }
+        if !attachments.isEmpty { body["attachments"] = attachments }
+        return body
+    }
+
+    /// Runs one message as a task and hands each stream event (a JSON object) to `event`.
+    static func run(message: String, machine: String, session: String?, model: String?,
+                    autonomous: Bool = false, approvalKey: String? = nil, attachments: ChatUpload? = nil,
+                    event: @escaping @MainActor ([String: Any]) -> Void) async throws {
+        let body = messageBody(message: message, machine: machine, session: session, model: model,
+                               autonomous: autonomous, attachments: attachments?.files ?? [])
         var request = try request("/v1/agents/message", method: "POST", body: body, accept: "text/event-stream")
-        if let attachments, request.value(forHTTPHeaderField: "Authorization") != attachments.authorization {
+        let authorization = request.value(forHTTPHeaderField: "Authorization")
+        if autonomous {
+            guard let approvalKey, authorization == "Bearer \(approvalKey)" else {
+                throw Failure(message: "The Sai API key changed. Choose the approval mode for the new connection and send the task again.")
+            }
+        }
+        if let attachments, authorization != attachments.authorization {
             throw Failure(message: "The Sai API key changed after attachment upload.")
         }
         request.timeoutInterval = 60 * 60
-        let transport = attachments == nil ? URLSession.shared : attachmentSession
+        let transport = attachments == nil && !autonomous ? URLSession.shared : directSession
         let (bytes, response) = try await transport.bytes(for: request)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         guard (200..<300).contains(status) else {
