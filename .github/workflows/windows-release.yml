@@ -13,6 +13,10 @@ on:
         description: 'Optional commit on main for an existing release pinned to older source'
         required: false
         type: string
+      publish_installer:
+        description: 'Include the signed Windows installer and enable the in-app update feed for this release'
+        default: false
+        type: boolean
 
 permissions:
   contents: write   # create/update the GitHub release
@@ -242,6 +246,59 @@ jobs:
           "$hash  $env:ZIP_NAME.zip" | Out-File -FilePath "$zip.sha256" -Encoding ascii -NoNewline
           Write-Host "SHA256: $hash"
 
+      - name: Package the signed Windows installer
+        if: inputs.publish_installer
+        shell: pwsh
+        env:
+          SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ secrets.AZURE_SIGNING_PROFILE }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool install --global vpk --version 1.2.161
+          if ($LASTEXITCODE -ne 0) { throw 'Could not install the pinned Velopack CLI.' }
+          $metadata = Join-Path $env:RUNNER_TEMP 'installer-signing.json'
+          @{
+            Endpoint = $env:SIGNING_ENDPOINT
+            CodeSigningAccountName = $env:SIGNING_ACCOUNT
+            CertificateProfileName = $env:SIGNING_PROFILE
+          } | ConvertTo-Json | Set-Content -LiteralPath $metadata
+          ./app/windows/scripts/package-installer.ps1 -PublishDirectory $env:OUT_DIR -OutputDirectory (Join-Path $env:RUNNER_TEMP 'agent-s-installer') -Version $env:BUILD_VERSION -SigningMetadata $metadata
+
+      - name: Sign the full update catalog
+        if: inputs.publish_installer
+        uses: Azure/artifact-signing-action@v0.5.11
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_PROFILE }}
+          files-folder: ${{ runner.temp }}/agent-s-installer
+          files-folder-filter: cat
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Verify the signed installer and smoke-test installation
+        if: inputs.publish_installer
+        timeout-minutes: 5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = Join-Path $env:RUNNER_TEMP 'agent-s-installer'
+          $setup = Join-Path $directory 'AgentS-Windows-x64-Setup.exe'
+          $catalogs = @(Get-ChildItem -LiteralPath $directory -Filter '*.cat' -File)
+          if ($catalogs.Count -ne 1) { throw 'Expected exactly one signed catalog.' }
+          foreach ($file in @($setup, $catalogs[0].FullName)) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $file
+            if ($signature.Status -ne 'Valid' -or !$signature.TimeStamperCertificate -or
+                $signature.SignerCertificate.Subject -notmatch '(?:^|,\s*)O="Simular, Inc\."(?:,|$)') {
+              throw "Invalid or unexpected Authenticode signature: $file"
+            }
+          }
+          ./app/windows/scripts/installer-smoke.ps1 -Setup $setup -EvidenceDirectory (Join-Path $env:RUNNER_TEMP 'agent-s-evidence/installer') -RequireSigned
+
       - name: Upload release assets
         shell: pwsh
         env:
@@ -425,6 +482,40 @@ jobs:
             throw "Published $env:TAG but its tag points at $("$finalTag".Trim()), not $env:RELEASE_SHA."
           }
           Write-Host "Published $env:TAG with both Windows assets."
+
+      - name: Publish the installer, package and update feed
+        if: inputs.publish_installer
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $directory = Join-Path $env:RUNNER_TEMP 'agent-s-installer'
+          $feed = Join-Path $directory 'releases.win.json'
+          $files = @(Get-ChildItem -LiteralPath $directory -File |
+            Where-Object { $_.Name -eq 'AgentS-Windows-x64-Setup.exe' -or $_.Name -match '-full\.nupkg(?:\.cat)?$' })
+          if ($files.Count -ne 3 -or !(Test-Path -LiteralPath $feed)) { throw 'Installer assets are incomplete.' }
+          $expected = @($files.Name) + 'releases.win.json'
+          $release = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or !$release -or $release.draft -or $release.prerelease) {
+            throw 'Expected a published stable GitHub release.'
+          }
+          $existing = @($release.assets | Where-Object { $_.name -in $expected })
+          if ($existing.Count -eq $expected.Count -and
+              @($existing | Where-Object { $_.state -ne 'uploaded' -or $_.size -le 0 }).Count -eq 0) { exit 0 }
+          if ($existing.Count -gt 0) { throw 'Resolve the partial installer upload before retrying. The workflow never overwrites published assets.' }
+          $paths = @($files.FullName)
+          gh release upload $env:TAG @paths
+          if ($LASTEXITCODE -ne 0) { throw 'Could not upload the installer and signed update package.' }
+          # The app discovers updates from this index. Publish it only after every payload is present.
+          gh release upload $env:TAG $feed
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish the Windows update index.' }
+          $published = gh api "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or
+              @($published.assets | Where-Object { $_.name -in $expected -and $_.state -eq 'uploaded' -and $_.size -gt 0 }).Count -ne $expected.Count) {
+            throw 'The installer and update assets were not confirmed on the public release.'
+          }
 
       - name: Upload smoke evidence
         if: always()
